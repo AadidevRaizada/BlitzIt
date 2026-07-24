@@ -20,12 +20,16 @@
     "db:seed": "tsx prisma/seed.ts",
     "verify:runner": "tsx --conditions=react-server scripts/verify-runner.ts",
     "verify:queue": "tsx --conditions=react-server scripts/verify-queue.ts",
+    "verify:auth": "tsx --conditions=react-server scripts/verify-auth.ts",
+    "make:admin": "tsx --conditions=react-server scripts/make-admin.ts",
     "postinstall": "prisma generate",
-    "prepare": "husky"
+    "prepare": "husky",
+    "dev:session": "tsx --conditions=react-server scripts/dev-session.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",
     "@prisma/client": "^7.0.0",
+    "better-auth": "^1.6.25",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dotenv": "^16.4.7",

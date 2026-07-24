@@ -39,6 +39,7 @@ untrusted-code-execution risk class. See [`DECISIONS.md`](./DECISIONS.md).
 | **14** | **[Admin Flows](./14-admin-flows.md)** | Operator flows |
 | **15** | **[Engineering Task Breakdown](./15-engineering-tasks.md)** | Granular tickets |
 | **16** | **[Sprint Plan](./16-sprint-plan.md)** | Sequenced sprints |
+| — | [OAuth Setup](./oauth-setup.md) | GitHub/Google OAuth app setup for local dev |
 | — | [Coding Standards](./coding-standards.md) | Conventions, boundaries, security |
 | — | [Tech Research Notes](./tech-research.md) | 2026 findings per technology |
 

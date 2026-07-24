@@ -9,37 +9,58 @@ import { z } from 'zod';
  * for now and will be tightened to required in their respective epics.
  */
 
+/**
+ * Optional env var. `.env` files commonly carry placeholder keys with empty
+ * values; an empty string means "not configured", not "configured as ''".
+ */
+const optionalVar = (minLength = 1) =>
+  z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().min(minLength).optional(),
+  );
+
+const optionalUrl = () =>
+  z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim() === '' ? undefined : value,
+    z.string().url().optional(),
+  );
+
 const serverSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
   DATABASE_URL: z.string().url(),
 
-  // Auth (Epic E1) — optional until wired
-  BETTER_AUTH_SECRET: z.string().min(1).optional(),
-  BETTER_AUTH_URL: z.string().url().optional(),
-  GITHUB_CLIENT_ID: z.string().optional(),
-  GITHUB_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CLIENT_ID: z.string().optional(),
-  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  // Auth (Epic E1). The secret is REQUIRED in production (enforced below); in
+  // development a fixed fallback keeps local setup frictionless.
+  BETTER_AUTH_SECRET: optionalVar(32),
+  BETTER_AUTH_URL: optionalUrl(),
+  // OAuth credentials stay optional: providers register only when present, so
+  // the app runs before the OAuth apps exist. See docs/oauth-setup.md.
+  GITHUB_CLIENT_ID: optionalVar(),
+  GITHUB_CLIENT_SECRET: optionalVar(),
+  GOOGLE_CLIENT_ID: optionalVar(),
+  GOOGLE_CLIENT_SECRET: optionalVar(),
 
   // Payments (Epic E4)
-  RAZORPAY_KEY_ID: z.string().optional(),
-  RAZORPAY_KEY_SECRET: z.string().optional(),
-  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_KEY_ID: optionalVar(),
+  RAZORPAY_KEY_SECRET: optionalVar(),
+  RAZORPAY_WEBHOOK_SECRET: optionalVar(),
 
   // AI evaluator (Epic E2)
-  ANTHROPIC_API_KEY: z.string().optional(),
-  OPENAI_API_KEY: z.string().optional(),
-  GITHUB_API_TOKEN: z.string().optional(),
+  ANTHROPIC_API_KEY: optionalVar(),
+  OPENAI_API_KEY: optionalVar(),
+  GITHUB_API_TOKEN: optionalVar(),
 
   // Email (Epic E8)
-  RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().optional(),
+  RESEND_API_KEY: optionalVar(),
+  EMAIL_FROM: optionalVar(),
 
   // Analytics / monitoring
-  POSTHOG_API_KEY: z.string().optional(),
-  SENTRY_DSN: z.string().optional(),
+  POSTHOG_API_KEY: optionalVar(),
+  SENTRY_DSN: optionalVar(),
 
   // Evaluation runner
   RUNNER_CONCURRENCY: z.coerce.number().int().positive().default(2),
@@ -53,11 +74,17 @@ const serverSchema = z.object({
 });
 
 const publicSchema = z.object({
-  NEXT_PUBLIC_APP_URL: z.string().url().default('http://localhost:3000'),
-  NEXT_PUBLIC_RAZORPAY_KEY_ID: z.string().optional(),
-  NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
-  NEXT_PUBLIC_POSTHOG_HOST: z.string().optional(),
-  NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
+  NEXT_PUBLIC_APP_URL: z
+    .preprocess(
+      (value) =>
+        typeof value === 'string' && value.trim() === '' ? undefined : value,
+      z.string().url().optional(),
+    )
+    .transform((v) => v ?? 'http://localhost:3000'),
+  NEXT_PUBLIC_RAZORPAY_KEY_ID: optionalVar(),
+  NEXT_PUBLIC_POSTHOG_KEY: optionalVar(),
+  NEXT_PUBLIC_POSTHOG_HOST: optionalVar(),
+  NEXT_PUBLIC_SENTRY_DSN: optionalVar(),
 });
 
 function format(error: z.ZodError): string {
@@ -85,6 +112,9 @@ if (!publicParsed.success) {
 export const publicEnv = publicParsed.data;
 
 // Server env is only validated on the server. Guard so this never runs client-side.
+/** Dev-only Better Auth secret. Production must supply a real one. */
+const DEV_AUTH_SECRET = 'blitzit-development-only-secret-do-not-use-in-prod';
+
 function loadServerEnv() {
   const parsed = serverSchema.safeParse(process.env);
   if (!parsed.success) {
@@ -92,10 +122,27 @@ function loadServerEnv() {
       `Invalid server environment variables:\n${format(parsed.error)}`,
     );
   }
-  return parsed.data;
+  const env = parsed.data;
+
+  if (env.NODE_ENV === 'production' && !env.BETTER_AUTH_SECRET) {
+    throw new Error(
+      'BETTER_AUTH_SECRET is required in production (min 32 chars). ' +
+        'Generate one with: openssl rand -base64 32',
+    );
+  }
+
+  return {
+    ...env,
+    // Resolved values so consumers never deal with undefined.
+    BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET ?? DEV_AUTH_SECRET,
+    BETTER_AUTH_URL:
+      env.BETTER_AUTH_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      'http://localhost:3000',
+  };
 }
 
-export type ServerEnv = z.infer<typeof serverSchema>;
+export type ServerEnv = ReturnType<typeof loadServerEnv>;
 
 let cached: ServerEnv | undefined;
 
