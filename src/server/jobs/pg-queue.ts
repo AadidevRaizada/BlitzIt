@@ -9,6 +9,10 @@ import type { ClaimedJob, EnqueueOptions, JobName, Queue } from './queue';
  * worker) never process the same job twice. No Redis.
  */
 
+/** Recorded on `lastError` when a job is recovered from an abandoned claim. */
+export const STALE_CLAIM_ERROR =
+  'Reclaimed: claim expired (runner crashed, redeployed, or stalled)';
+
 interface ClaimRow {
   id: string;
   name: string;
@@ -79,6 +83,40 @@ export class PgQueue implements Queue {
       where: { id: jobId },
       data: { status: 'DONE', updatedAt: new Date() },
     });
+  }
+
+  async reclaimStale(
+    timeoutMs: number,
+  ): Promise<{ requeued: number; failed: number }> {
+    const seconds = Math.max(1, Math.floor(timeoutMs / 1000));
+
+    // A single atomic UPDATE: rows are locked as they are matched, so
+    // concurrent runners re-evaluate the WHERE clause and never double-apply.
+    // Jobs with attempts left go back to QUEUED; exhausted ones dead-letter.
+    const rows = await db.$queryRaw<{ status: string }[]>(Prisma.sql`
+      UPDATE "EvaluationJob"
+      SET "status" = CASE
+            WHEN "attempts" >= "maxAttempts" THEN 'FAILED'::"JobStatus"
+            ELSE 'QUEUED'::"JobStatus"
+          END,
+          "lockedBy" = NULL,
+          "claimedAt" = NULL,
+          "availableAt" = now(),
+          "lastError" = ${STALE_CLAIM_ERROR},
+          "updatedAt" = now()
+      WHERE "status" IN ('CLAIMED', 'RUNNING')
+        AND "claimedAt" IS NOT NULL
+        AND "claimedAt" < now() - make_interval(secs => ${seconds}::double precision)
+      RETURNING "status";
+    `);
+
+    let requeued = 0;
+    let failed = 0;
+    for (const row of rows) {
+      if (row.status === 'FAILED') failed++;
+      else requeued++;
+    }
+    return { requeued, failed };
   }
 
   async fail(jobId: string, error: string, backoffMs: number): Promise<void> {

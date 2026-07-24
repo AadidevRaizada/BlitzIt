@@ -50,6 +50,18 @@ export interface Queue {
    * backoff; otherwise it is marked FAILED (dead-letter).
    */
   fail(jobId: string, error: string, backoffMs: number): Promise<void>;
+
+  /**
+   * Recover jobs abandoned mid-flight (process crash, redeploy, OOM). A job
+   * claimed longer ago than `timeoutMs` is requeued so another runner picks it
+   * up — or dead-lettered if it has exhausted `maxAttempts`. Without this,
+   * CLAIMED rows are invisible to future claims and strand forever.
+   *
+   * Returns how many jobs were requeued vs dead-lettered.
+   */
+  reclaimStale(
+    timeoutMs: number,
+  ): Promise<{ requeued: number; failed: number }>;
 }
 
 /** A processor handles one job name. Registered in `processors/index.ts`. */

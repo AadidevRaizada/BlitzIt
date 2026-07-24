@@ -20,6 +20,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "verify:runner": "tsx --conditions=react-server scripts/verify-runner.ts",
     "verify:queue": "tsx --conditions=react-server scripts/verify-queue.ts",
+    "postinstall": "prisma generate",
     "prepare": "husky"
   },
   "dependencies": {

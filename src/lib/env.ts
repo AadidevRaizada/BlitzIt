@@ -43,6 +43,9 @@ const serverSchema = z.object({
 
   // Evaluation runner
   RUNNER_CONCURRENCY: z.coerce.number().int().positive().default(2),
+  // How long a job may stay CLAIMED before it is assumed abandoned and
+  // requeued. Must exceed the longest expected job duration.
+  RUNNER_CLAIM_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
   RUNNER_ENABLED: z
     .string()
     .transform((v) => v !== 'false')

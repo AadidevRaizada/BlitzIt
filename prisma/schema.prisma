@@ -2,8 +2,10 @@
 // Prisma 7: connection config lives in prisma.config.ts, NOT in the datasource block.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  // Needed for the partial unique index on UserBadge (global badge awards).
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -519,7 +521,13 @@ model UserBadge {
   tournamentId String?
   awardedAt    DateTime @default(now())
 
+  // Tournament-scoped awards: NULLs never collide here, so this covers only
+  // rows where tournamentId IS NOT NULL.
   @@unique([userId, badgeId, tournamentId])
+  // Global awards (tournamentId IS NULL): PostgreSQL treats NULLs as distinct,
+  // so the constraint above would let the same global badge be awarded to a
+  // user repeatedly. This partial unique index closes that hole.
+  @@unique([userId, badgeId], where: { tournamentId: null }, name: "UserBadge_global_award_unique")
 }
 
 model HallOfFame {

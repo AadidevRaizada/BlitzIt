@@ -1,6 +1,7 @@
 import './load-env';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { queue } from '../src/server/jobs/pg-queue';
 
 /**
  * Milestone 0 smoke test for the Postgres-backed job substrate (D3).
@@ -10,6 +11,8 @@ import { PrismaClient } from '../src/generated/prisma/client';
  *   2. claim uses FOR UPDATE SKIP LOCKED and marks jobs CLAIMED atomically
  *   3. two concurrent claimers never receive the same job
  *   4. complete / fail-with-backoff transition rows correctly
+ *   5. stale CLAIMED jobs (crashed/redeployed runner) are requeued, and
+ *      dead-lettered once attempts are exhausted
  *
  * Run: npm run verify:queue   (requires DATABASE_URL + `prisma db push`)
  */
@@ -132,6 +135,74 @@ async function main() {
   check(
     'backoff job is not claimable before availableAt',
     !futureClaim.some((r) => r.id === second.id),
+  );
+
+  // 5. stale CLAIMED recovery — a runner that crashed mid-job must not strand
+  //    the row. Simulate by backdating claimedAt, then sweeping.
+  const staleKey = `${runId}:stale`;
+  await db.evaluationJob.create({
+    data: { name: 'noop', payload: {}, idempotencyKey: staleKey },
+  });
+  await claim(10, 'runner-that-dies');
+  const staleBefore = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: staleKey },
+  });
+  check('job is CLAIMED before the sweep', staleBefore?.status === 'CLAIMED');
+
+  // Backdate the claim so it looks abandoned (older than the timeout).
+  await db.evaluationJob.update({
+    where: { idempotencyKey: staleKey },
+    data: { claimedAt: new Date(Date.now() - 60_000) },
+  });
+
+  const swept = await queue.reclaimStale(10_000);
+  const staleAfter = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: staleKey },
+  });
+  check(
+    'stale CLAIMED job is requeued by reclaimStale()',
+    staleAfter?.status === 'QUEUED' && swept.requeued >= 1,
+  );
+  check(
+    'requeued job is immediately claimable again',
+    (await claim(10, 'runner-4')).some((r) => r.id === staleAfter?.id),
+  );
+
+  // Exhausted attempts must dead-letter instead of looping forever.
+  const deadKey = `${runId}:dead`;
+  await db.evaluationJob.create({
+    data: {
+      name: 'noop',
+      payload: {},
+      idempotencyKey: deadKey,
+      status: 'CLAIMED',
+      claimedAt: new Date(Date.now() - 60_000),
+      attempts: 3,
+      maxAttempts: 3,
+    },
+  });
+  const sweptDead = await queue.reclaimStale(10_000);
+  const dead = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: deadKey },
+  });
+  check(
+    'stale job with no attempts left is dead-lettered (FAILED)',
+    dead?.status === 'FAILED' && sweptDead.failed >= 1,
+  );
+
+  // A freshly claimed job must NOT be swept out from under a healthy runner.
+  const liveKey = `${runId}:live`;
+  await db.evaluationJob.create({
+    data: { name: 'noop', payload: {}, idempotencyKey: liveKey },
+  });
+  await claim(10, 'runner-healthy');
+  await queue.reclaimStale(300_000);
+  const live = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: liveKey },
+  });
+  check(
+    'in-flight job within the timeout is left alone',
+    live?.status === 'CLAIMED',
   );
 
   await db.evaluationJob.deleteMany({

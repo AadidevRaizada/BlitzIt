@@ -17,6 +17,16 @@ const POLL_INTERVAL_MS = 2000;
 const BASE_BACKOFF_MS = 5000;
 
 /**
+ * How long a job may sit CLAIMED before we assume its runner died and requeue
+ * it. Must exceed the longest expected job duration, or healthy in-flight jobs
+ * get reclaimed and run twice. Configurable via RUNNER_CLAIM_TIMEOUT_MS.
+ */
+const DEFAULT_CLAIM_TIMEOUT_MS = 300_000; // 5 minutes
+
+/** How often to sweep for abandoned claims (cheap single UPDATE). */
+const RECLAIM_INTERVAL_MS = 30_000;
+
+/**
  * Runner state lives on globalThis, not in module scope. Next.js bundles
  * `instrumentation.ts` and route handlers as SEPARATE module instances, so a
  * module-level variable set at boot is invisible to /api/health. globalThis is
@@ -34,11 +44,14 @@ const runnerState = (globalForRunner.__blitzRunner ??= {
 class Runner {
   private readonly instanceId = `runner-${randomUUID().slice(0, 8)}`;
   private readonly concurrency: number;
+  private readonly claimTimeoutMs: number;
   private running = false;
   private stopped = false;
+  private lastReclaimAt = 0;
 
-  constructor(concurrency: number) {
+  constructor(concurrency: number, claimTimeoutMs: number) {
     this.concurrency = Math.max(1, concurrency);
+    this.claimTimeoutMs = Math.max(1000, claimTimeoutMs);
   }
 
   private set lastHeartbeat(value: number) {
@@ -55,7 +68,11 @@ class Runner {
     this.stopped = false;
     runnerState.started = true;
     logger.info(
-      { instanceId: this.instanceId, concurrency: this.concurrency },
+      {
+        instanceId: this.instanceId,
+        concurrency: this.concurrency,
+        claimTimeoutMs: this.claimTimeoutMs,
+      },
       'evaluation runner started',
     );
     void this.loop();
@@ -69,6 +86,7 @@ class Runner {
     while (!this.stopped) {
       this.lastHeartbeat = Date.now();
       try {
+        await this.reclaimStaleJobs();
         const jobs = await queue.claim(this.concurrency, this.instanceId);
         if (jobs.length === 0) {
           await sleep(POLL_INTERVAL_MS);
@@ -83,6 +101,23 @@ class Runner {
     }
     this.running = false;
     logger.info({ instanceId: this.instanceId }, 'evaluation runner stopped');
+  }
+
+  /**
+   * Periodically requeue jobs abandoned by a crashed/redeployed runner. Runs on
+   * an interval rather than every poll so the sweep stays cheap.
+   */
+  private async reclaimStaleJobs(): Promise<void> {
+    if (Date.now() - this.lastReclaimAt < RECLAIM_INTERVAL_MS) return;
+    this.lastReclaimAt = Date.now();
+
+    const { requeued, failed } = await queue.reclaimStale(this.claimTimeoutMs);
+    if (requeued > 0 || failed > 0) {
+      logger.warn(
+        { instanceId: this.instanceId, requeued, failed },
+        'reclaimed stale jobs from abandoned claims',
+      );
+    }
   }
 
   private async run(job: ClaimedJob): Promise<void> {
@@ -117,7 +152,10 @@ export function startRunner(): void {
   }
   if (runner) return;
   const concurrency = Number(process.env.RUNNER_CONCURRENCY ?? '2');
-  runner = new Runner(concurrency);
+  const claimTimeoutMs = Number(
+    process.env.RUNNER_CLAIM_TIMEOUT_MS ?? DEFAULT_CLAIM_TIMEOUT_MS,
+  );
+  runner = new Runner(concurrency, claimTimeoutMs);
   runner.start();
 }
 
