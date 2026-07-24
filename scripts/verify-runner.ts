@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env';
 import { queue } from '../src/server/jobs/pg-queue';
 import { processors } from '../src/server/jobs/processors';
 import { startRunner } from '../src/server/jobs/runner';

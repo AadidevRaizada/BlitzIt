@@ -1,0 +1,27 @@
+# Local development infrastructure for Blitz It.
+# Start with:  docker compose up -d
+# Stop with:   docker compose down   (add -v to also drop the data volume)
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: blitzit-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blitzit
+      POSTGRES_PASSWORD: blitzit
+      POSTGRES_DB: blitzit
+    # Host port 5434 (not 5432) to avoid colliding with any other local
+    # PostgreSQL already listening on 5432. Container still uses 5432 internally.
+    ports:
+      - '5434:5432'
+    volumes:
+      - blitzit_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U blitzit -d blitzit']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  blitzit_pgdata:
+    driver: local

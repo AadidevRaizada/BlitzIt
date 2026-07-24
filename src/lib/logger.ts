@@ -9,6 +9,11 @@ import pino from 'pino';
 
 const isDev = process.env.NODE_ENV !== 'production';
 
+// pino-pretty runs in a worker thread (thread-stream). Next.js bundling breaks
+// its worker path resolution, so only use the pretty transport OUTSIDE the Next
+// runtime (i.e. in tsx scripts). Inside Next we emit plain JSON lines.
+const usePretty = isDev && !process.env.NEXT_RUNTIME;
+
 export const logger = pino({
   level: process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info'),
   redact: {
@@ -26,7 +31,7 @@ export const logger = pino({
     ],
     remove: true,
   },
-  ...(isDev
+  ...(usePretty
     ? {
         transport: {
           target: 'pino-pretty',
