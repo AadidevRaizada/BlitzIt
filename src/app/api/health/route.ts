@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/server/db';
-import { runnerHeartbeat } from '@/server/jobs/runner';
+import { runnerHeartbeat, runnerStarted } from '@/server/jobs/runner';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +27,7 @@ export async function GET() {
     checks: {
       db: dbOk,
       runner: {
-        started: heartbeat !== 0,
+        started: runnerStarted(),
         lastHeartbeatAgeMs: runnerAgeMs,
       },
     },

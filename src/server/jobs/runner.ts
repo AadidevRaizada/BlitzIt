@@ -16,25 +16,44 @@ import { captureException } from '@/lib/observability';
 const POLL_INTERVAL_MS = 2000;
 const BASE_BACKOFF_MS = 5000;
 
+/**
+ * Runner state lives on globalThis, not in module scope. Next.js bundles
+ * `instrumentation.ts` and route handlers as SEPARATE module instances, so a
+ * module-level variable set at boot is invisible to /api/health. globalThis is
+ * shared across those bundles within the same Node process.
+ */
+const globalForRunner = globalThis as unknown as {
+  __blitzRunner?: { started: boolean; heartbeat: number };
+};
+
+const runnerState = (globalForRunner.__blitzRunner ??= {
+  started: false,
+  heartbeat: 0,
+});
+
 class Runner {
   private readonly instanceId = `runner-${randomUUID().slice(0, 8)}`;
   private readonly concurrency: number;
   private running = false;
   private stopped = false;
-  private lastHeartbeat = 0;
 
   constructor(concurrency: number) {
     this.concurrency = Math.max(1, concurrency);
   }
 
+  private set lastHeartbeat(value: number) {
+    runnerState.heartbeat = value;
+  }
+
   get heartbeat(): number {
-    return this.lastHeartbeat;
+    return runnerState.heartbeat;
   }
 
   start(): void {
     if (this.running) return;
     this.running = true;
     this.stopped = false;
+    runnerState.started = true;
     logger.info(
       { instanceId: this.instanceId, concurrency: this.concurrency },
       'evaluation runner started',
@@ -102,9 +121,18 @@ export function startRunner(): void {
   runner.start();
 }
 
-/** Runner heartbeat (ms epoch) for the health check. 0 if never started. */
+/**
+ * Runner heartbeat (ms epoch) for the health check. 0 if never started.
+ * Reads shared globalThis state so it is accurate from route handlers, which
+ * Next bundles separately from `instrumentation.ts`.
+ */
 export function runnerHeartbeat(): number {
-  return runner?.heartbeat ?? 0;
+  return runnerState.heartbeat;
+}
+
+/** Whether the runner was started in this process. */
+export function runnerStarted(): boolean {
+  return runnerState.started;
 }
 
 function sleep(ms: number): Promise<void> {
