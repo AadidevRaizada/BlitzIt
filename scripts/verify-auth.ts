@@ -1,4 +1,6 @@
 import './load-env';
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { db } from '../src/server/db';
 import {
   syncDomainUser,
@@ -201,7 +203,51 @@ async function main() {
     slugifyUsername('!') === 'player',
   );
 
+  // 11. Better Auth's Prisma adapter must resolve our namespaced Auth* models.
+  //     Uses the SAME modelName mapping as src/server/auth.ts, so a future
+  //     adapter change that broke the mapping would fail here rather than at
+  //     the first real sign-in.
+  const adapterAuth = betterAuth({
+    database: prismaAdapter(db, { provider: 'postgresql' }),
+    secret: process.env.BETTER_AUTH_SECRET,
+    baseURL: process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000',
+    user: { modelName: 'AuthUser' },
+    session: { modelName: 'AuthSession' },
+    account: { modelName: 'AuthAccount' },
+    verification: { modelName: 'AuthVerification' },
+    emailAndPassword: { enabled: true },
+  });
+
+  const adapterEmail = `adapter-${run}@blitzit.test`;
+  const signUp = await adapterAuth.api.signUpEmail({
+    body: {
+      email: adapterEmail,
+      password: 'probe-password-12345',
+      name: 'Probe',
+    },
+    asResponse: true,
+  });
+  check(
+    'Better Auth adapter resolves the Auth* models (sign-up succeeds)',
+    signUp.status === 200,
+  );
+  check(
+    'Better Auth issues a session cookie',
+    Boolean(signUp.headers.get('set-cookie')),
+  );
+  const authRows: Array<{ n: bigint }> = await db.$queryRawUnsafe(
+    `SELECT count(*) AS n FROM auth_user WHERE email = $1`,
+    adapterEmail,
+  );
+  check(
+    'Better Auth wrote to the auth_user table',
+    Number(authRows[0]?.n ?? 0) === 1,
+  );
+
   await db.user.deleteMany({ where: { email: { contains: '@blitzit.test' } } });
+  await db.$executeRawUnsafe(
+    `DELETE FROM auth_user WHERE email LIKE '%@blitzit.test'`,
+  );
 
   console.log(
     failures === 0

@@ -9,10 +9,15 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     env:
-      # Placeholder — Prisma generate/build do not connect to the DB.
+      # Placeholders — the build does not connect to the DB or to any provider.
       DATABASE_URL: postgresql://user:password@localhost:5432/blitzit?schema=public
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       RUNNER_ENABLED: 'false'
+      # `next build` runs with NODE_ENV=production, where env validation
+      # requires an auth secret. Build-only dummy — never used to sign anything
+      # real; the deployed environment supplies its own secret.
+      BETTER_AUTH_SECRET: ci-build-only-placeholder-secret-32chars
+      BETTER_AUTH_URL: http://localhost:3000
     steps:
       - uses: actions/checkout@v4
 
