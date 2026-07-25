@@ -737,11 +737,14 @@ async function fullLifecycle() {
         })
       ).status !== 'DECIDED',
   );
+  // CHANGED in E6 (Codex review): NOTHING is decided on scores until the window
+  // closes. E4 lets a competitor replace their entry until the deadline, so
+  // deciding a fully-scored match early silently voided the right to improve.
   check(
-    'fully-scored matches ARE decided mid-window',
+    'REGRESSION: even fully-scored matches wait for the window to close',
     (await db.match.count({
       where: { roundId: qfRound.id, status: 'DECIDED' },
-    })) === 3,
+    })) === 0,
     `${await db.match.count({ where: { roundId: qfRound.id, status: 'DECIDED' } })}`,
   );
 
@@ -754,8 +757,8 @@ async function fullLifecycle() {
 
   const qfProgress = await progressTournament(tournament.id);
   check(
-    'the quarter-finals were decided automatically',
-    qfProgress.matchesDecided === 1,
+    'the quarter-finals were decided automatically once the window closed',
+    qfProgress.matchesDecided === 4,
     `${qfProgress.matchesDecided}`,
   );
   check(
@@ -835,6 +838,13 @@ async function fullLifecycle() {
     );
   }
 
+  // The SF round opened with a fresh window; expire it so the round can be
+  // decided (scores alone are no longer enough).
+  await db.round.update({
+    where: { id: sfRound.id },
+    data: { deadlineAt: new Date(Date.now() - 1000) },
+  });
+
   const resumed = runInFreshProcess(tournament.id);
   check(
     'a cold process resumed the tournament from persisted state alone',
@@ -883,6 +893,10 @@ async function fullLifecycle() {
     { overall: 100 - thirdMatch.seedB! },
   );
 
+  await db.round.update({
+    where: { id: thirdRound.id },
+    data: { deadlineAt: new Date(Date.now() - 1000) },
+  });
   await progressTournament(tournament.id);
   check(
     'LIVE:THIRD_PLACE → LIVE:FINAL',
@@ -922,6 +936,10 @@ async function fullLifecycle() {
     { overall: 100 - finalMatch.seedB! },
   );
 
+  await db.round.update({
+    where: { id: finalRound.id },
+    data: { deadlineAt: new Date(Date.now() - 1000) },
+  });
   const finalProgress = await progressTournament(tournament.id);
   check('the tournament completed automatically', finalProgress.completed);
   check(
@@ -1189,6 +1207,12 @@ async function playToCompletion(tournamentId: string, problemId: string) {
         });
       }
     }
+
+    // Expire the window: scores alone no longer decide a match.
+    await db.round.update({
+      where: { id: round.id },
+      data: { deadlineAt: new Date(Date.now() - 1000) },
+    });
 
     const progress = await progressTournament(tournamentId);
     if (progress.transitions.length === 0 && progress.matchesDecided === 0)

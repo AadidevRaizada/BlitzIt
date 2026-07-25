@@ -12,6 +12,7 @@ import {
   resolveSuddenDeathMatches,
 } from './advancement';
 import { closeRound, completeRound, openRound } from './rounds';
+import { completeSettledSuddenDeathRounds } from './sudden-death';
 import { applyTransition, type TransitionResult } from './state';
 import { isBracketSize } from './config';
 
@@ -218,6 +219,12 @@ export async function progressTournament(
     result.suddenDeathResolved += suddenDeathDecisions.filter(
       (decision) => decision.changed && decision.outcome.kind !== 'TIE',
     ).length;
+
+    // Close out any sudden-death round that is fully decided. No lifecycle
+    // transition does this — COMPLETE finishes the FINAL round only — so
+    // without it a tournament could reach COMPLETED with a sudden-death round
+    // still OPEN and nothing left running to tidy it.
+    await completeSettledSuddenDeathRounds(db, tournamentId);
 
     // Decide the whole round atomically: a half-advanced round would leave
     // winners sitting in slots whose round never completed.

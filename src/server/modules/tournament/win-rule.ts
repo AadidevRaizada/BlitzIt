@@ -60,12 +60,13 @@ export interface WinRuleOptions {
   /**
    * Has the round's submission window closed?
    *
-   * A missing submission only *means* something once nobody can submit any
-   * more. While the window is open an absent submission is simply "not yet",
-   * and deciding on it would hand the match to whoever submitted first — or,
-   * worse, walk an entire freshly-opened bracket over on seed order the instant
-   * the round started. Byes and void matches are structural, so they are
-   * decided regardless of the window.
+   * Until it has, NOTHING is decided on scores — a competitor may still replace
+   * their entry (E4), so even a fully-scored match must wait. An absent
+   * submission likewise means "not yet", not a forfeit; deciding on it would
+   * hand the match to whoever submitted first, or walk a freshly-opened bracket
+   * over on seed order the instant the round started.
+   *
+   * Byes and void matches are structural, so they are decided regardless.
    */
   windowClosed: boolean;
 }
@@ -166,9 +167,19 @@ export function decideMatch(
   const aPlayed = hasScore(a);
   const bPlayed = hasScore(b);
 
-  // Both competitors scored: decidable immediately, even mid-window — there is
-  // nothing left to wait for. Anything else waits for the deadline.
-  if (!options.windowClosed && !(aPlayed && bPlayed)) {
+  // NOTHING is decided on scores until the window closes — not even a match
+  // where both sides have already been scored.
+  //
+  // An earlier version decided as soon as both competitors had a score, on the
+  // reasoning that there was nothing left to wait for. That was wrong: E4 lets a
+  // competitor REPLACE their entry until the deadline, and a decided match is
+  // never re-decided, so an early decision silently voided the right to improve.
+  // Two competitors who submitted in the first minute would have had the match
+  // settled before either could iterate.
+  //
+  // Byes and void matches are structural and are still resolved above, before
+  // this gate.
+  if (!options.windowClosed) {
     return { kind: 'PENDING', winnerId: null, loserId: null, reason: null };
   }
 

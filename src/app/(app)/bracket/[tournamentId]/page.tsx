@@ -42,7 +42,12 @@ export default async function BracketPage({
   // surfaces even though the id would otherwise resolve.
   if (summary.visibility === 'UNLISTED') notFound();
 
-  const rounds = await listBracketRounds(tournamentId);
+  // `revealProblems: false` — a competitor must not see the challenge of a
+  // round that has not opened yet (the same simultaneous-reveal rule the submit
+  // page enforces).
+  const rounds = await listBracketRounds(tournamentId, {
+    revealProblems: false,
+  });
   const tied = rounds
     .flatMap((round) => round.matches)
     .filter((match) => match.tieUnresolved).length;

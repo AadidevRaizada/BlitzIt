@@ -11,6 +11,7 @@ import {
   progressTournament,
   registerCompetitor,
   startSuddenDeath,
+  completeSettledSuddenDeathRounds,
   SUDDEN_DEATH_CHAIN,
   TIE_BREAK_CHAIN,
   type CompetitorResult,
@@ -676,6 +677,219 @@ async function pipeline() {
       where: { tournamentId: tournament.id, placement: { not: null } },
     })) >= 4,
   );
+
+  // -- Codex review regressions ---------------------------------------------
+
+  // F2: nothing is decided on scores until the window closes. E4 lets a
+  // competitor REPLACE their entry until the deadline, so an early decision
+  // silently voided the right to improve.
+  {
+    const openOptions = {
+      advanceHigherSeedOnDoubleNoShow: true,
+      windowClosed: false,
+      chain: SUDDEN_DEATH_CHAIN,
+    };
+    check(
+      'REGRESSION: a fully-scored match is NOT decided while the window is open',
+      decideMatch(
+        competitor('a', { functionalScore: 90 }),
+        competitor('b', { functionalScore: 10 }),
+        openOptions,
+      ).kind === 'PENDING',
+      'a competitor may still replace their entry (E4)',
+    );
+    check(
+      'the same match decides once the window closes',
+      decideMatch(
+        competitor('a', { functionalScore: 90 }),
+        competitor('b', { functionalScore: 10 }),
+        { ...openOptions, windowClosed: true },
+      ).kind === 'DECIDED',
+    );
+    check(
+      'a bye is still structural and resolves regardless of the window',
+      decideMatch(competitor('a'), null, openOptions).kind === 'BYE',
+    );
+  }
+
+  // F1: a sudden death that ITSELF ties must get a fresh decider round rather
+  // than colliding with the round it came from.
+  {
+    const nestedTournament = await createTournament(
+      {
+        name: 'E6 Nested Tie',
+        slug: `t-${TAG}-nested`,
+        bracketSize: 8,
+        minRegistrations: 2,
+      },
+      { actorId: admin.id },
+    );
+    const roundA = await db.round.create({
+      data: {
+        tournamentId: nestedTournament.id,
+        type: 'KNOCKOUT',
+        stage: 'QF',
+        sequence: 1,
+        durationSeconds: 2400,
+        problemId: qualifier.id,
+        status: 'JUDGING',
+      },
+    });
+    const deadlocked = await db.match.create({
+      data: {
+        roundId: roundA.id,
+        tournamentId: nestedTournament.id,
+        bracketPosition: 0,
+        competitorAId: players[0]!.id,
+        competitorBId: players[1]!.id,
+        seedA: 1,
+        seedB: 8,
+        status: 'JUDGING',
+        tieUnresolved: true,
+      },
+    });
+
+    const first = await startSuddenDeath(deadlocked.id, decider.id, admin);
+    check(
+      'the first sudden-death round is created',
+      first.createdRound && first.round.stage === 'SUDDEN_DEATH',
+    );
+
+    // The decider itself ties.
+    await db.match.update({
+      where: { id: first.suddenDeathMatch.id },
+      data: { tieUnresolved: true, status: 'JUDGING' },
+    });
+    check(
+      'REGRESSION: a tied sudden-death match is surfaced as deadlocked',
+      (await listDeadlockedMatches(nestedTournament.id)).some(
+        (match) => match.id === first.suddenDeathMatch.id,
+      ),
+    );
+
+    const third = await makeProblem(`p-${TAG}-sd2`, 'E6 second decider');
+    const second = await startSuddenDeath(
+      first.suddenDeathMatch.id,
+      third.id,
+      admin,
+    );
+    check(
+      'REGRESSION: a tied sudden death gets a FRESH decider round, not a dead end',
+      second.createdRound && second.round.id !== first.round.id,
+      `first=${first.round.id} second=${second.round.id}`,
+    );
+    check(
+      'the nested decider resolves the sudden-death match it came from',
+      second.suddenDeathMatch.resolvesMatchId === first.suddenDeathMatch.id,
+    );
+    check(
+      'the two decider rounds have distinct sequences',
+      second.round.sequence !== first.round.sequence,
+    );
+
+    // F3: a concurrent second start for the same match is a typed conflict.
+    const races = await Promise.allSettled([
+      startSuddenDeath(deadlocked.id, third.id, admin),
+      startSuddenDeath(deadlocked.id, third.id, admin),
+    ]);
+    check(
+      'REGRESSION: a concurrent duplicate start is a typed CONFLICT, not a raw Prisma error',
+      races.every(
+        (outcome) =>
+          outcome.status === 'fulfilled' ||
+          (outcome.reason instanceof AppError &&
+            outcome.reason.code === 'CONFLICT'),
+      ),
+      races
+        .map((o) => (o.status === 'rejected' ? String(o.reason?.name) : 'ok'))
+        .join(','),
+    );
+    check(
+      'still exactly one decider for that match',
+      (await db.match.count({ where: { resolvesMatchId: deadlocked.id } })) ===
+        1,
+    );
+
+    // Two ties in the SAME round still share one decider round.
+    const sibling = await db.match.create({
+      data: {
+        roundId: roundA.id,
+        tournamentId: nestedTournament.id,
+        bracketPosition: 1,
+        competitorAId: players[2]!.id,
+        competitorBId: players[3]!.id,
+        status: 'JUDGING',
+        tieUnresolved: true,
+      },
+    });
+    const shared = await startSuddenDeath(sibling.id, decider.id, admin);
+    check(
+      'two ties in the same round share one decider round and challenge',
+      !shared.createdRound && shared.round.id === first.round.id,
+      `${shared.round.id} vs ${first.round.id}`,
+    );
+
+    // F4: a fully-decided sudden-death round is completed, never left dangling.
+    await db.match.updateMany({
+      where: { roundId: second.round.id },
+      data: {
+        status: 'DECIDED',
+        winnerId: players[0]!.id,
+        tieUnresolved: false,
+      },
+    });
+    const closed = await completeSettledSuddenDeathRounds(
+      db,
+      nestedTournament.id,
+    );
+    check(
+      'REGRESSION: a fully-decided sudden-death round is completed',
+      closed >= 1 &&
+        (await db.round.findUniqueOrThrow({ where: { id: second.round.id } }))
+          .status === 'COMPLETED',
+    );
+    check(
+      'a sudden-death round with undecided matches is left alone',
+      (await db.round.findUniqueOrThrow({ where: { id: first.round.id } }))
+        .status !== 'COMPLETED',
+    );
+  }
+
+  // F5: a competitor must not see the challenge of a round that has not opened.
+  {
+    const unopened = await db.round.findFirstOrThrow({
+      where: { tournamentId: tournament.id, stage: 'FINAL' },
+    });
+    await db.round.update({
+      where: { id: unopened.id },
+      data: { problemId: qualifier.id, opensAt: null, status: 'PENDING' },
+    });
+
+    const asAdmin = await listBracketRounds(tournament.id);
+    const asCompetitor = await listBracketRounds(tournament.id, {
+      revealProblems: false,
+    });
+
+    const adminFinal = asAdmin.find((round) => round.stage === 'FINAL');
+    const competitorFinal = asCompetitor.find(
+      (round) => round.stage === 'FINAL',
+    );
+
+    check(
+      "REGRESSION: a competitor cannot see an unopened round's challenge",
+      competitorFinal?.problem === null,
+      `got ${JSON.stringify(competitorFinal?.problem)}`,
+    );
+    check(
+      'an operator still sees it',
+      adminFinal?.problem?.title === 'E6 main challenge',
+      `got ${JSON.stringify(adminFinal?.problem)}`,
+    );
+    check(
+      'the read model reports whether a round has been revealed',
+      competitorFinal?.revealed === false,
+    );
+  }
 
   // ---- The bracket read model shows it ----
   const bracket = await listBracketRounds(tournament.id);

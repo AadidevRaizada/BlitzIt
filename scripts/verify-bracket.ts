@@ -594,12 +594,26 @@ function main() {
         open,
       ).kind === 'PENDING',
     );
+    // CHANGED in E6 (Codex review): a fully-scored match is NOT decided while
+    // the window is open. E4 lets a competitor REPLACE their entry until the
+    // deadline, and a decided match is never re-decided — so deciding early
+    // silently voided the right to improve. Two competitors who submitted in
+    // the first minute would have had the match settled before either could
+    // iterate.
     check(
-      'a fully-scored match IS decided mid-window (nothing left to wait for)',
+      'REGRESSION: a fully-scored match is NOT decided while the window is open',
       decideMatch(
         competitor('a', { overallScore: 90 }),
         competitor('b', { overallScore: 10 }),
         open,
+      ).kind === 'PENDING',
+    );
+    check(
+      'the same fully-scored match decides once the window closes',
+      decideMatch(
+        competitor('a', { overallScore: 90 }),
+        competitor('b', { overallScore: 10 }),
+        closed,
       ).kind === 'DECIDED',
     );
     check(

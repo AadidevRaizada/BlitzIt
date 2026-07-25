@@ -1,4 +1,5 @@
 import 'server-only';
+import { Prisma } from '@/generated/prisma/client';
 import type { Match, Round } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
@@ -105,57 +106,107 @@ export async function startSuddenDeath(
 
     const config = resolveTournamentConfig(match.tournament);
 
-    // One sudden-death round per originating stage: the round is keyed by the
-    // originating round's sequence, so a second tie in the same stage joins it
-    // instead of creating a parallel round with a different problem.
-    const existing = await tx.round.findUnique({
+    // Serialise concurrent starts on this tournament. Without it two admins
+    // resolving two ties in the same stage could both decide to create the
+    // round and collide on (tournamentId, stage, sequence), failing a start
+    // that should simply have joined.
+    await tx.$queryRaw(
+      Prisma.sql`SELECT "id" FROM "Tournament" WHERE "id" = ${match.tournamentId} FOR UPDATE`,
+    );
+
+    // Ties from the SAME originating round share a round, so they face the same
+    // challenge and window. A round is identified by what it resolves, not by a
+    // derived sequence — which is what lets a sudden death that ITSELF ties get
+    // a fresh round rather than colliding with the one it came from.
+    const candidateRounds = await tx.round.findMany({
       where: {
-        tournamentId_stage_sequence: {
-          tournamentId: match.tournamentId,
-          stage: 'SUDDEN_DEATH',
-          sequence: match.round.sequence,
+        tournamentId: match.tournamentId,
+        stage: 'SUDDEN_DEATH',
+        status: { not: 'COMPLETED' },
+        problemId,
+      },
+      include: {
+        matches: {
+          select: { resolvesMatch: { select: { roundId: true } } },
         },
       },
+      orderBy: { sequence: 'asc' },
     });
 
-    let round = existing;
+    let round =
+      candidateRounds.find((candidate) =>
+        candidate.matches.some(
+          (sibling) => sibling.resolvesMatch?.roundId === match.roundId,
+        ),
+      ) ?? null;
+
     let createdRound = false;
     if (!round) {
+      // A new decider round. `sequence` only has to be unique per stage, so it
+      // is allocated from the existing sudden-death rounds rather than derived
+      // from the originating round — a nested sudden death would otherwise
+      // always collide with its own parent.
+      const last = await tx.round.findFirst({
+        where: { tournamentId: match.tournamentId, stage: 'SUDDEN_DEATH' },
+        orderBy: { sequence: 'desc' },
+        select: { sequence: true },
+      });
+
       round = await tx.round.create({
         data: {
           tournamentId: match.tournamentId,
           type: 'KNOCKOUT',
           stage: 'SUDDEN_DEATH',
-          sequence: match.round.sequence,
+          sequence: (last?.sequence ?? 0) + 1,
           durationSeconds: config.stageDurationsSeconds.SUDDEN_DEATH,
           problemId,
           status: 'PENDING',
         },
+        include: {
+          matches: {
+            select: { resolvesMatch: { select: { roundId: true } } },
+          },
+        },
       });
       createdRound = true;
-    } else if (round.problemId !== problemId) {
-      throw new ConflictError(
-        'A sudden-death round for this stage already exists with a different problem; every tie at a stage plays the same challenge',
-      );
     }
 
     // `bracketPosition` is unique per round — mirror the deadlocked match's
     // position so the sudden-death match is traceable to its origin.
-    const suddenDeathMatch = await tx.match.create({
-      data: {
-        roundId: round.id,
-        tournamentId: match.tournamentId,
-        bracketPosition: match.bracketPosition,
-        competitorAId: match.competitorAId,
-        competitorBId: match.competitorBId,
-        seedA: match.seedA,
-        seedB: match.seedB,
-        status: 'PENDING',
-        resolvesMatchId: match.id,
-        // Deliberately no nextMatchId: the winner is written onto the ORIGINAL
-        // match, which owns the onward topology.
-      },
-    });
+    //
+    // `resolvesMatchId` is UNIQUE, so if a concurrent start slipped past the
+    // read above the insert is what actually stops a second decider. Translate
+    // that into the same typed conflict the read produces, rather than letting
+    // a raw Prisma error escape the module.
+    let suddenDeathMatch;
+    try {
+      suddenDeathMatch = await tx.match.create({
+        data: {
+          roundId: round.id,
+          tournamentId: match.tournamentId,
+          bracketPosition: match.bracketPosition,
+          competitorAId: match.competitorAId,
+          competitorBId: match.competitorBId,
+          seedA: match.seedA,
+          seedB: match.seedB,
+          status: 'PENDING',
+          resolvesMatchId: match.id,
+          // Deliberately no nextMatchId: the winner is written onto the ORIGINAL
+          // match, which owns the onward topology.
+        },
+      });
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        (error as { code?: string }).code === 'P2002'
+      ) {
+        throw new ConflictError(
+          'A sudden-death challenge is already under way for that match',
+        );
+      }
+      throw error;
+    }
 
     await openRound(tx, round.id);
     const opened = await tx.round.findUniqueOrThrow({
@@ -192,7 +243,13 @@ export async function startSuddenDeath(
   });
 }
 
-/** Matches still waiting on a sudden-death challenge to be opened. */
+/**
+ * Matches still waiting on a sudden-death challenge to be opened.
+ *
+ * Includes a sudden-death match that ITSELF tied: that is a legitimate (if
+ * vanishingly rare) state, and it gets a fresh decider round of its own rather
+ * than being a dead end.
+ */
 export async function listDeadlockedMatches(
   tournamentId: string,
   client: DbClient = db,
@@ -260,6 +317,46 @@ export async function applySuddenDeathResult(
   );
 
   return resolved;
+}
+
+/**
+ * Mark every sudden-death round whose matches are all decided as COMPLETED.
+ *
+ * Sudden-death rounds sit outside the main stage list, so no lifecycle
+ * transition ever closes them — `COMPLETE` finishes the FINAL round only. Left
+ * alone, a tournament could reach COMPLETED with a sudden-death round still
+ * flagged OPEN, and `progressTournament` short-circuits once the tournament is
+ * no longer LIVE, so nothing would ever tidy it.
+ */
+export async function completeSettledSuddenDeathRounds(
+  client: DbClient,
+  tournamentId: string,
+): Promise<number> {
+  const rounds = await client.round.findMany({
+    where: {
+      tournamentId,
+      stage: 'SUDDEN_DEATH',
+      status: { not: 'COMPLETED' },
+    },
+    include: { matches: { select: { status: true } } },
+  });
+
+  let completed = 0;
+  for (const round of rounds) {
+    if (round.matches.length === 0) continue;
+    if (!round.matches.every((match) => match.status === 'DECIDED')) continue;
+
+    await client.round.update({
+      where: { id: round.id },
+      data: { status: 'COMPLETED' },
+    });
+    completed++;
+  }
+
+  if (completed > 0) {
+    logger.info({ tournamentId, completed }, 'sudden-death rounds completed');
+  }
+  return completed;
 }
 
 /** The sudden-death rounds of a tournament, for the bracket surfaces. */

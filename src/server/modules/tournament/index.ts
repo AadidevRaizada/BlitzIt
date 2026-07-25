@@ -152,6 +152,7 @@ export {
   startSuddenDeath,
   listDeadlockedMatches,
   applySuddenDeathResult,
+  completeSettledSuddenDeathRounds,
   listSuddenDeathRounds,
   type StartSuddenDeathResult,
 } from './sudden-death';

@@ -19,7 +19,7 @@ surfaces that let competitors and operators see the bracket.
 | `components/features/bracket-tree.tsx` | Shared bracket visualisation (screen [11]) |
 | `/bracket/[tournamentId]` | Competitor-facing bracket with "my path" highlighting |
 | Admin bracket tab | Deadlock list + sudden-death controls, plus the shared tree (screen [21]) |
-| `scripts/verify-sudden-death.ts` | 40 checks, including the E6 DoD |
+| `scripts/verify-sudden-death.ts` | 55 checks, including the E6 DoD |
 
 ## How sudden death works
 
@@ -51,11 +51,11 @@ normal advancement continues from the original match's own topology
 |---|---|
 | **The sudden-death match points at the tied match (`resolvesMatchId`), not the reverse** | The main bracket topology is untouched: `nextMatchId` / `loserNextMatchId` are read exactly as before, and advancement never has to know sudden death happened. The link is `@unique` — one decider per match, one match per decider. |
 | **The sudden-death match owns no onward links** | Its winner is written onto the original, which already owns the topology. Giving it its own `nextMatchId` would create two paths into the next round. |
-| **One sudden-death round per originating stage** | All ties at a stage share one round, so they face the same problem and the same window. Simpler than a round per tie, and fairer — identical conditions, which is the principle D26 makes explicit for future environment profiles. |
+| **A decider round is identified by what it resolves** | Ties from the same originating round share one round, so they face the same problem and window — fairer, and the principle D26 makes explicit for future environment profiles. Identity comes from the matches it settles rather than a derived `sequence`, which is what lets a nested sudden death get its own round. |
 | **A separate `SUDDEN_DEATH_CHAIN`, not a flag on the D5 chain** | D14 is a genuinely different rule (functional → tests → time), not a subset. `decideMatch` takes the chain as an option so the rule stays data, and the D5 chain is untouched. |
 | **The loser is eliminated at the ORIGINAL stage** | They went out at the quarter-final they were tied in. Recording `eliminatedAtStage = SUDDEN_DEATH` would corrupt the placement bands, since SUDDEN_DEATH is not a stage anyone is knocked out *at*. `assignFinalPlacements` also filters it out of band computation. |
 | **Sudden-death rounds are resolved before the stage pass** | A sudden-death result unsticks a match in the *current* round, so resolving it first lets the round complete in the same call rather than needing a second one. |
-| **A tied sudden death does not recurse** | It flags `tieUnresolved` again and logs distinctly; an admin opens another challenge. Auto-recursion could loop forever on two identical submissions. |
+| **A tied sudden death gets a fresh decider round, never auto-recursion** | It flags `tieUnresolved` again and is surfaced to the operator, who opens another challenge — the new round is identified by what it resolves, so it cannot collide with the round it came from (Codex finding 1). Automatic recursion could loop forever on two identical submissions. |
 | **The bracket tree is a server component** | It is a read model with no interaction. The live-updating version arrives with SSE later; shipping client JS for a static tree now would be waste. |
 
 ## Migrations
@@ -80,13 +80,38 @@ existing call behaves identically.
    scored but never unstuck the bracket. Added `resolveSuddenDeathMatches`, called from the progress
    driver.
 
+## Codex review
+
+Five findings. **All five were genuine and are fixed**, each with a regression test. Codex
+separately confirmed correct: the D14 chain ordering and exclusions, the 600s configurable
+duration, that no sudden-death match self-advances, third-place routing when a semi-final is
+settled by sudden death, authorization on the action and module, migration safety, and that the
+competitor bracket route sits behind auth and hides UNLISTED tournaments.
+
+| # | Severity | Finding | Verdict & fix |
+|---|---|---|---|
+| **1** | high | **A sudden death that itself tied was a dead end.** The decider round was keyed by the originating round's `sequence`, so a nested tie resolved to the *same* round: the same problem was rejected by the D14 new-challenge rule, and a different problem was rejected as a conflicting round. The match could never be settled — and the changelog claimed otherwise. | **Confirmed.** A decider round is now identified by *what it resolves* (an open round with the same problem containing a sibling that resolves a match in the same originating round), and `sequence` is allocated from the existing sudden-death rounds. A nested tie gets a fresh round; two ties in one stage still share one. |
+| **2** | high | **Matches were decided on scores before the window closed.** `decideMatch` settled as soon as both sides were scored. But E4 lets a competitor **replace** their entry until the deadline, and a decided match is never re-decided — so two competitors who submitted in the first minute had the match settled before either could iterate. Codex found it on the sudden-death path; it applied to **every knockout round**. | **Confirmed, and broader than reported.** Score-based decisions now require a closed window. Byes and voids stay structural. This corrects an E3/E4 rule conflict I introduced earlier: E4's "a fully-scored match is decided mid-window" was wrong the moment E4 also allowed resubmission. |
+| **3** | medium | **Races in `startSuddenDeath`.** Two concurrent starts for one match raced on `match.create` — the `@unique` on `resolvesMatchId` prevented the duplicate but surfaced a raw Prisma error. Two ties in one stage could race on the round's unique key, failing a start that should have joined. | **Confirmed.** The tournament row is now locked for the duration, and a `P2002` on the link is translated into the same typed `ConflictError` the read produces. |
+| **4** | high | **A tournament could complete with a sudden-death round left OPEN.** `COMPLETE` finishes the FINAL round only, and `progressTournament` short-circuits once the tournament is no longer LIVE — so nothing would ever tidy it. | **Confirmed.** `completeSettledSuddenDeathRounds` closes any sudden-death round whose matches are all decided, called from the progress driver on every pass. Rounds with undecided matches are left alone. |
+| **5** | medium | **The competitor bracket leaked unopened rounds' challenge titles.** `/bracket/[tournamentId]` reused `listBracketRounds`, built for admin, which includes `problem.title` for every round — bypassing the simultaneous-reveal gate the submit page enforces. A competitor could read the final's challenge title before it opened. | **Confirmed.** `listBracketRounds` takes `revealProblems` (default true for operators); the competitor page passes `false`, which withholds the problem of any round that has not opened. The read model now also reports `opensAt` and `revealed`. |
+
+### Consequence of finding 2
+
+Three suites encoded the old rule and were updated to assert the corrected one:
+`verify:bracket` ("a fully-scored match is NOT decided while the window is open"),
+`verify:tournament:e2e` (each round now expires its window before progressing, as a real
+tournament does), and `verify:submission` was unaffected. This is a **behaviour change to E3/E4**,
+made deliberately: a competitor's right to improve their entry until the deadline outranks moving
+the bracket along early.
+
 ## Verification
 
 | Suite | Result |
 |---|---|
-| `verify:sudden-death` | **40/40** — the D14 chain, every guard, the full persisted path, and the DoD |
+| `verify:sudden-death` | **55/55** — the D14 chain, every guard, the full persisted path, the DoD, and a regression for every Codex finding |
 | `verify:admin` | 89 — no regressions |
-| `verify:tournament` / `bracket` / `tournament:e2e` | 197 / 118 / 134 — no regressions |
+| `verify:tournament` / `bracket` / `tournament:e2e` | 197 / 119 / 134 — updated for the corrected decision rule |
 | `verify:submission` | 179 — no regressions |
 | `verify:evaluation` / `:e2e` / `profiles` | 31 / 19 / 30 — no regressions |
 | `verify:auth` / `queue` / `runner` | 36 / 15 / 5 — no regressions |

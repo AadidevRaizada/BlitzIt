@@ -467,6 +467,14 @@ export interface BracketRoundView {
   id: string;
   stage: RoundStage;
   status: RoundStatus;
+  opensAt: Date | null;
+  /** True once the round has opened — the simultaneous-reveal gate (E3). */
+  revealed: boolean;
+  /**
+   * Null until the round has opened when the caller is a competitor. The
+   * problem TITLE is part of the reveal: knowing the final's challenge early
+   * would be exactly the head start `opensAt` exists to prevent.
+   */
   problem: { title: string; category: ChallengeCategory } | null;
   /** The problem the round is played on, once assigned. */
   matches: Array<{
@@ -491,11 +499,21 @@ export interface BracketRoundView {
   }>;
 }
 
-/** Operator bracket read model. Topology and advancement remain owned by E3. */
+/**
+ * Bracket read model. Topology and advancement remain owned by E3.
+ *
+ * `revealProblems` defaults to true for the operator surfaces. A competitor
+ * surface must pass `false`, which withholds the problem of any round that has
+ * not opened yet — the same simultaneous-reveal rule `getRevealedRound`
+ * enforces on the submit page.
+ */
 export async function listBracketRounds(
   tournamentId: string,
+  options: { revealProblems?: boolean } = {},
   client: DbClient = db,
 ): Promise<BracketRoundView[]> {
+  const revealProblems = options.revealProblems ?? true;
+  const now = new Date();
   const rounds = await client.round.findMany({
     where: { tournamentId, type: 'KNOCKOUT' },
     orderBy: [{ sequence: 'asc' }, { stage: 'asc' }],
@@ -523,35 +541,40 @@ export async function listBracketRounds(
   });
   const usernameById = new Map(users.map((user) => [user.id, user.username]));
 
-  return rounds.map((round) => ({
-    id: round.id,
-    stage: round.stage,
-    status: round.status,
-    problem: round.problem,
-    matches: round.matches.map((match) => ({
-      id: match.id,
-      bracketPosition: match.bracketPosition,
-      competitorA: match.competitorAId
-        ? (usernameById.get(match.competitorAId) ?? 'Unknown')
-        : null,
-      competitorB: match.competitorBId
-        ? (usernameById.get(match.competitorBId) ?? 'Unknown')
-        : null,
-      winner: match.winnerId
-        ? (usernameById.get(match.winnerId) ?? 'Unknown')
-        : null,
-      competitorAId: match.competitorAId,
-      competitorBId: match.competitorBId,
-      seedA: match.seedA,
-      seedB: match.seedB,
-      winReason: match.winReason,
-      status: match.status,
-      tieUnresolved: match.tieUnresolved,
-      resolvesMatchId: match.resolvesMatchId,
-      submissionAId: match.submissionAId,
-      submissionBId: match.submissionBId,
-    })),
-  }));
+  return rounds.map((round) => {
+    const revealed = round.opensAt !== null && now >= round.opensAt;
+    return {
+      id: round.id,
+      stage: round.stage,
+      status: round.status,
+      opensAt: round.opensAt,
+      revealed,
+      problem: revealProblems || revealed ? round.problem : null,
+      matches: round.matches.map((match) => ({
+        id: match.id,
+        bracketPosition: match.bracketPosition,
+        competitorA: match.competitorAId
+          ? (usernameById.get(match.competitorAId) ?? 'Unknown')
+          : null,
+        competitorB: match.competitorBId
+          ? (usernameById.get(match.competitorBId) ?? 'Unknown')
+          : null,
+        winner: match.winnerId
+          ? (usernameById.get(match.winnerId) ?? 'Unknown')
+          : null,
+        competitorAId: match.competitorAId,
+        competitorBId: match.competitorBId,
+        seedA: match.seedA,
+        seedB: match.seedB,
+        winReason: match.winReason,
+        status: match.status,
+        tieUnresolved: match.tieUnresolved,
+        resolvesMatchId: match.resolvesMatchId,
+        submissionAId: match.submissionAId,
+        submissionBId: match.submissionBId,
+      })),
+    };
+  });
 }
 
 /**
