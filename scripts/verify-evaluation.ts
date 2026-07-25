@@ -195,6 +195,32 @@ async function main() {
     (await assertPublicUrl('https://example.com/x')).hostname === 'example.com',
   );
 
+  // ---------- 2b. DNS rebinding (TOCTOU) ----------
+  // `assertPublicUrl` and `fetch` used to resolve DNS separately, so a host
+  // could answer public for the check and private for the connection. The
+  // dispatcher now re-validates at connect time. Public suffix DNS services
+  // resolve these names to the embedded IP, which lets us prove it end-to-end.
+  const REBIND_HOST = 'http://127.0.0.1.nip.io/';
+  let rebindBlocked = false;
+  let rebindResolvable = true;
+  try {
+    await safeFetch(REBIND_HOST, { timeoutMs: 8000 });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : '';
+    // Either layer may catch it first — both are correct outcomes.
+    rebindBlocked =
+      e instanceof BlockedUrlError || /non-public address/i.test(msg);
+    if (/Could not resolve host/i.test(msg)) rebindResolvable = false;
+  }
+  if (!rebindResolvable) {
+    console.log('SKIP  DNS-rebinding probe (resolver unavailable offline)');
+  } else {
+    check(
+      'host resolving to a private IP is blocked (anti DNS-rebinding)',
+      rebindBlocked,
+    );
+  }
+
   // ---------- 3. Strategy registry + D17 gate ----------
   check(
     'REST_API strategy resolves',

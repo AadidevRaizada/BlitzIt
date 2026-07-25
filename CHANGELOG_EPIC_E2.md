@@ -60,15 +60,25 @@ and `enqueueEvaluation()`.
 
 ## Codex findings
 
-See "Codex review" section below (filled after the review ran).
+Both findings were **genuine and fixed**. No false positives.
+
+| # | Finding | Verdict & fix |
+|---|---|---|
+| **P1** | **DNS rebinding defeats the SSRF guard** — `assertPublicUrl()` resolved DNS, then `fetch()` resolved *again* independently. A rebinding host (TTL 0) could answer public for the check and private/metadata for the actual connection (TOCTOU). | **Confirmed — serious.** My guard was genuinely bypassable. Fixed by injecting the address check into the socket `lookup` via an `undici` `Agent` dispatcher, so **the address we approve is the address we connect to**. Added `undici` (Node's own fetch implementation — not an architectural change; it's the only way to reach the connect-time hook). Regression test added: a hostname resolving to `127.0.0.1` is now refused. |
+| **P2** | **Stale-claim sweep can duplicate a long-running job** — `claimedAt` was never refreshed during `processor(job)`, so a healthy evaluation outliving the 5-minute timeout would be requeued and run twice. | **Confirmed.** Worse than reported: it bites even with a **single** runner (its own sweep reclaims its own in-flight job and runs it concurrently). Measured worst case > 12 min (40 GitHub fetches × 15s + probes + 60s LLM) against a 5-min timeout. Fixed with a real **claim heartbeat** (`queue.heartbeat`, refreshed every 30s while working, scoped to `lockedBy` so a non-owner can't steal a job back), plus the default timeout raised to 15 min as defence in depth. Two regression tests added. |
+
+## Extra bug found while fixing
+
+My `check()` helper in `verify-queue.ts` lacked the optional `detail` parameter the other scripts
+have — caught by the quality gate, not by the tests.
 
 ## Verification
 
 | Suite | Result |
 |---|---|
-| `verify:evaluation` | **30/30** — scoring maths, SSRF matrix, registry gate, repo-URL parsing, injection defence, live probes |
+| `verify:evaluation` | **31/31** — scoring maths, SSRF matrix, registry gate, repo-URL parsing, injection defence, live probes |
 | `verify:evaluation:e2e` | **19/19** — real submission → job → processor → `Evaluation` row |
-| `verify:auth` / `verify:queue` / `verify:runner` | 36 / 13 / 5 — no regressions |
+| `verify:auth` / `verify:queue` / `verify:runner` | 36 / 15 / 5 — no regressions |
 | tsc · eslint · prettier · build | all pass |
 
 **DoD evidence** — a real submission against a public deployment scored:

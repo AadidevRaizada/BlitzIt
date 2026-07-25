@@ -50,9 +50,12 @@ async function claim(limit: number, lockedBy: string): Promise<ClaimRow[]> {
 }
 
 let failures = 0;
-function check(label: string, condition: boolean) {
+function check(label: string, condition: boolean, detail?: string) {
   console.log(`${condition ? 'PASS' : 'FAIL'}  ${label}`);
-  if (!condition) failures++;
+  if (!condition) {
+    failures++;
+    if (detail) console.log(`      ${detail}`);
+  }
 }
 
 async function main() {
@@ -188,6 +191,54 @@ async function main() {
   check(
     'stale job with no attempts left is dead-lettered (FAILED)',
     dead?.status === 'FAILED' && sweptDead.failed >= 1,
+  );
+
+  // Heartbeat: a long-but-healthy job must survive the stale sweep. Without
+  // this, any job outliving the claim timeout gets requeued and runs twice.
+  const beatKey = `${runId}:heartbeat`;
+  await db.evaluationJob.create({
+    data: { name: 'noop', payload: {}, idempotencyKey: beatKey },
+  });
+  await claim(10, 'runner-alive');
+  await db.evaluationJob.update({
+    where: { idempotencyKey: beatKey },
+    data: { claimedAt: new Date(Date.now() - 60_000) }, // looks abandoned
+  });
+  await queue.heartbeat(
+    [
+      (await db.evaluationJob.findUnique({
+        where: { idempotencyKey: beatKey },
+      }))!.id,
+    ],
+    'runner-alive',
+  );
+  await queue.reclaimStale(10_000);
+  const beat = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: beatKey },
+  });
+  check(
+    'heartbeat keeps a long-running job from being reclaimed',
+    beat?.status === 'CLAIMED',
+    `status=${beat?.status}`,
+  );
+
+  // A heartbeat from a runner that no longer holds the claim must be ignored,
+  // otherwise it could steal back a job already reassigned to someone else.
+  const stolenKey = `${runId}:stolen`;
+  await db.evaluationJob.create({
+    data: { name: 'noop', payload: {}, idempotencyKey: stolenKey },
+  });
+  await claim(10, 'runner-owner');
+  const stolenRow = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: stolenKey },
+  });
+  await queue.heartbeat([stolenRow!.id], 'some-other-runner');
+  const stolenAfter = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: stolenKey },
+  });
+  check(
+    'heartbeat from a non-owner runner is ignored',
+    stolenAfter?.claimedAt?.getTime() === stolenRow?.claimedAt?.getTime(),
   );
 
   // A freshly claimed job must NOT be swept out from under a healthy runner.

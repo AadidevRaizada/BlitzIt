@@ -62,6 +62,15 @@ export interface Queue {
   reclaimStale(
     timeoutMs: number,
   ): Promise<{ requeued: number; failed: number }>;
+
+  /**
+   * Refresh the claim on in-flight jobs so a long-but-healthy job is never
+   * mistaken for an abandoned one. Without this, any job outliving the claim
+   * timeout would be requeued and executed a second time — concurrently, even
+   * with a single runner. Only jobs still held by `lockedBy` are refreshed, so
+   * a runner cannot resurrect a claim that was already reclaimed from it.
+   */
+  heartbeat(jobIds: string[], lockedBy: string): Promise<void>;
 }
 
 /** A processor handles one job name. Registered in `processors/index.ts`. */

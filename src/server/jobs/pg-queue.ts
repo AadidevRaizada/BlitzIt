@@ -119,6 +119,21 @@ export class PgQueue implements Queue {
     return { requeued, failed };
   }
 
+  async heartbeat(jobIds: string[], lockedBy: string): Promise<void> {
+    if (jobIds.length === 0) return;
+    // Scoped to this runner's own claims: if a sweep already took the job away,
+    // `lockedBy` no longer matches and the heartbeat is a no-op rather than
+    // stealing it back.
+    await db.evaluationJob.updateMany({
+      where: {
+        id: { in: jobIds },
+        lockedBy,
+        status: { in: ['CLAIMED', 'RUNNING'] },
+      },
+      data: { claimedAt: new Date(), updatedAt: new Date() },
+    });
+  }
+
   async fail(jobId: string, error: string, backoffMs: number): Promise<void> {
     const job = await db.evaluationJob.findUnique({
       where: { id: jobId },

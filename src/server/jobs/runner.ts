@@ -21,10 +21,17 @@ const BASE_BACKOFF_MS = 5000;
  * it. Must exceed the longest expected job duration, or healthy in-flight jobs
  * get reclaimed and run twice. Configurable via RUNNER_CLAIM_TIMEOUT_MS.
  */
-const DEFAULT_CLAIM_TIMEOUT_MS = 300_000; // 5 minutes
+// A full evaluation can legitimately run for many minutes (repo fetches +
+// probes + LLM), so this sits well above the realistic worst case. The claim
+// heartbeat below is the actual protection; this is defence in depth for a
+// process that dies without releasing its claims.
+const DEFAULT_CLAIM_TIMEOUT_MS = 900_000; // 15 minutes
 
 /** How often to sweep for abandoned claims (cheap single UPDATE). */
 const RECLAIM_INTERVAL_MS = 30_000;
+
+/** How often in-flight claims are refreshed. Must be << the claim timeout. */
+const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /**
  * Runner state lives on globalThis, not in module scope. Next.js bundles
@@ -48,6 +55,9 @@ class Runner {
   private running = false;
   private stopped = false;
   private lastReclaimAt = 0;
+  /** Jobs this runner currently holds — refreshed by the claim heartbeat. */
+  private readonly inFlight = new Set<string>();
+  private heartbeatTimer: NodeJS.Timeout | undefined;
 
   constructor(concurrency: number, claimTimeoutMs: number) {
     this.concurrency = Math.max(1, concurrency);
@@ -75,11 +85,29 @@ class Runner {
       },
       'evaluation runner started',
     );
+
+    // Keep this runner's claims fresh for as long as it is actually working.
+    this.heartbeatTimer = setInterval(() => {
+      const ids = [...this.inFlight];
+      if (ids.length === 0) return;
+      void queue
+        .heartbeat(ids, this.instanceId)
+        .catch((error: unknown) =>
+          captureException(error, { where: 'runner.heartbeat' }),
+        );
+    }, HEARTBEAT_INTERVAL_MS);
+    // Never hold the process open just for the heartbeat.
+    this.heartbeatTimer.unref?.();
+
     void this.loop();
   }
 
   stop(): void {
     this.stopped = true;
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
+    }
   }
 
   private async loop(): Promise<void> {
@@ -130,6 +158,9 @@ class Runner {
       );
       return;
     }
+    // Tracked for the duration of the work so the heartbeat keeps the claim
+    // alive; a long-but-healthy job must never be reclaimed and run twice.
+    this.inFlight.add(job.id);
     try {
       await processor(job);
       await queue.complete(job.id);
@@ -138,6 +169,8 @@ class Runner {
       const backoff = BASE_BACKOFF_MS * 2 ** Math.max(0, job.attempts - 1);
       await queue.fail(job.id, message, backoff);
       captureException(error, { where: 'runner.run', jobId: job.id });
+    } finally {
+      this.inFlight.delete(job.id);
     }
   }
 }

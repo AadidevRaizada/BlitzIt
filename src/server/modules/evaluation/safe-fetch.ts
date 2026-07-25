@@ -1,6 +1,8 @@
 import 'server-only';
 import { lookup } from 'node:dns/promises';
+import { lookup as dnsLookupCb } from 'node:dns';
 import { isIP } from 'node:net';
+import { Agent } from 'undici';
 
 /**
  * Egress-controlled HTTP client for probing competitor-supplied URLs (risk T1).
@@ -111,6 +113,52 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
   return url;
 }
 
+/**
+ * Dispatcher that re-checks the resolved address **at connect time**.
+ *
+ * `assertPublicUrl()` alone is not sufficient: it performs its own DNS lookup,
+ * and `fetch()` then resolves independently. A DNS-rebinding host (TTL 0) can
+ * answer with a public IP for the check and a private/metadata IP for the real
+ * connection — defeating the guard entirely (TOCTOU).
+ *
+ * Injecting the validation into the socket `lookup` means the address we
+ * approve is exactly the address we connect to.
+ */
+const guardedAgent = new Agent({
+  connect: {
+    lookup(hostname, options, callback) {
+      dnsLookupCb(hostname, options, (err, address, family) => {
+        if (err) {
+          callback(err, '', 0);
+          return;
+        }
+        // `all: true` yields an array; otherwise a single address string.
+        const candidates = Array.isArray(address)
+          ? address.map((entry) => entry.address)
+          : [address];
+
+        for (const candidate of candidates) {
+          if (isBlockedAddress(candidate)) {
+            callback(
+              new BlockedUrlError(
+                'URL resolved to a non-public address at connect time',
+              ),
+              '',
+              0,
+            );
+            return;
+          }
+        }
+        callback(
+          null,
+          address as unknown as string,
+          family as unknown as number,
+        );
+      });
+    },
+  },
+});
+
 export interface SafeFetchOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -167,7 +215,9 @@ export async function safeFetch(
         signal: controller.signal,
         credentials: 'omit',
         cache: 'no-store',
-      });
+        // Re-validates the resolved IP at connect time (anti DNS-rebinding).
+        dispatcher: guardedAgent,
+      } as RequestInit & { dispatcher: Agent });
 
       // Manual redirect handling so the next hop is validated too.
       if (response.status >= 300 && response.status < 400) {
