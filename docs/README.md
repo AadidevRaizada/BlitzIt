@@ -1,8 +1,16 @@
 # Blitz It — Engineering Blueprint
 
-> **Status:** Architecture **LOCKED for V1** — see [`DECISIONS.md`](./DECISIONS.md). **No
-> production code written yet.** This directory is the source-of-truth engineering blueprint;
-> another senior engineer should be able to build Blitz It confidently from these documents.
+> **Status:** Architecture **LOCKED for V1** — see [`DECISIONS.md`](./DECISIONS.md).
+> Implementation in progress; per-epic history in `CHANGELOG_EPIC_E*.md`.
+>
+> | Epic | Scope | State |
+> |------|-------|-------|
+> | **E0** | Foundation & rails | ✅ complete |
+> | **E1** | Authentication | ✅ complete (verified against live GitHub + Google OAuth) |
+> | **E2** | Evaluation Engine spike | 🚧 in progress |
+>
+> This directory remains the source-of-truth blueprint; visual decisions live in
+> [`design-system.md`](./design-system.md).
 
 ## The single most important decision
 
@@ -53,6 +61,7 @@ means a fresh deploy would not reproduce your schema.
 | **14** | **[Admin Flows](./14-admin-flows.md)** | Operator flows |
 | **15** | **[Engineering Task Breakdown](./15-engineering-tasks.md)** | Granular tickets |
 | **16** | **[Sprint Plan](./16-sprint-plan.md)** | Sequenced sprints |
+| — | **[Design System](./design-system.md)** | Brand, tokens, typography, components, motion |
 | — | [OAuth Setup](./oauth-setup.md) | GitHub/Google OAuth app setup for local dev |
 | — | [Coding Standards](./coding-standards.md) | Conventions, boundaries, security |
 | — | [Tech Research Notes](./tech-research.md) | 2026 findings per technology |

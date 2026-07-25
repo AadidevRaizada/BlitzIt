@@ -5,7 +5,14 @@ import { ThemeProvider } from '@/components/providers/theme-provider';
 import { PostHogProvider } from '@/components/providers/posthog-provider';
 import { Toaster } from '@/components/ui/sonner';
 
-const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
+// Weights per docs/design-system.md §3. Exposed as --font-inter, which
+// globals.css maps into the Tailwind `--font-sans` stack.
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800'],
+  variable: '--font-inter',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'Blitz It — 15 Minutes. One Shot. Just Ship.',

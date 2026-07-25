@@ -1,90 +1,116 @@
 @import 'tailwindcss';
 
 /*
- * Blitz It design tokens (Tailwind v4, CSS-first). Semantic, OKLCH, every
- * background token paired with a -foreground. Light is the default; dark is
- * applied via `.dark` on <html> (next-themes) OR prefers-color-scheme.
- * See docs + tailwind-design-system skill.
+ * Blitz It design tokens — see docs/design-system.md (authoritative).
+ * Tailwind v4, CSS-first. Semantic OKLCH tokens, every surface paired with a
+ * -foreground. Brand: #7F5AF0 primary, #00FFA3 secondary, black/white base.
+ *
+ * Contrast is verified, not assumed:
+ *   #7F5AF0 + white .......... 4.54  AA text
+ *   #00FFA3 + BLACK .......... 15.83 AA text   (white on it is 1.33 — never)
+ *   #7F5AF0 on dark bg ....... 4.36  UI/large only -> dark mode lightens it
+ *   #9E87FF on dark bg ....... 6.94  AA text
  */
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --radius: 0.625rem;
+  /* ---- Brand ---- */
+  --brand-primary: oklch(0.5873 0.2143 289.47); /* #7F5AF0 */
+  --brand-secondary: oklch(0.881 0.205 158.31); /* #00FFA3 */
 
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.15 0 0);
-
+  /* ---- Surfaces ---- */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0 0);
-
+  --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0 0);
+  --popover-foreground: oklch(0.145 0 0);
 
-  /* Brand: an electric "blitz" indigo */
-  --primary: oklch(0.55 0.2 268);
-  --primary-foreground: oklch(0.985 0 0);
+  /* ---- Actions ---- */
+  --primary: var(--brand-primary);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.97 0.005 289.47);
+  --secondary-foreground: oklch(0.21 0.02 289.47);
 
-  --secondary: oklch(0.96 0.01 268);
-  --secondary-foreground: oklch(0.2 0.02 268);
+  --muted: oklch(0.97 0.003 289.47);
+  --muted-foreground: oklch(0.52 0.015 289.47);
+  --accent: oklch(0.96 0.02 289.47);
+  --accent-foreground: oklch(0.24 0.04 289.47);
 
-  --muted: oklch(0.96 0.005 268);
-  --muted-foreground: oklch(0.5 0.02 268);
-
-  --accent: oklch(0.9 0.05 268);
-  --accent-foreground: oklch(0.2 0.03 268);
-
+  /* ---- Status. secondary-accent ALWAYS takes a black foreground. ---- */
+  --success: var(--brand-secondary);
+  --success-foreground: oklch(0 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-
-  --success: oklch(0.6 0.15 150);
-  --success-foreground: oklch(0.985 0 0);
-
+  --destructive-foreground: oklch(1 0 0);
   --warning: oklch(0.84 0.16 84);
-  --warning-foreground: oklch(0.28 0.07 46);
+  --warning-foreground: oklch(0.24 0.07 46);
 
-  --border: oklch(0.92 0.005 268);
-  --input: oklch(0.92 0.005 268);
-  --ring: oklch(0.55 0.2 268);
+  /* ---- Lines ---- */
+  --border: oklch(0.922 0.004 289.47);
+  --input: oklch(0.922 0.004 289.47);
+  --ring: var(--brand-primary);
+
+  /* ---- Elevation (§6) — restrained; hierarchy comes from type + space.
+         Named `elevation-*` so `@theme inline` can map them to `shadow-*`
+         without a self-referential loop. ---- */
+  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.05);
+  --elevation-sm:
+    0 1px 3px 0 oklch(0 0 0 / 0.08), 0 1px 2px -1px oklch(0 0 0 / 0.06);
+  --elevation-md:
+    0 4px 12px -2px oklch(0 0 0 / 0.1), 0 2px 4px -2px oklch(0 0 0 / 0.06);
+  --elevation-lg:
+    0 12px 32px -8px oklch(0 0 0 / 0.16), 0 4px 8px -4px oklch(0 0 0 / 0.08);
+  --shadow-focus: 0 0 0 3px oklch(0.5873 0.2143 289.47 / 0.4);
+
+  /* ---- Motion (§11) ---- */
+  --motion-instant: 80ms;
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --motion-reveal: 720ms;
+  --ease-out-quart: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .dark {
-  --background: oklch(0.14 0.01 268);
-  --foreground: oklch(0.97 0 0);
+  --background: oklch(0.145 0.004 289.47);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.185 0.005 289.47);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.21 0.006 289.47);
+  --popover-foreground: oklch(0.985 0 0);
 
-  --card: oklch(0.18 0.01 268);
-  --card-foreground: oklch(0.97 0 0);
+  /* Lightened so brand text/icons clear AA on dark (6.94 vs 4.36). */
+  --primary: oklch(0.7 0.18 289.47);
+  --primary-foreground: oklch(0.145 0.004 289.47);
+  --secondary: oklch(0.26 0.02 289.47);
+  --secondary-foreground: oklch(0.985 0 0);
 
-  --popover: oklch(0.18 0.01 268);
-  --popover-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.26 0.012 289.47);
+  --muted-foreground: oklch(0.708 0.015 289.47);
+  --accent: oklch(0.3 0.03 289.47);
+  --accent-foreground: oklch(0.985 0 0);
 
-  --primary: oklch(0.68 0.19 268);
-  --primary-foreground: oklch(0.14 0.01 268);
-
-  --secondary: oklch(0.26 0.02 268);
-  --secondary-foreground: oklch(0.97 0 0);
-
-  --muted: oklch(0.26 0.02 268);
-  --muted-foreground: oklch(0.7 0.02 268);
-
-  --accent: oklch(0.3 0.04 268);
-  --accent-foreground: oklch(0.97 0 0);
-
+  --success: var(--brand-secondary);
+  --success-foreground: oklch(0 0 0);
   --destructive: oklch(0.65 0.2 25);
   --destructive-foreground: oklch(0.985 0 0);
+  --warning: oklch(0.78 0.15 84);
+  --warning-foreground: oklch(0.145 0.004 289.47);
 
-  --success: oklch(0.65 0.15 150);
-  --success-foreground: oklch(0.14 0.01 268);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.14);
+  --ring: oklch(0.7 0.18 289.47);
 
-  --warning: oklch(0.75 0.15 84);
-  --warning-foreground: oklch(0.14 0.01 268);
-
-  --border: oklch(0.28 0.02 268);
-  --input: oklch(0.28 0.02 268);
-  --ring: oklch(0.68 0.19 268);
+  /* Elevation reads through surface + border on dark, so shadows recede. */
+  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.3);
+  --elevation-sm: 0 1px 3px 0 oklch(0 0 0 / 0.4);
+  --elevation-md: 0 4px 12px -2px oklch(0 0 0 / 0.5);
+  --elevation-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
 }
 
-/* Bridge CSS variables to Tailwind utilities (bg-primary, text-foreground, …). */
+/* Bridge tokens to Tailwind utilities (bg-primary, text-muted-foreground, …). */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -100,31 +126,99 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radius (§5) — static, so defined here directly rather than in :root. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
+  /* Typography scale (§3) */
+  --text-hero: clamp(3rem, 7vw, 5.5rem);
+  --text-hero--line-height: 1.02;
+  --text-hero--letter-spacing: -0.035em;
+  --text-h1: clamp(2.25rem, 4vw, 3.5rem);
+  --text-h1--line-height: 1.08;
+  --text-h1--letter-spacing: -0.03em;
+  --text-h2: 2rem;
+  --text-h2--line-height: 1.15;
+  --text-h2--letter-spacing: -0.02em;
+  --text-h3: 1.5rem;
+  --text-h3--line-height: 1.25;
+  --text-h3--letter-spacing: -0.015em;
+  --text-h4: 1.25rem;
+  --text-h4--line-height: 1.35;
+  --text-h5: 1rem;
+  --text-h5--line-height: 1.45;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.6;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.65;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.5;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.4;
+  --text-caption--letter-spacing: 0.01em;
+
+  /* Elevation -> Tailwind `shadow-*` utilities (theme-aware via :root/.dark). */
+  --shadow-xs: var(--elevation-xs);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
 }
 
 @layer base {
   * {
     border-color: var(--color-border);
   }
+
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-feature-settings:
-      'rlig' 1,
-      'calt' 1;
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    /* cv11/ss01: disambiguated glyphs, closer to Linear/Vercel's Inter setup. */
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Numbers that change (scores, timers, money) must not jitter. */
+  .tabular,
+  th[data-numeric],
+  td[data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Visible focus is non-negotiable (§13). */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Accessibility: honour reduced-motion everywhere (§11). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

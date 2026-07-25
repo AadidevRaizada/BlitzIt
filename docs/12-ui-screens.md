@@ -1,8 +1,12 @@
 # 12 — Complete UI Screen Breakdown
 
 Stack: Next.js App Router + React 19 + Tailwind v4 (OKLCH tokens) + shadcn/ui (new-york, sonner).
-Use the **`tailwind-design-system`** skill to establish tokens/theming and wrap shadcn primitives
-into design-system components before building screens. Every screen lists its **route, purpose,
+
+> **Read [`design-system.md`](./design-system.md) first — it is authoritative for all visual
+> decisions.** Brand: `#7F5AF0` primary, `#00FFA3` secondary, black/white base. The governing
+> rule is **Marketing ≠ Dashboard**: the landing page (screen 1) is expressive, Awwwards-quality
+> storytelling; everything behind login is fast, dense and quiet like Linear/Raycast. Use tokens
+> only — never colour, spacing or radius literals. Every screen lists its **route, purpose,
 key components, data source, and states** (loading / empty / error / live).
 
 Legend: **[RSC]** server component · **[C]** client island · **SSE** live-updating.
@@ -117,8 +121,8 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 ---
 
 ## Shared components & global states
-- **Design-system primitives** (buttons, cards, badges, dialogs, toasts via sonner) wrapped from
-  shadcn using the `tailwind-design-system` skill.
+- **Design-system primitives** (buttons, cards, badges, dialogs, toasts via sonner) built per
+  [`design-system.md`](./design-system.md) §7–§12 — tokens only, never literals.
 - **`Countdown`**, **`LiveLeaderboard`**, **`BracketTree`**, **`SubmitForm`**, **`MatchCard`**,
   **`PrizePoolMeter`**, **`ParticipantCounter`**, **`StreamEmbed`** — reused across public + app.
 - **Global states:** auth loading, role-forbidden (403), not-found (404), error boundary, offline/
