@@ -17,6 +17,13 @@ export {
   RUBRIC_VERSION,
   buildUserPrompt,
 } from './llm/quality';
+export {
+  createLLMProvider,
+  resolveLlmConfig,
+  isLlmConfigured,
+  SUPPORTED_PROVIDERS,
+} from './llm/provider';
+export type { LlmProvider, LlmProviderName } from './llm/provider';
 export { warmUpDeployment } from './reachability';
 export {
   safeFetch,

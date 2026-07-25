@@ -1,7 +1,11 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { completeWithFallback, anyProviderConfigured } from './provider';
+import {
+  completeWithConfiguredProvider,
+  isLlmConfigured,
+  resolveLlmConfig,
+} from './provider';
 import type { RepoSnapshot } from '../github-text';
 import type { AiQualityResult } from '../types';
 import { logger } from '@/lib/logger';
@@ -126,7 +130,7 @@ function extractJson(text: string): unknown {
 export async function evaluateQuality(
   snapshot: RepoSnapshot,
 ): Promise<AiQualityResult> {
-  if (!anyProviderConfigured()) {
+  if (!isLlmConfigured()) {
     return degradedResult('no LLM provider configured');
   }
   if (snapshot.files.length === 0) {
@@ -139,14 +143,14 @@ export async function evaluateQuality(
     .update(`${RUBRIC_VERSION}\n${SYSTEM_PROMPT}\n${userPrompt}`)
     .digest('hex');
 
-  const response = await completeWithFallback({
+  const config = resolveLlmConfig();
+  const response = await completeWithConfiguredProvider({
     system: SYSTEM_PROMPT,
     user: userPrompt,
     maxTokens: MAX_TOKENS,
-    temperature: 0,
   });
 
-  if (!response) return degradedResult('all providers failed');
+  if (!response) return degradedResult('LLM provider call failed');
 
   const parsed = responseSchema.safeParse(extractJson(response.text));
   if (!parsed.success) {
@@ -183,6 +187,10 @@ export async function evaluateQuality(
     raw: {
       provider: response.provider,
       modelId: response.modelId,
+      // Requested vs actually applied — some models refuse a custom
+      // temperature, and reproducibility depends on knowing which was used.
+      temperatureRequested: config.temperature,
+      temperatureApplied: response.temperatureApplied,
       promptHash,
       response: parsed.data,
       rawText: response.text.slice(0, 4000),

@@ -49,7 +49,16 @@ const serverSchema = z.object({
   RAZORPAY_KEY_SECRET: optionalVar(),
   RAZORPAY_WEBHOOK_SECRET: optionalVar(),
 
-  // AI evaluator (Epic E2)
+  // AI evaluator (Epic E2). The backend is selected entirely by configuration —
+  // switching providers must never require a code change.
+  LLM_PROVIDER: z
+    .preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.enum(['openai', 'anthropic']).optional(),
+    )
+    .transform((v) => v ?? 'openai'),
+  LLM_MODEL: optionalVar(),
+  LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0),
   ANTHROPIC_API_KEY: optionalVar(),
   OPENAI_API_KEY: optionalVar(),
   GITHUB_API_TOKEN: optionalVar(),

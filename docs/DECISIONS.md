@@ -110,9 +110,25 @@
   architecture but are **disabled** until each is individually validated (T7). Enforced by a
   per-tournament allowlist of enabled categories.
 
-## D18 — LLM provider (locked)
-- **Claude (Anthropic) primary**, **OpenAI fallback**. The evaluator is **provider-agnostic**
-  behind an `LlmProvider` interface; model + prompt pinned per tournament for reproducibility.
+## D18 — LLM provider (locked) — **REVISED 2026-07-25**
+- ~~Claude primary, OpenAI fallback.~~ **Superseded:** the evaluator must not be tied to any
+  vendor. The backend is selected **entirely by configuration**:
+  ```
+  LLM_PROVIDER=openai|anthropic
+  LLM_MODEL=gpt-5.5
+  LLM_TEMPERATURE=0
+  ```
+  Switching providers requires **no code change**. `createLLMProvider()` is the only place that
+  maps a name to an implementation; scoring, persistence, prompt hashing, evidence and the rubric
+  remain provider-agnostic.
+- The automatic cross-vendor fallback is **removed** — a provider is chosen explicitly, and any
+  failure (missing provider, missing key, API error) degrades to `aiDegraded = true` with a
+  neutral score rather than silently switching vendors. Silent vendor switching would have made
+  scores non-comparable across submissions in the same round.
+- **Reproducibility caveat (measured, not assumed):** OpenAI's `gpt-5.x` reasoning models reject
+  a custom `temperature` and only accept their default (1). The provider omits the parameter for
+  those models and records `temperatureApplied` in the audit, so evidence stays truthful. If
+  strict temperature-0 reproducibility is required, choose a model that supports it.
 
 ## D19 — Anti-cheat scope for V1 (locked)
 - Included: immutable submissions, server timestamps, **deployment-URL reuse detection**,

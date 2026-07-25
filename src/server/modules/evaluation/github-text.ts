@@ -157,9 +157,38 @@ async function githubJson<T>(path: string): Promise<T> {
       signal: controller.signal,
       cache: 'no-store',
     });
+
     if (!response.ok) {
+      // Distinguish the failure modes — an admin debugging a degraded
+      // evaluation needs to know whether the repo is missing, private, or
+      // whether we simply ran out of GitHub quota.
+      const remaining = response.headers.get('x-ratelimit-remaining');
+      const resetAt = response.headers.get('x-ratelimit-reset');
+
+      if (response.status === 403 && remaining === '0') {
+        const minutes = resetAt
+          ? Math.max(
+              0,
+              Math.ceil((Number(resetAt) * 1000 - Date.now()) / 60_000),
+            )
+          : null;
+        throw new Error(
+          `GitHub API rate limit exhausted${
+            minutes === null ? '' : ` (resets in ~${minutes} min)`
+          }. Set GITHUB_API_TOKEN to raise the limit from 60/hr to 5000/hr.`,
+        );
+      }
+      if (response.status === 404) {
+        throw new Error(
+          'Repository not found. V1 requires a PUBLIC GitHub repository (D16).',
+        );
+      }
+      if (response.status === 401) {
+        throw new Error('GITHUB_API_TOKEN is invalid or expired.');
+      }
       throw new Error(`GitHub API ${response.status} for ${path}`);
     }
+
     return (await response.json()) as T;
   } finally {
     clearTimeout(timer);
