@@ -35,5 +35,29 @@ All previously-open items are locked in [`DECISIONS.md`](./DECISIONS.md):
 | LLM provider | Claude primary, OpenAI fallback, provider-agnostic abstraction | D18 |
 | Anti-cheat scope | Immutable + timestamps + URL-reuse + commit-SHA pin + manual DQ; no plagiarism detection V1 | D19 |
 
+## ✅ Now resolved (locked 2026-07-26 — canonical direction)
+
+| Was open / implicit | Resolution | Decision |
+|---------------------|------------|----------|
+| What does the platform actually measure? | Not "the best programmer" — **who can build the best software under realistic production constraints**. Speed is pressure, not metric. | D21 |
+| Is the AI stage policy revisitable? | **No — locked and final.** AI in SF / THIRD_PLACE / FINAL only, on cost, scalability and reproducibility grounds. The per-tournament mechanism stays configurable; the default does not move. | D22 |
+| What are early rounds *for*? | "Can this software survive realistic usage?" — functional correctness, performance, security, **business-rule correctness**, **robustness**. Architecture review stays exclusive to the AI rounds. | D23 |
+| Where does evaluation go long-term? | Hidden tests evolve into **hidden environment profiles** (load, faults, latency, limits, scale). Documented only; not implemented. | D24 |
+| How are future environments kept auditable? | Deterministic, reproducible, **seeded**, logged, replayable; runs persist seed / traffic profile / fault schedule / dataset version / timing profile. | D25 |
+| How is environment fairness guaranteed? | Either identical seeded environments for everyone, or several seeded environments averaged. A single unseeded/per-competitor-random environment is forbidden. | D26 |
+| How would a mid-round requirement change be timed? | By **elapsed competitor time**, never wall-clock tournament time. Needs a future per-competitor run clock. | D27 |
+| Who owns submitted code? | **Competitors do.** BlitzIt gets a temporary evaluation licence only; no AI training on submissions; no public showcasing without explicit permission. | D28 |
+| What is the long-term moat? | A shift from AI repository evaluation to **production-environment simulation**; challenge and harness quality become the primary investment. | D29 |
+
+## 🔭 Deliberately deferred (documented, not open)
+
+These are **decided in principle and unimplemented on purpose**. They are not open questions — the
+design is settled; only the scheduling is not. See
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md).
+
+- Hidden environment profiles (D24) and their determinism/evidence contract (D25).
+- Environment fairness scheme selection per round type (D26).
+- The "PM Moment" mechanic and its per-competitor run clock (D27).
+
 **No open questions remain.** Documentation is frozen; implementation proceeds per the sprint
 plan ([`16`](./16-sprint-plan.md)).

@@ -122,3 +122,30 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 - Tests for: scoring blend, bracket/tie-breaks, payment idempotency, job claim/retry, timers.
 - Every mutation: zod + authz + idempotency + audit where privileged.
 - Accessibility + responsive + light/dark + IST display on every screen.
+
+---
+
+## Future work (not scheduled)
+
+**Documented direction only — do not implement without a scheduling decision.** Rationale in
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md).
+
+- **F1 — Hidden environment profiles (D24).** Extend hidden tests into environment profiles:
+  variable/large datasets, traffic patterns, concurrency, retries, partial downstream failures,
+  rate limiting, slow dependencies, network variability. Seams already in place:
+  `Problem.contractSpec`, the `EvaluationStrategy` interface, `Evaluation.probeEvidence`.
+  *Must not introduce code execution — D1 holds.*
+- **F2 — Profile determinism + evidence (D25).** Persist `seed`, traffic profile, fault schedule,
+  dataset version and timing profile per run. A run that cannot be replayed must not score.
+- **F3 — Fairness scheme (D26).** Identical seeded environments per round, or N seeded
+  environments averaged. Fix the seed set once per round, never per submission.
+- **F4 — PM Moment (D27).** Mid-round requirement change, timed by **elapsed competitor time**.
+  Requires a per-competitor run clock distinct from `Round.opensAt` / `deadlineAt`.
+- **F5 — Business-rule + robustness scoring (D23).** First-class deterministic dimensions for the
+  early rounds; today approximated by hidden tests, properly served by F1.
+
+### Naming hazard
+
+D20's `EvaluationProfile` (*which dimensions* are scored at a stage) and a D24 *environment
+profile* (*what conditions* the software faces) are different concepts. F1 must not reuse the
+`EvaluationProfile` name.

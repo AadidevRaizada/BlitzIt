@@ -3,6 +3,11 @@
 A weekly, live, knockout tournament for builders. Competitors ship a working product against a
 timer; an evaluation engine scores it; a bracket runs to a champion on stream.
 
+> **BlitzIt is not trying to find the best programmer. BlitzIt is trying to discover who can build
+> the best software under realistic production constraints.** Speed is the pressure, not the
+> metric — see [D21](./docs/DECISIONS.md) and the
+> [evaluation strategy roadmap](./docs/20-evaluation-strategy-roadmap.md).
+
 The defining constraint: **we never execute competitors' code.** Each submission is a public
 GitHub repo plus a live deployment the competitor hosts themselves. The engine probes the running
 deployment as a black box and reads the repository as text. No sandbox, no containers, no
@@ -63,6 +68,7 @@ a resolved profile. Neither knows about payments, and neither knows about users 
 Deep dives:
 [tournament lifecycle & bracket engine](./docs/17-tournament-lifecycle.md) ·
 [submission pipeline](./docs/18-submission-pipeline.md) ·
+[evaluation strategy roadmap](./docs/20-evaluation-strategy-roadmap.md) ·
 [module breakdown](./docs/04-module-breakdown.md) ·
 [API specification](./docs/11-api-specification.md) ·
 [database design](./docs/02-database-design.md)
