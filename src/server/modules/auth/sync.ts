@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { db } from '@/server/db';
 import type { User } from '@/generated/prisma/client';
 import { logger } from '@/lib/logger';
+import { ConflictError } from '@/lib/errors';
 
 /**
  * Mirrors a Better Auth user into our domain `User` + `Profile`.
@@ -125,29 +126,46 @@ export async function syncDomainUser(input: AuthUserInput): Promise<User> {
   try {
     return await createDomainUser(input);
   } catch (error) {
-    if (isUniqueViolation(error)) {
-      // Concurrent first sign-in (or a username collision) — re-read the winner.
-      const winner = await db.user.findUnique({
-        where: { authUserId: input.authUserId },
-      });
-      if (winner) return winner;
+    if (!isUniqueViolation(error)) throw error;
 
-      // Username collided rather than authUserId: retry once with a random stem.
-      const stem = slugifyUsername(
-        input.name?.trim() || input.email.split('@')[0] || 'player',
+    // Concurrent first sign-in — re-read the row the other request created.
+    const winner = await db.user.findUnique({
+      where: { authUserId: input.authUserId },
+    });
+    if (winner) return winner;
+
+    // A different domain user already holds this email. Better Auth links
+    // providers on a verified email and `AuthUser.email` is unique, so this
+    // should be unreachable — but we must NOT silently bind this session to
+    // someone else's record, which would be account takeover. Fail loudly.
+    const emailOwner = await db.user.findUnique({
+      where: { email: input.email },
+      select: { id: true },
+    });
+    if (emailOwner) {
+      logger.error(
+        { authUserId: input.authUserId, existingUserId: emailOwner.id },
+        'email already bound to a different domain user; refusing to link',
       );
-      return db.user.create({
-        data: {
-          authUserId: input.authUserId,
-          email: input.email,
-          username: `${stem}-${randomBytes(3).toString('hex')}`,
-          displayName: input.name?.trim() || stem,
-          avatarUrl: input.image ?? null,
-          profile: { create: {} },
-        },
-      });
+      throw new ConflictError(
+        'This email is already associated with another account',
+      );
     }
-    throw error;
+
+    // Username collision: retry once with a random suffix.
+    const stem = slugifyUsername(
+      input.name?.trim() || input.email.split('@')[0] || 'player',
+    );
+    return db.user.create({
+      data: {
+        authUserId: input.authUserId,
+        email: input.email,
+        username: `${stem}-${randomBytes(3).toString('hex')}`,
+        displayName: input.name?.trim() || stem,
+        avatarUrl: input.image ?? null,
+        profile: { create: {} },
+      },
+    });
   }
 }
 

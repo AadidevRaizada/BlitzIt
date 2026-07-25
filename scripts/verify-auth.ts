@@ -244,6 +244,71 @@ async function main() {
     Number(authRows[0]?.n ?? 0) === 1,
   );
 
+  // 12. Cross-provider linking: one AuthUser with BOTH a github and a google
+  //     account (what Better Auth produces when the verified emails match)
+  //     must yield exactly ONE domain User + Profile, not a duplicate.
+  const linkAuthId = `auth-link-${run}`;
+  const linkEmail = `linked-${run}@blitzit.test`;
+  await db.$executeRawUnsafe(
+    `INSERT INTO auth_user (id,name,email,"emailVerified","createdAt","updatedAt")
+     VALUES ($1,'Linked User',$2,true,now(),now())`,
+    linkAuthId,
+    linkEmail,
+  );
+  for (const provider of ['github', 'google']) {
+    await db.$executeRawUnsafe(
+      `INSERT INTO auth_account (id,"userId","accountId","providerId","createdAt","updatedAt")
+       VALUES ($1,$2,$3,$4,now(),now())`,
+      `acct-${provider}-${run}`,
+      linkAuthId,
+      `${provider}-id-${run}`,
+      provider,
+    );
+  }
+  // Simulate signing in through each provider in turn.
+  await syncDomainUser({
+    authUserId: linkAuthId,
+    email: linkEmail,
+    name: 'Linked User',
+    image: null,
+  });
+  await syncDomainUser({
+    authUserId: linkAuthId,
+    email: linkEmail,
+    name: 'Linked User',
+    image: 'https://example.com/google.png',
+  });
+  const linkedUsers = await db.user.count({ where: { email: linkEmail } });
+  const linkedAccounts: Array<{ n: bigint }> = await db.$queryRawUnsafe(
+    `SELECT count(*) AS n FROM auth_account WHERE "userId" = $1`,
+    linkAuthId,
+  );
+  check(
+    'two providers on one AuthUser => exactly one domain User',
+    linkedUsers === 1,
+  );
+  check(
+    'both provider accounts are retained',
+    Number(linkedAccounts[0]?.n ?? 0) === 2,
+  );
+
+  // 13. Two DIFFERENT auth identities sharing an email must be refused, never
+  //     silently bound to the existing user's record (account-takeover guard).
+  const takeover = await syncDomainUser({
+    authUserId: `auth-takeover-${run}`,
+    email: linkEmail,
+    name: 'Attacker',
+    image: null,
+  }).catch((e: unknown) => e);
+  check(
+    'different auth identity with an existing email is refused',
+    takeover instanceof Error && takeover.name === 'ConflictError',
+  );
+  check(
+    'refusal did not create a second domain User',
+    (await db.user.count({ where: { email: linkEmail } })) === 1,
+  );
+
   await db.user.deleteMany({ where: { email: { contains: '@blitzit.test' } } });
   await db.$executeRawUnsafe(
     `DELETE FROM auth_user WHERE email LIKE '%@blitzit.test'`,

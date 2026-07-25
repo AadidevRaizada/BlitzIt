@@ -56,11 +56,34 @@ export const auth = betterAuth({
   // tables are mapped to the namespaced `Auth*` models (see schema.prisma).
   user: { modelName: 'AuthUser' },
   session: { modelName: 'AuthSession' },
-  account: { modelName: 'AuthAccount' },
   verification: { modelName: 'AuthVerification' },
+  account: {
+    modelName: 'AuthAccount',
+    // Signing in with Google using an email that already signed up via GitHub
+    // must attach to the SAME account, not create a second one. Both providers
+    // verify email ownership, so implicit linking is safe and is what we want;
+    // stated explicitly rather than relying on the library default.
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['github', 'google'],
+      allowDifferentEmails: false,
+    },
+  },
 
   emailAndPassword: { enabled: false },
   socialProviders,
+
+  // Send OAuth failures (denied consent, expired/mismatched state, provider
+  // errors) back to our own login screen instead of Better Auth's built-in
+  // error page, which renders outside the app shell.
+  onAPIError: {
+    // Better Auth appends `?error=<reason>`; the login page renders a generic
+    // failure message for any value (reasons are logged, not shown to users).
+    errorURL: '/login',
+    onError: (error) => {
+      logger.warn({ err: error }, 'auth API error');
+    },
+  },
 
   databaseHooks: {
     user: {
