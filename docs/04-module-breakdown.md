@@ -77,14 +77,25 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Scalability:** problems are cacheable once revealed; hidden tests never leave the server.
 
 ## 6. Submission
+> **As built in E4** — see [`18-submission-pipeline.md`](./18-submission-pipeline.md).
+
 - **Responsibilities:** validate + accept repo URL + deployment URL within the open window,
-  create immutable `Submission`, seal at deadline, anti-cheat anchors (server timestamp,
-  ownership, no post-deadline edits, dedupe URL reuse).
-- **Dependencies:** Prisma, Tournament (window), Registration (access), Judging (enqueue).
-- **Data ownership:** `Submission`.
-- **APIs:** `submitSolution(roundId|matchId, repoUrl, deploymentUrl)` action.
-- **Entities:** `Submission`.
-- **Scalability:** burst at deadline — cheap insert + enqueue; keep validation fast.
+  maintain the **current** `Submission` per (user, round) plus append-only revision history,
+  seal at deadline, anti-cheat anchors (server timestamp, ownership, no post-deadline edits,
+  deployment-URL reuse detection), and hand work to the queue.
+- **Dependencies:** Prisma, Tournament (window + registration gate), Queue (enqueue),
+  Evaluation Engine (its `parseRepoUrl` contract only — never `runEvaluation`).
+- **Data ownership:** `Submission`, `SubmissionRevision`.
+- **APIs:** `submitSolution({ userId, roundId, repoUrl, deploymentUrl, commitSha? })` — creates
+  *or* replaces, the server decides which; `sealRoundSubmissions(roundId)`;
+  `getMySubmission` / `listMySubmissions` / `getSubmission` / `getSubmissionHistory`;
+  admin `listAllSubmissions` / `retryEvaluation` / `disqualifySubmission`.
+- **Entities:** `Submission`, `SubmissionRevision`.
+- **Boundary that must not blur:** this module never derives a schedule (it asks
+  `isSubmissionWindowOpen`) and never scores (it enqueues). `state.ts` and `validation.ts` are
+  pure; `submissions.ts` is the only file that touches the database.
+- **Scalability:** burst at deadline — cheap insert + enqueue; validation is syntactic only, with
+  the SSRF guard deferred to probe time.
 
 ## 7. Evaluation Engine (the "AI Judge")
 - **Responsibilities:** for each submission, select the **challenge-type strategy** (D4) and

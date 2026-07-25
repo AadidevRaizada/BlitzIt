@@ -27,12 +27,23 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 | `createPassOrder` | `{ tournamentId }` | user + registration window open + not already paid | create Razorpay order + `Payment(CREATED)`; returns `{ orderId, amountMinor, key }` |
 | *(activation)* | — | — | via **webhook only**, not an action |
 
-### Submission
+### Submission (E4 — see [`18-submission-pipeline.md`](./18-submission-pipeline.md))
 | Action | Input | Authz | Effect |
 |--------|-------|-------|--------|
-| `getRevealedProblem` (read) | `{ roundId }` | registered + `now >= opensAt` | problem statement (never hidden tests) |
-| `submitSolution` | `{ roundId, matchId?, repoUrl, deploymentUrl, commitSha? }` | registered + window open + ownership + (seeded into match, if knockout) | immutable `Submission` + insert `EvaluationJob`; rate-limited |
-| `getMySubmission` (read) | `{ roundId }` | self | current submission + evaluation status |
+| `submitSolutionAction` | `{ roundId, repoUrl, deploymentUrl, commitSha? }` | registered + tournament SIMULATION/LIVE + window open + (paired into a match, if knockout) | creates **or replaces** the entry — the server decides which; appends a `SubmissionRevision`; enqueues an `evaluate` job **after commit** |
+| `getMyRoundSubmissionAction` (read) | `{ roundId }` | self | current entry + evaluation status |
+| `getMySubmissionsAction` (read) | `{ tournamentId? }` | self | submission history |
+| `getSubmissionAction` (read) | `{ submissionId }` | owner or admin | entry + evaluation + job lifecycle |
+| `getSubmissionStatusAction` (read) | `{ submissionId }` | owner or admin | poll target for the status panel |
+| `getSubmissionHistoryAction` (read) | `{ submissionId }` | owner or admin | every accepted revision |
+| `listAllSubmissionsAction` (read) | `{ tournamentId?, roundId? }` | **admin** | every entry |
+| `retryEvaluationAction` | `{ submissionId }` | **admin** | re-queue an evaluation (`reEnqueueEvaluation`) |
+| `disqualifySubmissionAction` | `{ submissionId, reason }` | **admin** | terminal removal from competition (D19) |
+| `getRevealedProblem` (read) | `{ roundId }` | registered + `now >= opensAt` | problem statement (never hidden tests) — *gating implemented inline on `/submit/[roundId]`; a standalone action lands with the arena (E5)* |
+
+> **Rate limiting on `submitSolution` is not yet implemented** — it needs its own Postgres-backed
+> table and is deferred to the arena epic. Duplicate-entry and deployment-URL-reuse checks are in
+> place.
 
 ### Live / Spectator (reads; also powering SSE)
 | Action | Input | Effect |

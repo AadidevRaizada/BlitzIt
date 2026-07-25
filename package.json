@@ -31,7 +31,8 @@
     "verify:profiles": "tsx --conditions=react-server scripts/verify-profiles.ts",
     "verify:tournament": "tsx --conditions=react-server scripts/verify-tournament.ts",
     "verify:bracket": "tsx --conditions=react-server scripts/verify-bracket.ts",
-    "verify:tournament:e2e": "tsx --conditions=react-server scripts/verify-tournament-e2e.ts"
+    "verify:tournament:e2e": "tsx --conditions=react-server scripts/verify-tournament-e2e.ts",
+    "verify:submission": "tsx --conditions=react-server scripts/verify-submission.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",

@@ -9,6 +9,7 @@
 > | **E1** | Authentication | ✅ complete (verified against live GitHub + Google OAuth) |
 > | **E2** | Evaluation Engine spike | ✅ complete |
 > | **E3** | Tournament lifecycle, seeding & bracket engine | ✅ complete — see [`17-tournament-lifecycle.md`](./17-tournament-lifecycle.md) |
+> | **E4** | Submission system & evaluation pipeline | ✅ complete — see [`18-submission-pipeline.md`](./18-submission-pipeline.md) |
 >
 > This directory remains the source-of-truth blueprint; visual decisions live in
 > [`design-system.md`](./design-system.md).
@@ -63,6 +64,7 @@ means a fresh deploy would not reproduce your schema.
 | **15** | **[Engineering Task Breakdown](./15-engineering-tasks.md)** | Granular tickets |
 | **16** | **[Sprint Plan](./16-sprint-plan.md)** | Sequenced sprints |
 | **17** | **[Tournament Lifecycle & Bracket Engine](./17-tournament-lifecycle.md)** | E3 as built: state machine, seeding, bracket, advancement |
+| **18** | **[Submission Pipeline](./18-submission-pipeline.md)** | E4 as built: submission lifecycle, validation, queue handoff, job states |
 | — | **[Design System](./design-system.md)** | Brand, tokens, typography, components, motion |
 | — | [OAuth Setup](./oauth-setup.md) | GitHub/Google OAuth app setup for local dev |
 | — | [Coding Standards](./coding-standards.md) | Conventions, boundaries, security |

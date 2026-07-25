@@ -21,6 +21,9 @@ export default async function AdminLayout({
           <Link href="/admin" className="hover:underline">
             Overview
           </Link>
+          <Link href="/admin/submissions" className="hover:underline">
+            Submissions
+          </Link>
           <Link href="/dashboard" className="hover:underline">
             Back to app
           </Link>

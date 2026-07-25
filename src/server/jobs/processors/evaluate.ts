@@ -4,6 +4,7 @@ import { db } from '@/server/db';
 import { runEvaluation } from '@/server/modules/evaluation';
 import { UnsupportedCategoryError } from '@/server/modules/evaluation';
 import { resolveEvaluationProfile } from '@/server/modules/tournament/evaluation-profiles';
+import { isEvaluationResultCurrent } from '@/server/modules/submission/state';
 import type { ClaimedJob } from '../queue';
 import { logger } from '@/lib/logger';
 
@@ -15,6 +16,13 @@ import { logger } from '@/lib/logger';
  * submission rather than creating a duplicate (the row is unique per
  * submission), so a retried job converges instead of double-writing.
  */
+/** Pull the provider name out of the engine's audit payload, if present. */
+function readProvider(raw: unknown): string | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const provider = (raw as { provider?: unknown }).provider;
+  return typeof provider === 'string' ? provider : null;
+}
+
 export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
   const submissionId =
     typeof job.payload.submissionId === 'string'
@@ -42,6 +50,17 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     log.warn('submission no longer exists; skipping evaluation');
     return;
   }
+
+  // A struck entry must not be re-scored by a job that was already in flight.
+  if (submission.status === 'DISQUALIFIED') {
+    log.warn('submission is disqualified; skipping evaluation');
+    return;
+  }
+
+  // The revision being scored. A competitor may replace their entry while the
+  // window is still open, so the version is captured here and re-checked before
+  // the result is written (E4).
+  const evaluatedVersion = submission.version;
 
   await db.submission.update({
     where: { id: submissionId },
@@ -87,6 +106,7 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     const data = {
       tournamentId: submission.tournamentId,
       attempt: job.attempts,
+      submissionVersion: evaluatedVersion,
       functionalScore: outcome.functionalScore,
       testsPassed: outcome.testsPassed,
       testsTotal: outcome.testsTotal,
@@ -103,6 +123,9 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
       repoTextSnapshot:
         outcome.repoTextSnapshot as unknown as Prisma.InputJsonValue,
       rubricVersion: outcome.ai.rubricVersion,
+      // The engine already records the provider inside its audit payload; this
+      // lifts it into a column so "which backend scored this?" is queryable.
+      llmProvider: readProvider(outcome.ai.raw),
       modelId: outcome.ai.modelId,
       modelPromptHash: outcome.ai.promptHash,
       llmRaw: outcome.ai.raw as unknown as Prisma.InputJsonValue,
@@ -112,17 +135,39 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     };
 
     // One evaluation per submission; a retry updates in place.
-    await db.$transaction([
-      db.evaluation.upsert({
+    //
+    // The write is conditional on the submission still being the revision we
+    // scored. A competitor who replaces their entry mid-evaluation already has
+    // a fresh job queued; letting this one land would overwrite the new
+    // revision's score with the old revision's result.
+    const written = await db.$transaction(async (tx) => {
+      const current = await tx.submission.findUnique({
+        where: { id: submissionId },
+        select: { version: true, status: true },
+      });
+      if (!isEvaluationResultCurrent({ evaluatedVersion, current })) {
+        return false;
+      }
+
+      await tx.evaluation.upsert({
         where: { submissionId },
         create: { submissionId, ...data },
         update: data,
-      }),
-      db.submission.update({
+      });
+      await tx.submission.update({
         where: { id: submissionId },
         data: { status: 'SCORED' },
-      }),
-    ]);
+      });
+      return true;
+    });
+
+    if (!written) {
+      log.warn(
+        { evaluatedVersion },
+        'submission changed while it was being evaluated; discarding the stale result',
+      );
+      return;
+    }
 
     log.info({ overallScore: outcome.overallScore }, 'submission scored');
   } catch (error) {

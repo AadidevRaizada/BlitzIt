@@ -24,6 +24,9 @@ export default async function AppLayout({
           <Link href="/dashboard" className="hover:underline">
             Dashboard
           </Link>
+          <Link href="/submissions" className="hover:underline">
+            Submissions
+          </Link>
           <Link href={`/u/${user.username}`} className="hover:underline">
             Profile
           </Link>

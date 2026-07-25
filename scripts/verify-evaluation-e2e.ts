@@ -125,6 +125,7 @@ async function main() {
       tournamentId: tournament.id,
       roundId: round.id,
       problemId: problem.id,
+      category: 'REST_API',
       repoUrl: `https://github.com/vercel/next.js?${TAG}`,
       deploymentUrl: 'https://example.com',
       status: 'RECEIVED',
@@ -276,6 +277,7 @@ async function main() {
         tournamentId: tournament.id,
         roundId: finalRound.id,
         problemId: problem.id,
+        category: 'REST_API',
         repoUrl: `https://github.com/sindresorhus/p-limit?${TAG}`,
         deploymentUrl: 'https://example.com',
         status: 'RECEIVED',
@@ -339,6 +341,7 @@ async function main() {
         })
       ).id,
       problemId: problem.id,
+      category: 'REST_API',
       repoUrl: `https://github.com/a/b?${TAG}`,
       deploymentUrl: 'https://example.com',
       status: 'RECEIVED',
@@ -378,6 +381,7 @@ async function main() {
         })
       ).id,
       problemId: problem.id,
+      category: 'REST_API',
       repoUrl: `https://github.com/a/b?${TAG}`,
       deploymentUrl: 'https://example.com',
       status: 'RECEIVED',

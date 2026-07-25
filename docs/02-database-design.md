@@ -100,13 +100,24 @@ providerAccountId, tokens. We read, we don't duplicate.
 
 ### Submissions & judging
 
-**Submission** (immutable once created; one per competitor per round/match)
+**Submission** (the CURRENT entry; one per competitor per round/match)
 - `id`, `userId` (FK), `tournamentId` (FK), `roundId` (FK), `matchId` (FK, nullable for
-  simulation), `problemId` (FK), `repoUrl`, `deploymentUrl`, `commitSha` (nullable),
-  `submittedAt` (server time; the anti-cheat anchor), `sealedAt`, `status`
-  (`RECEIVED|QUEUED|JUDGING|SCORED|FAILED|DISQUALIFIED`), `createdAt`.
-- Unique: (`userId`, `roundId`) and (`userId`, `matchId`). **Append-only**: edits create a new
-  row only while the window is open; after `deadlineAt` the latest sealed row is final.
+  simulation), `problemId` (FK), `category` (snapshot of the Problem's `ChallengeCategory` at
+  submit time — re-categorising a problem must not rewrite history), `repoUrl`, `deploymentUrl`,
+  `commitSha` (nullable), `version` (current revision), `submittedAt` (server time; the
+  anti-cheat anchor), `sealedAt`, `status`
+  (`RECEIVED|QUEUED|JUDGING|SCORED|FAILED|DISQUALIFIED`), `createdAt`, `updatedAt`.
+- Unique: (`userId`, `roundId`). Index: (`userId`, `tournamentId`), (`tournamentId`, `status`).
+- **Append-only history (E4):** editing before the deadline mutates this row *and* appends a
+  `SubmissionRevision`. An earlier draft of this doc called for edits to create a new
+  `Submission` row, which its own `(userId, roundId)` unique key forbids — and which E3's
+  advancement reads through with `findUnique`. The sibling table delivers the intent without
+  breaking the constraint. After `sealedAt` the entry is immutable.
+
+**SubmissionRevision** (append-only version history — E4)
+- `id`, `submissionId` (FK, cascade), `version`, `repoUrl`, `deploymentUrl`, `commitSha`,
+  `submittedAt` (server time this version was accepted), `createdAt`.
+- Unique: (`submissionId`, `version`).
 
 **Evaluation** (result of evaluating a submission — one per submission)
 - `id`, `submissionId` (unique FK), `tournamentId`, `attempt`,
@@ -117,7 +128,9 @@ providerAccountId, tokens. We read, we don't duplicate.
   `weights` (jsonb: the exact weights used, for reproducibility),
   `probeEvidence` (jsonb: latency/throughput/security probe results),
   `repoTextSnapshot` (jsonb/text: key files pulled via GitHub API for audit — no cloning),
-  `rubricVersion`, `modelId`, `modelPromptHash`, `llmRaw` (jsonb: full prompt+response),
+  `rubricVersion`, `llmProvider` (which backend scored it — lifted out of `llmRaw` so it is
+  queryable), `modelId`, `modelPromptHash`, `llmRaw` (jsonb: full prompt+response),
+  `submissionVersion` (which revision produced this score — makes a stale result detectable),
   `startedAt`, `finishedAt`, `error` (nullable), `overriddenBy` (FK User, nullable),
   `overrideReason`, `createdAt`.
 

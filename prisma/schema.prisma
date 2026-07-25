@@ -450,18 +450,53 @@ model Submission {
   matchId       String?
   problemId     String
   problem       Problem          @relation(fields: [problemId], references: [id])
+  /// Challenge category this entry was accepted under (E4). Snapshotted from
+  /// the Problem at submit time rather than joined on read: it is the category
+  /// the submission was validated and scored against, and re-categorising a
+  /// problem afterwards must not silently rewrite history.
+  category      ChallengeCategory
   repoUrl       String
   deploymentUrl String
   commitSha     String?
+  /// Current revision number. A competitor may replace their entry while the
+  /// window is open; every accepted version is kept in `revisions` (E4).
+  version       Int              @default(1)
   submittedAt   DateTime         @default(now())
+  /// Set when the window closes. A sealed submission is immutable.
   sealedAt      DateTime?
   status        SubmissionStatus @default(RECEIVED)
   evaluation    Evaluation?
+  revisions     SubmissionRevision[]
   jobs          EvaluationJob[]
   createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt @default(now())
 
   @@unique([userId, roundId])
   @@index([tournamentId, status])
+  @@index([userId, tournamentId])
+}
+
+/// Append-only history of every accepted version of a submission (E4).
+///
+/// `Submission` stays the ONE current entry per (user, round) — the unique key
+/// the tournament engine reads through — and each edit made before the deadline
+/// appends a row here. Doc 02 calls for append-only edits while the window is
+/// open; keeping history in a sibling table delivers that without relaxing the
+/// (userId, roundId) uniqueness that E3's advancement relies on.
+model SubmissionRevision {
+  id            String     @id @default(uuid())
+  submissionId  String
+  submission    Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  version       Int
+  repoUrl       String
+  deploymentUrl String
+  commitSha     String?
+  /// Server time this version was accepted — the anti-cheat anchor (D19).
+  submittedAt   DateTime   @default(now())
+  createdAt     DateTime   @default(now())
+
+  @@unique([submissionId, version])
+  @@index([submissionId])
 }
 
 model Evaluation {
@@ -471,6 +506,10 @@ model Evaluation {
   tournamentId             String
   tournament               Tournament @relation(fields: [tournamentId], references: [id])
   attempt                  Int        @default(1)
+  /// Which revision of the submission produced this score (E4). A competitor
+  /// may replace their entry while an evaluation is in flight; recording the
+  /// version makes a stale result detectable instead of silently authoritative.
+  submissionVersion        Int        @default(1)
   functionalScore          Float      @default(0)
   testsPassed              Int        @default(0)
   testsTotal               Int        @default(0)
@@ -488,6 +527,10 @@ model Evaluation {
   probeEvidence            Json?
   repoTextSnapshot         Json?
   rubricVersion            String?
+  /// LLM backend that produced the AI dimension (D18). The engine already
+  /// records it inside `llmRaw`; lifting it into its own column makes
+  /// "which provider scored this round?" answerable without parsing JSONB.
+  llmProvider              String?
   modelId                  String?
   modelPromptHash          String?
   llmRaw                   Json?
@@ -701,7 +744,10 @@ model OpsEvent {
   startedAt      DateTime?
   completedAt    DateTime?
   createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  /// Defaulted as well as @updatedAt so the column matches what the E3
+  /// migration created. Without the default here Prisma reads the database as
+  /// drifted and emits a DROP DEFAULT on the next migration.
+  updatedAt      DateTime   @updatedAt @default(now())
 
   @@index([tournamentId, status])
   @@index([status, scheduledFor])
