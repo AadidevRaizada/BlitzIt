@@ -589,6 +589,20 @@ export interface EvaluationView {
   overrideReason: string | null;
 }
 
+export interface AdminEvaluationView extends EvaluationView {
+  testResults: unknown;
+  probeEvidence: unknown;
+  repoTextSnapshot: unknown;
+  llmRaw: unknown;
+}
+
+export interface AdminSubmissionView extends Omit<
+  SubmissionView,
+  'evaluation'
+> {
+  evaluation: AdminEvaluationView | null;
+}
+
 const SUBMISSION_INCLUDE = {
   evaluation: true,
   jobs: { orderBy: { createdAt: 'desc' }, take: 1 },
@@ -598,12 +612,46 @@ type SubmissionWithRelations = Prisma.SubmissionGetPayload<{
   include: typeof SUBMISSION_INCLUDE;
 }>;
 
+function toView(row: SubmissionWithRelations, now?: Date): SubmissionView;
+function toView(
+  row: SubmissionWithRelations,
+  now: Date,
+  includeEvidence: true,
+): AdminSubmissionView;
 function toView(
   row: SubmissionWithRelations,
   now = new Date(),
-): SubmissionView {
+  includeEvidence = false,
+): SubmissionView | AdminSubmissionView {
   const job = row.jobs[0];
-  return {
+  const evaluation = row.evaluation
+    ? {
+        overallScore: row.evaluation.overallScore,
+        functionalScore: row.evaluation.functionalScore,
+        performanceScore: row.evaluation.performanceScore,
+        securityReliabilityScore: row.evaluation.securityReliabilityScore,
+        aiScore: row.evaluation.aiScore,
+        testsPassed: row.evaluation.testsPassed,
+        testsTotal: row.evaluation.testsTotal,
+        deploymentReachable: row.evaluation.deploymentReachable,
+        weights: row.evaluation.weights,
+        profileName: row.evaluation.profileName,
+        dimensions: row.evaluation.dimensions,
+        llmProvider: row.evaluation.llmProvider,
+        modelId: row.evaluation.modelId,
+        modelPromptHash: row.evaluation.modelPromptHash,
+        rubricVersion: row.evaluation.rubricVersion,
+        submissionVersion: row.evaluation.submissionVersion,
+        attempt: row.evaluation.attempt,
+        startedAt: row.evaluation.startedAt,
+        finishedAt: row.evaluation.finishedAt,
+        error: row.evaluation.error,
+        overriddenBy: row.evaluation.overriddenBy,
+        overrideReason: row.evaluation.overrideReason,
+      }
+    : null;
+
+  const base: SubmissionView = {
     id: row.id,
     userId: row.userId,
     tournamentId: row.tournamentId,
@@ -618,33 +666,24 @@ function toView(
     submittedAt: row.submittedAt,
     sealedAt: row.sealedAt,
     state: toSubmissionState(row.status),
-    evaluation: row.evaluation
-      ? {
-          overallScore: row.evaluation.overallScore,
-          functionalScore: row.evaluation.functionalScore,
-          performanceScore: row.evaluation.performanceScore,
-          securityReliabilityScore: row.evaluation.securityReliabilityScore,
-          aiScore: row.evaluation.aiScore,
-          testsPassed: row.evaluation.testsPassed,
-          testsTotal: row.evaluation.testsTotal,
-          deploymentReachable: row.evaluation.deploymentReachable,
-          weights: row.evaluation.weights,
-          profileName: row.evaluation.profileName,
-          dimensions: row.evaluation.dimensions,
-          llmProvider: row.evaluation.llmProvider,
-          modelId: row.evaluation.modelId,
-          modelPromptHash: row.evaluation.modelPromptHash,
-          rubricVersion: row.evaluation.rubricVersion,
-          submissionVersion: row.evaluation.submissionVersion,
-          attempt: row.evaluation.attempt,
-          startedAt: row.evaluation.startedAt,
-          finishedAt: row.evaluation.finishedAt,
-          error: row.evaluation.error,
-          overriddenBy: row.evaluation.overriddenBy,
-          overrideReason: row.evaluation.overrideReason,
-        }
-      : null,
+    evaluation,
     job: job ? describeJob(job, now) : null,
+  };
+
+  if (!includeEvidence) return base;
+
+  return {
+    ...base,
+    evaluation:
+      evaluation && row.evaluation
+        ? {
+            ...evaluation,
+            testResults: row.evaluation.testResults,
+            probeEvidence: row.evaluation.probeEvidence,
+            repoTextSnapshot: row.evaluation.repoTextSnapshot,
+            llmRaw: row.evaluation.llmRaw,
+          }
+        : null,
   };
 }
 
@@ -666,6 +705,20 @@ export async function getSubmission(
   if (!row) throw new NotFoundError('That submission does not exist');
   assertCanView(viewer, row.userId);
   return toView(row);
+}
+
+export async function getAdminSubmission(
+  submissionId: string,
+  admin: Pick<User, 'id' | 'role'>,
+): Promise<AdminSubmissionView> {
+  if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
+
+  const row = await db.submission.findUnique({
+    where: { id: submissionId },
+    include: SUBMISSION_INCLUDE,
+  });
+  if (!row) throw new NotFoundError('That submission does not exist');
+  return toView(row, new Date(), true);
 }
 
 /** The competitor's current entry for a round, if any. */
@@ -724,7 +777,7 @@ export async function listAllSubmissions(
     state?: SubmissionState;
     take?: number;
   } = {},
-): Promise<SubmissionView[]> {
+): Promise<AdminSubmissionView[]> {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
 
   const rows = await db.submission.findMany({
@@ -737,7 +790,8 @@ export async function listAllSubmissions(
     orderBy: { submittedAt: 'desc' },
     take: filter.take ?? 100,
   });
-  return rows.map((row) => toView(row));
+  const now = new Date();
+  return rows.map((row) => toView(row, now, true));
 }
 
 /**

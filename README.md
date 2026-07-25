@@ -17,7 +17,8 @@ cloning-to-build. See [`docs/DECISIONS.md`](./docs/DECISIONS.md) (D1).
 | **E2** | Evaluation Engine | ✅ complete |
 | **E3** | Tournament lifecycle, seeding & bracket engine | ✅ complete |
 | **E4** | Submission system & evaluation pipeline | ✅ complete |
-| E5 | Simulation arena & payments | not started |
+| **E5** | Admin platform & tournament management UI | complete |
+| E6 | Future epic | not started |
 
 Per-epic history lives in `CHANGELOG_EPIC_E*.md`. The architecture blueprint is
 [`docs/`](./docs/README.md), locked for V1 in [`DECISIONS.md`](./docs/DECISIONS.md).
@@ -49,7 +50,8 @@ src/server/modules/
                 ...and the stage → evaluation-profile policy (D20)
   submission/   accept · replace · revision history · seal · hand to the queue
   evaluation/   evaluation only — stage-agnostic, provider-agnostic
-  admin/        audit trail
+  problem/      admin-owned challenge/problem authoring + hidden tests
+  admin/        admin read models, user directory, audit-log access
 src/server/jobs/         Postgres-backed queue + in-process runner (D3)
 src/server/actions/      Server Actions: validate → authorize → module → revalidate
 ```
@@ -93,6 +95,7 @@ real network probes.
 | `npm run verify:bracket` | Bracket topology at 8/16/32/64, byes, seeding, the D5 win rule |
 | `npm run verify:tournament:e2e` | A tournament from DRAFT to COMPLETED, incl. restart recovery |
 | `npm run verify:submission` | Submission state machine, validation, job lifecycle, full pipeline |
+| `npm run verify:admin` | Admin platform workflows, guards, audited tournament management |
 | `npm run verify:llm` | LLM provider wiring (needs a configured key) |
 
 ## Database workflow

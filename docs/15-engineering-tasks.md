@@ -4,6 +4,11 @@ Granular, buildable tickets grouped by epic. IDs map to the roadmap milestones
 ([`06`](./06-development-roadmap.md)) and sprints ([`16`](./16-sprint-plan.md)). Each is sized
 S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 
+> **E5 correction:** Epic E5 was delivered as the Admin Platform & Tournament Management UI. The
+> older "simulation arena + payments" labels below are pre-implementation planning text and are no
+> longer the source of truth for E5. See [`19-admin-platform.md`](./19-admin-platform.md) and
+> `CHANGELOG_EPIC_E5.md`.
+
 ---
 
 ## E0 — Foundation (M0)

@@ -91,6 +91,7 @@ export {
   getRevealedRound,
   getStageRound,
   getSimulationRounds,
+  listRounds,
   loadTournamentConfig,
   type SubmissionWindow,
   type RevealedRound,
@@ -150,6 +151,22 @@ export {
   getTournamentProgress,
   type ProgressResult,
 } from './progress';
+
+// ---- Admin operations & aggregate reads (E5) ----
+export {
+  listTournamentSummaries,
+  getTournamentSummary,
+  listBracketRounds,
+  listRegistrations,
+  removeRegistration,
+  setTournamentArchived,
+  getQueueHealth,
+  type TournamentSummary,
+  type ListTournamentSummariesOptions,
+  type RegistrationView,
+  type QueueHealth,
+  type BracketRoundView,
+} from './admin-ops';
 
 // ---- Evaluation policy (D20) ----
 export {

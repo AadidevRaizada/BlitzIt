@@ -11,6 +11,8 @@
 > | **E3** | Tournament lifecycle, seeding & bracket engine | ✅ complete — see [`17-tournament-lifecycle.md`](./17-tournament-lifecycle.md) |
 > | **E4** | Submission system & evaluation pipeline | ✅ complete — see [`18-submission-pipeline.md`](./18-submission-pipeline.md) |
 >
+> | **E5** | Admin platform & tournament management | complete - see [`19-admin-platform.md`](./19-admin-platform.md) |
+>
 > This directory remains the source-of-truth blueprint; visual decisions live in
 > [`design-system.md`](./design-system.md).
 

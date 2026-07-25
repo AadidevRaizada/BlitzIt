@@ -5,6 +5,10 @@ each sprint ends with something demoable. Epics/tasks reference
 [`15-engineering-tasks.md`](./15-engineering-tasks.md). Durations assume a small team; adjust to
 capacity. The **critical path** is Sprint 1 → 2 → 4 → 5 → 6 → 8.
 
+> **E5 correction:** the delivered E5 is Admin Platform & Tournament Management, not the older
+> simulation/payments label in this original sprint plan. See
+> [`19-admin-platform.md`](./19-admin-platform.md).
+
 > Guiding rule: **do not run a real-money event** until Sprint 8 (compliance-lite) and Sprint 9
 > (hardening + dress rehearsal) both pass.
 

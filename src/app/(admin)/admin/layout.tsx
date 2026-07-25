@@ -1,10 +1,16 @@
 import Link from 'next/link';
 import { requireAdmin } from '@/server/modules/auth';
 import { SignOutButton } from '@/components/features/sign-out-button';
+import { AdminNav } from './admin-nav';
 
 /**
- * Guarded layout for the admin panel. Requires an ADMIN role; signed-in
- * non-admins are redirected to the dashboard, signed-out users to /login.
+ * Guarded layout for the admin platform (E5). Requires an ADMIN role;
+ * signed-in non-admins are redirected to the dashboard, signed-out users to
+ * /login.
+ *
+ * Layout: a persistent sidebar on desktop and tablet, collapsing to a
+ * horizontal scroller on narrow screens. Dense and quiet — the application
+ * surface optimises for scanning, not decoration (design-system §1).
  */
 export default async function AdminLayout({
   children,
@@ -14,26 +20,37 @@ export default async function AdminLayout({
   const user = await requireAdmin('/admin');
 
   return (
-    <div className="min-h-screen">
-      <header className="border-border bg-muted flex items-center justify-between border-b px-6 py-3">
-        <nav className="flex items-center gap-4 text-sm">
-          <span className="font-semibold">Blitz It · Admin</span>
-          <Link href="/admin" className="hover:underline">
-            Overview
+    <div className="bg-background min-h-screen">
+      <header className="border-border bg-card sticky top-0 z-20 flex items-center justify-between border-b px-4 py-2.5 sm:px-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin"
+            className="focus-visible:ring-ring rounded-sm text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Blitz It
+            <span className="text-muted-foreground ml-1.5 font-normal">
+              Admin
+            </span>
           </Link>
-          <Link href="/admin/submissions" className="hover:underline">
-            Submissions
-          </Link>
-          <Link href="/dashboard" className="hover:underline">
+        </div>
+        <div className="flex items-center gap-3 text-sm">
+          <Link
+            href="/dashboard"
+            className="text-muted-foreground hover:text-foreground hidden sm:inline"
+          >
             Back to app
           </Link>
-        </nav>
-        <div className="flex items-center gap-3 text-sm">
-          <span className="text-muted-foreground">{user.username} (admin)</span>
+          <span className="text-muted-foreground hidden md:inline">
+            {user.username}
+          </span>
           <SignOutButton />
         </div>
       </header>
-      <main className="p-6">{children}</main>
+
+      <div className="md:grid md:grid-cols-[13rem_1fr]">
+        <AdminNav />
+        <main className="min-w-0 p-4 sm:p-6">{children}</main>
+      </div>
     </div>
   );
 }

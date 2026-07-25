@@ -76,6 +76,10 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Entities:** `Problem`, `HiddenTest`.
 - **Scalability:** problems are cacheable once revealed; hidden tests never leave the server.
 
+> **E5 update:** admin challenge management is implemented in `server/modules/problem/` and
+> exposed at `/admin/challenges`. The route name follows the E5 brief; the persisted entity remains
+> `Problem`. Hidden-test specs are visible only on admin detail screens.
+
 ## 6. Submission
 > **As built in E4** — see [`18-submission-pipeline.md`](./18-submission-pipeline.md).
 
@@ -174,6 +178,12 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **APIs:** admin Server Actions under `(admin)/`.
 - **Entities:** `AuditLog`, `OpsEvent`.
 - **Scalability:** internal, low volume; correctness + audit first.
+
+> **E5 as built:** the admin module now includes the organizer platform: dashboard, tournament
+> CRUD/settings/lifecycle controls, registration management, challenge/problem authoring,
+> submission management, read-only evaluation inspection, user directory, and audit log. Score
+> override, payouts, notifications, and spectator controls remain deferred. See
+> [`19-admin-platform.md`](./19-admin-platform.md).
 
 ## 12. Analytics & Monitoring
 - **Responsibilities:** product funnels (PostHog), exceptions/traces (Sentry), feature flags to

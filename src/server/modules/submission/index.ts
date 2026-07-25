@@ -14,6 +14,7 @@ import 'server-only';
 export {
   submitSolution,
   sealRoundSubmissions,
+  getAdminSubmission,
   getSubmission,
   getMySubmission,
   listMySubmissions,
@@ -25,6 +26,8 @@ export {
   type SubmissionResult,
   type SubmissionView,
   type EvaluationView,
+  type AdminSubmissionView,
+  type AdminEvaluationView,
 } from './submissions';
 
 export {

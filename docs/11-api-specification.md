@@ -59,6 +59,13 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 | `withdrawFromTournamentAction` | `{ tournamentId }` | self, and only while registration is open | `Registration(REVOKED)`, frees the slot |
 
 ### Admin (all `requireAdmin`, all audited)
+
+> **E5 as built:** admin UI actions live in `src/server/actions/admin.actions.ts` and orchestrate
+> the existing modules. Implemented: tournament CRUD/schedule/archive/delete-draft/lifecycle,
+> registration revocation, challenge/problem authoring, hidden tests, problem assignment,
+> submission retry/disqualification, evaluation inspection, user directory, and audit reads.
+> Deferred: score override, payouts, sudden death, notification controls, and spectator surfaces.
+
 | Action | Input | Effect |
 |--------|-------|--------|
 | `createTournament` | tournament fields | new `Tournament(DRAFT)` |

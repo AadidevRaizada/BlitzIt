@@ -4,6 +4,11 @@ Operator flows for running a weekly tournament. Screens ([#]) from
 [`12-ui-screens.md`](./12-ui-screens.md); actions from [`11`](./11-api-specification.md). Every
 admin action is `requireAdmin` and written to `AuditLog`.
 
+> **E5 as built:** organizers can operate tournaments through `/admin`: dashboard,
+> tournament CRUD/settings/lifecycle controls, registrations, submissions, read-only evaluations,
+> challenges, users, settings, and audit log. Payouts, score override, sudden death, spectator
+> management, and notifications remain deferred.
+
 ---
 
 ## A1 — Set up a weekly tournament (before Tuesday)

@@ -37,6 +37,13 @@ enum TournamentStatus {
   CANCELLED
 }
 
+/// Whether a tournament is listed on public surfaces. Orthogonal to
+/// `TournamentStatus`, which describes the lifecycle phase (E5).
+enum TournamentVisibility {
+  PUBLIC
+  UNLISTED
+}
+
 /// Which side of a match a feeder's outcome lands in. Persisted rather than
 /// derived from `bracketPosition` parity so the topology is fully readable from
 /// the database alone — the advancement engine never recomputes the tree.
@@ -285,6 +292,20 @@ model Tournament {
   id                        String           @id @default(uuid())
   slug                      String           @unique
   name                      String
+  /// Operator-facing blurb shown on admin cards and (later) the public page.
+  description               String?
+  /// Whether the tournament is listed on public surfaces (E5).
+  ///
+  /// Distinct from `status`: status is the LIFECYCLE phase (is registration
+  /// open? are we live?), visibility is whether anyone but an admin should see
+  /// it at all. A rehearsal tournament runs the full lifecycle UNLISTED.
+  visibility                TournamentVisibility @default(PUBLIC)
+  /// Shelved by an admin. NOT a lifecycle state — archiving is a filing
+  /// operation on a finished tournament, so it stays off the E3 state machine
+  /// (which would otherwise need a new terminal state and new edges from every
+  /// other one). Archived tournaments are hidden from the default admin list
+  /// and are never resurrected into a different phase.
+  archivedAt                DateTime?
   status                    TournamentStatus @default(DRAFT)
   /// Knockout stage currently in progress. Only meaningful while `status` is
   /// LIVE; together the pair forms the full lifecycle state (E3). Persisted so

@@ -99,7 +99,12 @@ export type TournamentScheduleInput = z.infer<typeof tournamentScheduleSchema>;
 
 export const updateTournamentSchema = createTournamentSchema
   .partial()
-  .omit({ slug: true });
+  .omit({ slug: true })
+  .extend({
+    bracketSize: bracketSizeSchema.nullable().optional(),
+    minRegistrations: z.number().int().min(0).nullable().optional(),
+    maxRegistrations: z.number().int().positive().nullable().optional(),
+  });
 
 export type UpdateTournamentInput = z.infer<typeof updateTournamentSchema>;
 

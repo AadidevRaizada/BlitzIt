@@ -269,6 +269,36 @@ export async function getStageRound(
   });
 }
 
+/**
+ * Every round of a tournament in play order — simulation first, then the
+ * knockout stages. Used by the admin timeline, which needs the whole schedule
+ * in one read rather than stage-by-stage lookups.
+ */
+export async function listRounds(
+  tournamentId: string,
+  client: DbClient = db,
+): Promise<
+  Array<
+    Round & {
+      problem: {
+        id: string;
+        title: string;
+        category: ChallengeCategory;
+      } | null;
+      _count: { submissions: number; matches: number };
+    }
+  >
+> {
+  return client.round.findMany({
+    where: { tournamentId },
+    orderBy: [{ type: 'asc' }, { sequence: 'asc' }],
+    include: {
+      problem: { select: { id: true, title: true, category: true } },
+      _count: { select: { submissions: true, matches: true } },
+    },
+  });
+}
+
 /** All simulation rounds, in play order. */
 export async function getSimulationRounds(
   tournamentId: string,
