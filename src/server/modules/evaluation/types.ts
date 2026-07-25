@@ -23,6 +23,66 @@ export const DEFAULT_WEIGHTS: ScoreWeights = {
   ai: 0.15,
 };
 
+/** The four independently-selectable scoring dimensions. */
+export type EvaluationDimension =
+  'functional' | 'performance' | 'securityReliability' | 'ai';
+
+export const EVALUATION_DIMENSIONS: readonly EvaluationDimension[] = [
+  'functional',
+  'performance',
+  'securityReliability',
+  'ai',
+] as const;
+
+/**
+ * Which dimensions to evaluate, and how to weight them (D20).
+ *
+ * The engine is **stage-agnostic**: it never asks what round this is, it only
+ * honours the profile it is handed. The tournament layer owns the
+ * stage → profile decision (see `server/modules/tournament/evaluation-profiles`).
+ *
+ * A dimension that is `false` is **not evaluated at all** — no probe, no API
+ * call — which is what makes disabling AI in early rounds actually save money
+ * and latency rather than merely zeroing its weight.
+ */
+export interface EvaluationProfile {
+  /** Recorded on the Evaluation row so a score can be explained later. */
+  name: string;
+  dimensions: Record<EvaluationDimension, boolean>;
+  /** Relative weights. Inactive dimensions are forced to 0 before blending. */
+  weights: ScoreWeights;
+}
+
+/**
+ * Weights with every inactive dimension zeroed. `computeOverallScore`
+ * renormalises by the surviving total, so removing AI rescales the remaining
+ * dimensions instead of capping the maximum achievable score at 85.
+ */
+export function effectiveWeights(profile: EvaluationProfile): ScoreWeights {
+  return {
+    functional: profile.dimensions.functional ? profile.weights.functional : 0,
+    performance: profile.dimensions.performance
+      ? profile.weights.performance
+      : 0,
+    securityReliability: profile.dimensions.securityReliability
+      ? profile.weights.securityReliability
+      : 0,
+    ai: profile.dimensions.ai ? profile.weights.ai : 0,
+  };
+}
+
+/** Profile used when a caller does not specify one — all four dimensions (D2). */
+export const FULL_PROFILE: EvaluationProfile = {
+  name: 'full',
+  dimensions: {
+    functional: true,
+    performance: true,
+    securityReliability: true,
+    ai: true,
+  },
+  weights: DEFAULT_WEIGHTS,
+};
+
 /** Result of one hidden test run against the deployment. */
 export interface TestResult {
   id: string;
@@ -79,9 +139,34 @@ export interface AiQualityResult {
   rubricVersion: string;
   /** Full prompt + raw response, retained for dispute audit. */
   raw: unknown;
-  /** True when the model was unavailable and a neutral score was substituted. */
+  /**
+   * True when the model was unavailable and a neutral score was substituted.
+   * Distinct from `skipped`: degraded means "we wanted AI and could not get it"
+   * (an incident worth alerting on), skipped means "policy said not to run it".
+   */
   degraded: boolean;
+  /** True when the profile did not request the AI dimension (D20). */
+  skipped: boolean;
 }
+
+/** AI result used when the active profile excludes the AI dimension (D20). */
+export const SKIPPED_AI: AiQualityResult = {
+  score: 0,
+  breakdown: {
+    codeOrganization: 0,
+    architecture: 0,
+    documentation: 0,
+    uiPolish: null,
+  },
+  summary:
+    'AI evaluation is not part of this round (deterministic profile). No model was called.',
+  modelId: 'none',
+  promptHash: '',
+  rubricVersion: 'n/a',
+  raw: null,
+  degraded: false,
+  skipped: true,
+};
 
 /** Everything a strategy needs. Nothing here is executed. */
 export interface EvaluationContext {
@@ -123,7 +208,12 @@ export interface EvaluationOutcome {
   securityReliabilityScore: number;
   aiScore: number;
   overallScore: number;
+  /** Effective weights actually applied (inactive dimensions are 0). */
   weights: ScoreWeights;
+  /** Profile that governed this evaluation — recorded for audit (D20). */
+  profileName: string;
+  /** Dimensions that were actually evaluated. */
+  dimensions: Record<EvaluationDimension, boolean>;
   testsPassed: number;
   testsTotal: number;
   deploymentReachable: boolean;

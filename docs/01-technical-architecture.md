@@ -56,7 +56,8 @@
                                            │      uptime / basic checks vs URL          │
                                            │   4. Read repo TEXT via GitHub API         │
                                            │   5. LLM quality/architecture/docs/UI      │
-                                           │   → weighted overallScore (60/15/10/15)    │
+                                           │   → weighted overallScore over the ACTIVE  │
+                                           │     dimensions of the stage profile (D20)  │
                                            └───┬───────────────────────┬────────────────┘
                                                │                       │
                                                ▼                       ▼
@@ -100,9 +101,17 @@
   for that type against the **deployment URL**; the LLM quality pass is shared and reads **repo
   text via the GitHub API**.
 - **Scoring (D2):** `overall = 0.60·functional + 0.15·performance + 0.10·securityReliability +
-  0.15·ai`. LLM output is schema-validated, temperature 0, model+prompt pinned per tournament,
-  full prompt/response stored for audit. Untrusted repo/README text is treated as **data, never
-  instructions** (prompt-injection defense). Admin can override.
+  0.15·ai`, **restricted to the dimensions the stage profile activates (D20)** and renormalised
+  by the surviving weights. LLM output is schema-validated, temperature 0, model+prompt pinned
+  per tournament, full prompt/response stored for audit. Untrusted repo/README text is treated
+  as **data, never instructions** (prompt-injection defense). Admin can override.
+- **Stage profiles (D20):** the engine is **stage-agnostic** — it evaluates exactly the
+  dimensions in the `EvaluationProfile` handed to it. The **tournament layer**
+  (`modules/tournament/evaluation-profiles.ts`) maps stage → profile: `deterministic`
+  (Functional/Performance/Security, **no AI**) for qualifiers through QF; `full` (adds AI) from
+  SF/THIRD_PLACE/FINAL; `functional-only` for sudden death. Inactive dimensions are **not
+  evaluated at all** — no probe, no GitHub read, no model call — which is where the cost and
+  latency savings come from. Organizers override via `Tournament.evaluationProfiles` JSON.
 
 ### Email — Resend
 - Sent from the runner (or a scheduled sweep), idempotent per (user, event) via `dedupeKey`.

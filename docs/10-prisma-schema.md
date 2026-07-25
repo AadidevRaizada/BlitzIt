@@ -34,7 +34,7 @@ datasource db {
 enum Role            { USER ADMIN }
 enum TournamentStatus{ DRAFT REGISTRATION_OPEN REGISTRATION_CLOSED SIMULATION SEEDING LIVE COMPLETED CANCELLED }
 enum RoundType       { SIMULATION KNOCKOUT }
-enum RoundStage      { SIMULATION R64 R32 R16 QF SF FINAL SUDDEN_DEATH }
+enum RoundStage      { SIMULATION R64 R32 R16 QF SF THIRD_PLACE FINAL SUDDEN_DEATH }
 enum RoundStatus     { PENDING OPEN JUDGING COMPLETED }
 enum MatchStatus     { PENDING LIVE JUDGING DECIDED }
 enum WinReason       { SCORE TIEBREAK_FUNCTIONAL TIEBREAK_TESTS TIEBREAK_TIME TIEBREAK_PERFORMANCE TIEBREAK_AI SUDDEN_DEATH BYE WALKOVER ADMIN }
@@ -114,6 +114,7 @@ model Tournament {
   liveStartsAt         DateTime?
   completedAt          DateTime?
   roundDurations       Json?   // e.g. {simulation:[1800,1200,600], knockout:[1200,1800,2400,3000,3600]}
+  evaluationProfiles   Json?   // stage -> evaluation profile overrides (D20); null = defaults
   createdBy            String?
   rounds               Round[]
   matches              Match[]
@@ -247,7 +248,9 @@ model Evaluation {
   performanceScore       Float  @default(0)
   securityReliabilityScore Float @default(0)
   aiScore                Float  @default(0)
-  overallScore           Float  @default(0)   // weighted 60/15/10/15
+  overallScore           Float  @default(0)   // weighted, ACTIVE dimensions only (D20)
+  profileName            String?              // stage profile that governed this score
+  dimensions             Json?                // which dimensions actually ran
   weights                Json                  // exact weights used (reproducibility)
   probeEvidence          Json?                 // latency/throughput/security probe results
   repoTextSnapshot       Json?                 // key files pulled via GitHub API (no cloning)

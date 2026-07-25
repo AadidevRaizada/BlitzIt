@@ -26,7 +26,10 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
   (stream + bracket dominate), between-tournaments (last champion + next start).
 
 ### 2. Rules / How it works — `/rules`  [RSC]
-- Static explainer of philosophy, allowed tools, scoring (60/15/10/15), challenge types.
+- Static explainer of philosophy, allowed tools, challenge types, and scoring: 60/15/10/15, with
+  a clear statement that **AI evaluation applies only from the semifinals onward** — qualifiers
+  through the quarterfinals are scored on deterministic measurements only (D20). Competitors
+  must be able to see which dimensions decide their current round.
 
 ### 3. Hall of Fame — `/hall-of-fame`  [RSC]
 - Past champions, runner-ups, notable performances; links to profiles.

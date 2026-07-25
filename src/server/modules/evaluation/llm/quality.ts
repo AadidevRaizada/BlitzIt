@@ -77,6 +77,7 @@ function degradedResult(reason: string): AiQualityResult {
     rubricVersion: RUBRIC_VERSION,
     raw: { degraded: true, reason },
     degraded: true,
+    skipped: false,
   };
 }
 
@@ -196,5 +197,6 @@ export async function evaluateQuality(
       rawText: response.text.slice(0, 4000),
     },
     degraded: false,
+    skipped: false,
   };
 }

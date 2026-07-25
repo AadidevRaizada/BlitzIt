@@ -125,5 +125,6 @@ blitz-it/
 - **`components/ui` vs `components/features`** — vendored primitives vs product composition, so
   shadcn updates don't collide with our code.
 - **`emails/` + `tests/`** — templates rendered from the runner; tests focus on the parts that
-  must be correct: bracket advancement, tie-breaks, scoring blend (60/15/10/15), payment
+  must be correct: bracket advancement, tie-breaks, scoring blend (60/15/10/15 over active
+  dimensions, D20), stage → profile resolution, payment
   idempotency.

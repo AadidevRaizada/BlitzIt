@@ -26,7 +26,9 @@ Dashboard [6] (registered) → Simulation Arena [8]
   → build solution off-platform (any tools/AI) → deploy to own URL
   → submitSolution { repoUrl, deploymentUrl } BEFORE server deadlineAt
   → Submission sealed (immutable) → EvaluationJob enqueued
-  → runner: functional tests vs URL + perf + security + repo-text LLM → Evaluation (60/15/10/15)
+  → runner: resolve stage profile (D20; qualifiers = deterministic, NO LLM)
+  → functional tests vs URL + perf + security [+ repo-text LLM only from SF onward]
+  → Evaluation (60/15/10/15 over the active dimensions, renormalised)
   → Ranking updated → repeat for rounds 2 (20 min) & 3 (10 min)
 ```
 - **Guards:** registered; window open; one submission per round; no edits after deadline.

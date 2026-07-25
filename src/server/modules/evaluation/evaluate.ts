@@ -4,10 +4,11 @@ import { warmUpDeployment } from './reachability';
 import { readRepoAsText } from './github-text';
 import { evaluateQuality } from './llm/quality';
 import { computeOverallScore } from './score';
-import { DEFAULT_WEIGHTS } from './types';
+import { effectiveWeights, FULL_PROFILE, SKIPPED_AI } from './types';
 import type {
   EvaluationContext,
   EvaluationOutcome,
+  EvaluationProfile,
   FunctionalResult,
   PerformanceResult,
   SecurityReliabilityResult,
@@ -18,12 +19,18 @@ import { logger } from '@/lib/logger';
  * Evaluation orchestrator (E2.6).
  *
  * Given a submission's repo + deployment URL, produce a reproducible
- * `EvaluationOutcome` with four dimensions and full evidence. Nothing is
- * cloned, built or executed (D1).
+ * `EvaluationOutcome` and full evidence. Nothing is cloned, built or executed
+ * (D1).
  *
  * Order matters: reachability gates the deployment-facing probes (D15), while
- * the repo/LLM pass runs regardless so an unreachable deployment still yields a
- * quality score instead of a blank row.
+ * the repo/LLM pass runs independently so an unreachable deployment still
+ * yields a quality score instead of a blank row.
+ *
+ * **Stage-agnostic (D20).** The orchestrator never asks what round this is; it
+ * evaluates exactly the dimensions the supplied `profile` requests. The
+ * tournament layer decides the profile. An inactive dimension is skipped
+ * outright — no probe, no GitHub read, no model call — so early rounds are
+ * genuinely cheaper and faster rather than merely zero-weighted.
  */
 
 const UNREACHABLE_FUNCTIONAL: FunctionalResult = {
@@ -57,56 +64,80 @@ const UNREACHABLE_SECURITY: SecurityReliabilityResult = {
 
 export async function runEvaluation(
   ctx: EvaluationContext,
+  profile: EvaluationProfile = FULL_PROFILE,
 ): Promise<EvaluationOutcome> {
   const strategy = getStrategy(ctx.category); // throws for disabled categories (D17)
-  const log = logger.child({ submissionId: ctx.submissionId });
+  const log = logger.child({
+    submissionId: ctx.submissionId,
+    profile: profile.name,
+  });
+
+  const active = profile.dimensions;
+  // The repo read exists solely to feed the LLM pass, so it follows the AI
+  // dimension. Skipping it is where the latency saving in early rounds comes
+  // from; the submission's commit SHA is pinned on the Submission row already.
+  const needsRepo = active.ai;
 
   // 1. Reachability first — a cold start must not be scored as failure (D15).
-  const warmup = await warmUpDeployment(ctx.deploymentUrl);
+  //    Only needed when something actually probes the deployment.
+  const needsDeployment =
+    active.functional || active.performance || active.securityReliability;
+  const warmup = needsDeployment
+    ? await warmUpDeployment(ctx.deploymentUrl)
+    : { reachable: false, attempts: 0, reachableAfterMs: null };
 
-  // 2. Deployment-facing probes, and the repo read, in parallel. The repo pass
-  //    is independent of reachability, so it always runs.
+  const probe = warmup.reachable;
+
+  // 2. Requested deployment probes and the repo read, in parallel.
   const [functional, performance, security, snapshot] = await Promise.all([
-    warmup.reachable
+    active.functional && probe
       ? strategy.runFunctional(ctx).catch((error: unknown) => {
           log.error({ err: error }, 'functional probe failed');
           return UNREACHABLE_FUNCTIONAL;
         })
       : Promise.resolve(UNREACHABLE_FUNCTIONAL),
-    warmup.reachable
+    active.performance && probe
       ? strategy.probePerformance(ctx).catch((error: unknown) => {
           log.error({ err: error }, 'performance probe failed');
           return UNREACHABLE_PERFORMANCE;
         })
       : Promise.resolve(UNREACHABLE_PERFORMANCE),
-    warmup.reachable
+    active.securityReliability && probe
       ? strategy.probeSecurity(ctx).catch((error: unknown) => {
           log.error({ err: error }, 'security probe failed');
           return UNREACHABLE_SECURITY;
         })
       : Promise.resolve(UNREACHABLE_SECURITY),
-    readRepoAsText(ctx.repoUrl, ctx.commitSha).catch((error: unknown) => {
-      log.warn({ err: error }, 'repo read failed');
-      return null;
-    }),
+    needsRepo
+      ? readRepoAsText(ctx.repoUrl, ctx.commitSha).catch((error: unknown) => {
+          log.warn({ err: error }, 'repo read failed');
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
 
-  // 3. LLM quality pass over the repo text (degrades to a neutral score).
-  const ai = snapshot
-    ? await evaluateQuality(snapshot)
-    : await evaluateQuality({
-        owner: '',
-        repo: '',
-        ref: '',
-        commitSha: null,
-        files: [],
-        totalFiles: 0,
-        readFiles: 0,
-        totalBytes: 0,
-        warnings: ['repository unavailable'],
-      });
+  // 3. LLM quality pass over the repo text — only when requested (D20).
+  //    Degrades to a neutral score if the model is unavailable.
+  let ai = SKIPPED_AI;
+  if (active.ai) {
+    ai = snapshot
+      ? await evaluateQuality(snapshot)
+      : await evaluateQuality({
+          owner: '',
+          repo: '',
+          ref: '',
+          commitSha: null,
+          files: [],
+          totalFiles: 0,
+          readFiles: 0,
+          totalBytes: 0,
+          warnings: ['repository unavailable'],
+        });
+  }
 
-  // 4. Weighted blend (D2).
+  // 4. Weighted blend over the ACTIVE dimensions only (D2/D20). Inactive
+  //    weights are zeroed and the remainder renormalised by the scorer.
+  const weights = effectiveWeights(profile);
   const overallScore = computeOverallScore(
     {
       functional: functional.score,
@@ -114,7 +145,7 @@ export async function runEvaluation(
       securityReliability: security.score,
       ai: ai.score,
     },
-    DEFAULT_WEIGHTS,
+    weights,
   );
 
   log.info(
@@ -126,6 +157,8 @@ export async function runEvaluation(
       overall: overallScore,
       reachable: warmup.reachable,
       aiDegraded: ai.degraded,
+      aiSkipped: ai.skipped,
+      dimensions: active,
     },
     'evaluation complete',
   );
@@ -136,7 +169,9 @@ export async function runEvaluation(
     securityReliabilityScore: security.score,
     aiScore: ai.score,
     overallScore,
-    weights: DEFAULT_WEIGHTS,
+    weights,
+    profileName: profile.name,
+    dimensions: { ...active },
     testsPassed: functional.testsPassed,
     testsTotal: functional.testsTotal,
     deploymentReachable: warmup.reachable,
@@ -161,7 +196,14 @@ export async function runEvaluation(
           paths: snapshot.files.map((f) => f.path),
           warnings: snapshot.warnings,
         }
-      : { warnings: ['repository unavailable'] },
+      : needsRepo
+        ? { warnings: ['repository unavailable'] }
+        : {
+            skipped: true,
+            warnings: [
+              'repository not read: the AI dimension is not active for this round',
+            ],
+          },
     ai,
   };
 }

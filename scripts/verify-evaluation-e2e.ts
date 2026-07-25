@@ -173,8 +173,9 @@ async function main() {
       evaluation.securityReliabilityScore > 0,
     );
     check(
-      'AI dimension present (degrades to neutral without a key)',
-      evaluation.aiScore >= 0 && evaluation.aiScore <= 100,
+      'AI dimension is zero and unweighted on a deterministic round',
+      evaluation.aiScore === 0,
+      `aiScore=${evaluation.aiScore}`,
     );
     check(
       'overall score is a valid blend',
@@ -183,11 +184,27 @@ async function main() {
     );
 
     // Reproducibility: the exact weights used are stored on the row.
+    // This round is SIMULATION, which resolves to the `deterministic` profile
+    // (D20) — AI is not evaluated, so its weight must be 0.
     const weights = evaluation.weights as Record<string, number> | null;
     check(
-      'weights stored for reproducibility',
-      weights?.functional === 0.6 && weights?.ai === 0.15,
+      'weights stored for reproducibility (deterministic profile: ai=0)',
+      weights?.functional === 0.6 &&
+        weights?.performance === 0.15 &&
+        weights?.securityReliability === 0.1 &&
+        weights?.ai === 0,
       JSON.stringify(weights),
+    );
+    check(
+      'profile recorded on the evaluation (D20)',
+      evaluation.profileName === 'deterministic',
+      `profileName=${evaluation.profileName}`,
+    );
+    const dims = evaluation.dimensions as Record<string, boolean> | null;
+    check(
+      'active dimensions recorded (AI off for SIMULATION)',
+      dims?.functional === true && dims?.ai === false,
+      JSON.stringify(dims),
     );
 
     // Audit evidence
@@ -201,22 +218,31 @@ async function main() {
       'repo snapshot metadata stored',
       evaluation.repoTextSnapshot !== null,
     );
+    // AI is not part of a deterministic round, so there is deliberately no
+    // model/prompt evidence — and no paid API call was made.
     check(
-      'rubric version + prompt hash stored for audit',
-      Boolean(evaluation.rubricVersion) && Boolean(evaluation.modelPromptHash),
+      'no AI audit trail on a deterministic round (no model was called)',
+      evaluation.aiScore === 0 && !evaluation.modelPromptHash,
+      `aiScore=${evaluation.aiScore} promptHash=${evaluation.modelPromptHash}`,
     );
 
-    // Hand-verify the blend maths against the stored dimensions.
+    // Hand-verify the blend maths against the stored weights, whatever they are.
+    const wf = weights?.functional ?? 0;
+    const wp = weights?.performance ?? 0;
+    const ws = weights?.securityReliability ?? 0;
+    const wa = weights?.ai ?? 0;
+    const total = wf + wp + ws + wa;
     const expected =
       Math.round(
-        (evaluation.functionalScore * 0.6 +
-          evaluation.performanceScore * 0.15 +
-          evaluation.securityReliabilityScore * 0.1 +
-          evaluation.aiScore * 0.15) *
+        ((evaluation.functionalScore * wf +
+          evaluation.performanceScore * wp +
+          evaluation.securityReliabilityScore * ws +
+          evaluation.aiScore * wa) /
+          total) *
           100,
       ) / 100;
     check(
-      'overall equals the 60/15/10/15 blend of its parts',
+      'overall equals the renormalised blend of the ACTIVE dimensions',
       Math.abs(evaluation.overallScore - expected) < 0.02,
       `stored=${evaluation.overallScore} expected=${expected}`,
     );
@@ -228,6 +254,68 @@ async function main() {
     where: { submissionId: submission.id },
   });
   check('re-running the job does not duplicate the evaluation', count === 1);
+
+  // ---- Late stage flips AI on through the real processor (D20) ----
+  // Same problem, same deployment — only the round STAGE differs. This proves
+  // the tournament layer (not the engine) drives which dimensions run.
+  {
+    const finalRound = await db.round.create({
+      data: {
+        tournamentId: tournament.id,
+        type: 'KNOCKOUT',
+        stage: 'FINAL',
+        sequence: 1,
+        durationSeconds: 3600,
+        problemId: problem.id,
+        status: 'OPEN',
+      },
+    });
+    const finalSub = await db.submission.create({
+      data: {
+        userId: user.id,
+        tournamentId: tournament.id,
+        roundId: finalRound.id,
+        problemId: problem.id,
+        repoUrl: `https://github.com/sindresorhus/p-limit?${TAG}`,
+        deploymentUrl: 'https://example.com',
+        status: 'RECEIVED',
+      },
+    });
+    await evaluateProcessor({
+      id: 'final-stage',
+      name: 'evaluate',
+      payload: { submissionId: finalSub.id },
+      attempts: 1,
+      maxAttempts: 3,
+    });
+
+    const finalEval = await db.evaluation.findUnique({
+      where: { submissionId: finalSub.id },
+    });
+    const fw = finalEval?.weights as Record<string, number> | null;
+    const fdims = finalEval?.dimensions as Record<string, boolean> | null;
+
+    check(
+      'FINAL stage resolves to the full profile',
+      finalEval?.profileName === 'full',
+      `profileName=${finalEval?.profileName}`,
+    );
+    check(
+      'FINAL stage re-enables the AI weight (0.15)',
+      fw?.ai === 0.15,
+      JSON.stringify(fw),
+    );
+    check(
+      'FINAL stage marks the AI dimension active',
+      fdims?.ai === true,
+      JSON.stringify(fdims),
+    );
+    check(
+      'FINAL stage actually produced an AI score + audit trail',
+      (finalEval?.aiScore ?? 0) > 0 && Boolean(finalEval?.modelPromptHash),
+      `aiScore=${finalEval?.aiScore} promptHash=${finalEval?.modelPromptHash?.slice(0, 12)}`,
+    );
+  }
 
   // ---- Unsupported category is refused (D17) ----
   await db.problem.update({

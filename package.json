@@ -27,7 +27,8 @@
     "dev:session": "tsx --conditions=react-server scripts/dev-session.ts",
     "verify:evaluation": "tsx --conditions=react-server scripts/verify-evaluation.ts",
     "verify:evaluation:e2e": "tsx --conditions=react-server scripts/verify-evaluation-e2e.ts",
-    "verify:llm": "tsx --conditions=react-server scripts/verify-llm.ts"
+    "verify:llm": "tsx --conditions=react-server scripts/verify-llm.ts",
+    "verify:profiles": "tsx --conditions=react-server scripts/verify-profiles.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.9.0",

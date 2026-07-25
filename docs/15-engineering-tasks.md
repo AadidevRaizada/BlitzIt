@@ -30,6 +30,9 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 - **E2.4 (M)** `github-text.ts`: read repo as text via GitHub API (no clone); size/file caps.
 - **E2.5 (M)** `llm-quality.ts`: rubric prompt, temp 0, pinned model+promptHash, **schema-validated output**, prompt-injection guard.
 - **E2.6 (S)** Weighted blend 60/15/10/15 → `Evaluation` with evidence JSONB.
+- **E2.7 (M)** Stage-scoped evaluation profiles (D20): `EvaluationProfile` contract in the engine;
+  stage → profile policy in the tournament layer; AI disabled through QF, enabled from
+  SF/THIRD_PLACE/FINAL; per-tournament JSON override; `profileName`/`dimensions` persisted.
 - **DoD:** given (repoUrl, deploymentUrl), reproducible `Evaluation` with 4 dims + audit; no code execution anywhere.
 
 ## E3 — Tournament lifecycle & admin authoring (M3)

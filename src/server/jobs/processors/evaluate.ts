@@ -3,6 +3,7 @@ import type { Prisma } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import { runEvaluation } from '@/server/modules/evaluation';
 import { UnsupportedCategoryError } from '@/server/modules/evaluation';
+import { resolveEvaluationProfile } from '@/server/modules/tournament/evaluation-profiles';
 import type { ClaimedJob } from '../queue';
 import { logger } from '@/lib/logger';
 
@@ -30,6 +31,8 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     where: { id: submissionId },
     include: {
       problem: { include: { hiddenTests: { orderBy: { sequence: 'asc' } } } },
+      round: { select: { stage: true } },
+      tournament: { select: { evaluationProfiles: true } },
     },
   });
 
@@ -47,23 +50,37 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
 
   const startedAt = new Date();
 
+  // The TOURNAMENT layer decides which dimensions are active for this round
+  // (D20); the engine below is stage-agnostic and just honours the profile.
+  const profile = resolveEvaluationProfile(
+    submission.round.stage,
+    submission.tournament.evaluationProfiles,
+  );
+  log.info(
+    { stage: submission.round.stage, profile: profile.name },
+    'resolved evaluation profile',
+  );
+
   try {
-    const outcome = await runEvaluation({
-      submissionId: submission.id,
-      repoUrl: submission.repoUrl,
-      deploymentUrl: submission.deploymentUrl,
-      commitSha: submission.commitSha,
-      category: submission.problem.category,
-      contractSpec: submission.problem.contractSpec,
-      hiddenTests: submission.problem.hiddenTests.map((test) => ({
-        id: test.id,
-        name: test.name,
-        kind: test.kind,
-        spec: test.spec,
-        weight: test.weight,
-        timeoutMs: test.timeoutMs,
-      })),
-    });
+    const outcome = await runEvaluation(
+      {
+        submissionId: submission.id,
+        repoUrl: submission.repoUrl,
+        deploymentUrl: submission.deploymentUrl,
+        commitSha: submission.commitSha,
+        category: submission.problem.category,
+        contractSpec: submission.problem.contractSpec,
+        hiddenTests: submission.problem.hiddenTests.map((test) => ({
+          id: test.id,
+          name: test.name,
+          kind: test.kind,
+          spec: test.spec,
+          weight: test.weight,
+          timeoutMs: test.timeoutMs,
+        })),
+      },
+      profile,
+    );
 
     const finishedAt = new Date();
 
@@ -80,6 +97,8 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
       aiScore: outcome.aiScore,
       overallScore: outcome.overallScore,
       weights: outcome.weights as unknown as Prisma.InputJsonValue,
+      profileName: outcome.profileName,
+      dimensions: outcome.dimensions as unknown as Prisma.InputJsonValue,
       probeEvidence: outcome.probeEvidence as unknown as Prisma.InputJsonValue,
       repoTextSnapshot:
         outcome.repoTextSnapshot as unknown as Prisma.InputJsonValue,

@@ -32,12 +32,18 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Entities:** `Payout` (+ `AuditLog`).
 - **Scalability:** low volume, high scrutiny — correctness and audit over throughput.
 
-## 4. Tournament (lifecycle & scheduling)
+## 4. Tournament (lifecycle, scheduling & evaluation policy)
 - **Responsibilities:** the weekly state machine (DRAFT→REGISTRATION→SIMULATION→SEEDING→LIVE→
-  COMPLETED), authoritative timestamps, idempotent transitions driven by cron/admin.
-- **Dependencies:** Prisma, cron (Railway), Admin, Notification.
-- **Data ownership:** `Tournament`, `Round`, `AdminTask/OpsEvent`.
-- **APIs:** `advanceTournamentState`, `openRegistration`, `startRound` (admin + system).
+  COMPLETED), authoritative timestamps, idempotent transitions driven by cron/admin — **and the
+  stage → evaluation-profile policy (D20)**: which scoring dimensions are active in each round.
+  This module is the *only* place that knows AI starts at the semifinals; the Evaluation Engine
+  never asks what stage it is in.
+- **Dependencies:** Prisma, cron (Railway), Admin, Notification. (Depends on the Evaluation
+  Engine's `EvaluationProfile` *type* only — never the reverse.)
+- **Data ownership:** `Tournament` (incl. `evaluationProfiles` JSON override), `Round`,
+  `AdminTask/OpsEvent`.
+- **APIs:** `advanceTournamentState`, `openRegistration`, `startRound` (admin + system);
+  `resolveEvaluationProfile(stage, config)`, `isAiActiveForStage(stage, config)`.
 - **Entities:** `Tournament`, `Round`, `OpsEvent`.
 - **Scalability:** DB-authoritative schedule makes cron replay-safe; supports many concurrent
   weekly tournaments later (slug-scoped).
@@ -65,7 +71,9 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Responsibilities:** for each submission, select the **challenge-type strategy** (D4) and
   compute four dimensions against the **deployment URL** + **repo text (GitHub API)**:
   Functional (hidden tests), Performance, Security & Reliability, and AI quality (LLM, temp 0,
-  pinned model/prompt). Combine with weights **60/15/10/15 (D2)** into `overallScore`; store
+  pinned model/prompt). Combine with weights **60/15/10/15 (D2)**, limited to the dimensions the
+  stage's `EvaluationProfile` activates (**D20** — no AI before the semifinals), into
+  `overallScore`; store
   full evidence (JSONB) for audit; surface to admin for override. **No code execution, no
   sandbox, no cloning-to-build (D1).**
 - **Dependencies:** in-process Evaluation Runner + `EvaluationJob` table (D3), GitHub API,
@@ -76,6 +84,11 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Sub-structure:** `strategies/` — one module per category (REST_API, WEB_APP, AI_AGENT, OCR,
   AUTOMATION, INTERNAL_TOOL, CLI_APP, CHROME_EXTENSION), each implementing a common
   `EvaluationStrategy` interface; a shared LLM quality pass.
+- **Stage-agnostic boundary (D20):** the engine contains **no stage logic and no AI special
+  cases**. It receives an `EvaluationProfile` (which dimensions + weights) and honours it. The
+  stage → profile mapping lives in the **Tournament** module
+  (`modules/tournament/evaluation-profiles.ts`); see module 4. Keeping this split is what lets
+  organizers re-scope AI without touching scoring code.
 - **Scalability:** concurrency-capped in-process today; the `Queue` interface + `EvaluationJob`
   table let us extract a dedicated worker + BullMQ later without touching call sites. Per-
   tournament pinned model for reproducibility; retry with backoff via `availableAt`.

@@ -53,7 +53,7 @@ keys prevent duplicate processing; the same contract maps onto BullMQ later.
 
 | Job | Trigger | Idempotency key | Does |
 |-----|---------|-----------------|------|
-| `EVALUATE` | after submit / round close | `eval:{submissionId}:{attempt}` | pick challenge-type strategy → functional tests vs URL + perf + security/reliability probes + repo-text LLM pass → `Evaluation` (60/15/10/15) → update `Ranking` |
+| `EVALUATE` | after submit / round close | `eval:{submissionId}:{attempt}` | resolve the round's stage profile (D20) → pick challenge-type strategy → run only the ACTIVE dimensions: functional tests vs URL + perf + security/reliability probes, plus the repo-text LLM pass **only from SF/THIRD_PLACE/FINAL** → `Evaluation` (renormalised blend) → update `Ranking` |
 | `SEED_TOURNAMENT` | Sat cron / admin | `seed:{tournamentId}` | choose bracket size (8/16/32/64) → rank qualifiers → build `Match` tree with byes |
 | `ADVANCE_BRACKET` | all match evals done | `advance:{roundId}` | apply win rule + tie-breaks (D5) → write winners → create next `Match`es → notify; flag ties needing sudden-death |
 | `SEND_EMAIL` | domain events | `email:{notificationId}` | render React Email → Resend |

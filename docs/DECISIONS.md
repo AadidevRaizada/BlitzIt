@@ -130,6 +130,49 @@
   those models and records `temperatureApplied` in the audit, so evidence stays truthful. If
   strict temperature-0 reproducibility is required, choose a model that supports it.
 
+## D20 — Stage-scoped evaluation profiles (locked 2026-07-25)
+
+**AI evaluation is not used for the majority of the tournament.** Which dimensions are scored
+is decided per *stage*, by configuration.
+
+| Stage | Functional | Performance | Security | AI | Profile |
+|-------|:---------:|:-----------:|:--------:|:--:|---------|
+| Qualifiers (SIMULATION) | ✅ | ✅ | ✅ | ❌ | `deterministic` |
+| R64 · R32 · R16 · QF | ✅ | ✅ | ✅ | ❌ | `deterministic` |
+| **SF** | ✅ | ✅ | ✅ | ✅ | `full` |
+| **THIRD_PLACE** (if enabled) | ✅ | ✅ | ✅ | ✅ | `full` |
+| **FINAL** | ✅ | ✅ | ✅ | ✅ | `full` |
+| SUDDEN_DEATH | ✅ | ❌ | ❌ | ❌ | `functional-only` (D14) |
+
+### Why AI is reserved for the closing rounds
+- **Significantly lower API cost.** The LLM pass is the only paid per-submission call. A 64-player
+  bracket is ~127 knockout submissions plus three qualifying rounds for *every* registrant;
+  restricting AI to SF/3rd/Final removes well over 90% of that spend.
+- **Lower latency.** Deterministic probes finish in seconds; a model call adds seconds to tens of
+  seconds per submission. Early rounds must judge a whole field inside a short round timer.
+- **Deterministic early rankings.** Qualification and early knockouts are decided purely by
+  reproducible measurements, so seeding and eliminations can be recomputed exactly.
+- **AI reserved for close, high-value matches**, where subjective quality actually discriminates.
+- **Easier reproducibility.** Fewer non-deterministic inputs across most of the tournament
+  (see the D18 temperature caveat).
+
+### Architectural rule (do not violate)
+- The **scoring pipeline stays provider-agnostic *and* stage-agnostic.** No stage names, no
+  `if (stage === …)`, no AI special-cases inside the engine.
+- The **tournament layer** (`server/modules/tournament/evaluation-profiles.ts`) owns the
+  stage → profile decision. The **engine** (`server/modules/evaluation/`) receives a resolved
+  `EvaluationProfile` and evaluates *only* the dimensions it names.
+- An inactive dimension is **not evaluated at all** — no probe, no GitHub read, no model call.
+  That is what converts the policy into real cost/latency savings rather than a zero weight.
+- Weights of inactive dimensions are zeroed and the remainder **renormalised**, so a perfect
+  deterministic run still scores 100 (not capped at 85).
+- Organizers reconfigure via `Tournament.evaluationProfiles` (JSON: custom `profiles` and/or a
+  `stages` map) — **no code change**. Invalid config falls back to defaults and logs; it never
+  blocks an evaluation mid-tournament.
+- Every `Evaluation` records `profileName` + `dimensions` so a past score can be explained.
+- `aiSkipped` (policy) is distinct from `aiDegraded` (the model was wanted but unavailable) —
+  only the latter is an incident.
+
 ## D19 — Anti-cheat scope for V1 (locked)
 - Included: immutable submissions, server timestamps, **deployment-URL reuse detection**,
   **commit-SHA pinning**, manual disqualification. **No plagiarism detection in V1.**

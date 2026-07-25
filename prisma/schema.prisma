@@ -41,6 +41,7 @@ enum RoundStage {
   R16
   QF
   SF
+  THIRD_PLACE
   FINAL
   SUDDEN_DEATH
 }
@@ -289,6 +290,9 @@ model Tournament {
   liveStartsAt              DateTime?
   completedAt               DateTime?
   roundDurations            Json?
+  // Stage -> evaluation profile overrides (D20). Null = built-in defaults:
+  // deterministic through QF, AI enabled from SF/THIRD_PLACE/FINAL.
+  evaluationProfiles        Json?
   createdBy                 String?
   rounds                    Round[]
   matches                   Match[]
@@ -429,6 +433,10 @@ model Evaluation {
   aiScore                  Float      @default(0)
   overallScore             Float      @default(0)
   weights                  Json
+  // Which profile governed this score, and which dimensions actually ran (D20).
+  // Recorded so a past score can be explained without guessing the round rules.
+  profileName              String?
+  dimensions               Json?
   probeEvidence            Json?
   repoTextSnapshot         Json?
   rubricVersion            String?

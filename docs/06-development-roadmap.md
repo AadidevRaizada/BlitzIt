@@ -30,7 +30,8 @@ it has tests (where logic exists), passes CI, and is deployable to Railway.
   hidden tests against a sample deployment URL (functional) + performance probe + basic
   security/reliability probe + read repo **text via GitHub API** + LLM quality pass (temp 0).
 - Establish the `EvaluationStrategy` interface (so other categories plug in later, D4) and the
-  weighted blend **60/15/10/15 (D2)**.
+  weighted blend **60/15/10/15 (D2)**, applied only to the dimensions the stage profile
+  activates (**D20** — no AI before the semifinals).
 - **Deliverable:** given (repoUrl, deploymentUrl), produce a reproducible `Evaluation` with the
   four dimensions, `overallScore`, and full evidence in JSONB. Validates the central assumption
   early without any sandbox.
