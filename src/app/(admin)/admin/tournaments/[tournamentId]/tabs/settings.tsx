@@ -15,6 +15,7 @@ import { SelectField, TextAreaField, TextField } from '@/components/ui/field';
 import { SectionTitle } from '@/components/ui/page-header';
 import type { Result } from '@/lib/errors';
 import { ScheduleForm } from './schedule-form';
+import { ConfigurationForm } from './configuration-form';
 
 type State = Result<{ id: string }> | Result<{ archived: boolean }> | null;
 
@@ -131,6 +132,17 @@ export function SettingsTab({ summary }: { summary: TournamentSummary }) {
               simulationClosesAt: summary.simulationClosesAt,
               liveStartsAt: summary.liveStartsAt,
             }}
+          />
+        </section>
+
+        <section className="space-y-3">
+          <SectionTitle>Configuration</SectionTitle>
+          <ConfigurationForm
+            tournamentId={summary.id}
+            roundDurations={summary.roundDurations}
+            evaluationProfiles={summary.evaluationProfiles}
+            thirdPlaceEnabled={summary.thirdPlaceEnabled}
+            bracketGenerated={summary.bracketGeneratedAt !== null}
           />
         </section>
 

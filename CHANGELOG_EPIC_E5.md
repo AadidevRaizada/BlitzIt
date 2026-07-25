@@ -46,6 +46,48 @@ All schema changes are additive.
 - Score override, payout management, notification controls, spectator surfaces, sudden death, and
   polished dashboard analytics are intentionally deferred to later epics.
 
+## Deferred functionality
+
+Explicitly recorded rather than silently omitted. Everything below is supported by the backend
+and reachable from a module or script; only the UI control is absent.
+
+| Field | Status | Why |
+|---|---|---|
+| **Sudden-death round duration** (`SUDDEN_DEATH` in `roundDurations`) | Deferred to E6 | Sudden death (D5.6/D14) is not implemented — a match that survives every tie-break sets `Match.tieUnresolved` and holds. Offering a duration control for a round that never runs would misrepresent the product. `resolveTournamentConfig` still honours the value if one is set another way. |
+| **Per-tournament challenge-category allowlist** (D17) | Deferred | D17 describes a per-tournament allowlist, but only the global gate (`enabledCategories()`, REST_API-only) is implemented. Half-building the per-tournament half would give operators a control that does not yet constrain anything. Category is chosen per *problem*, which the challenge authoring UI does expose. |
+| **Participant-list export** | Deferred | Not specified anywhere in the blueprint; the E5 brief made it conditional on being "already specified". The registrations tab shows the full list on screen. |
+| **Approve / reject registrations** | Not applicable | The blueprint has no approval step: registration is unconditional while the window is open, and E4 gates it on a paid pass instead. Removal (a revoke) is implemented. |
+
+The following were listed as gaps in review and are now **implemented**, not deferred:
+third-place play-off toggle, per-round durations (D7), and stage evaluation profiles (D20) — all
+editable from the tournament **Settings → Configuration** panel.
+
+## Post-review fixes
+
+Three items were raised after the initial Codex pass and fixed before closing E5.
+
+| # | Severity | Issue | Fix |
+|---|---|---|---|
+| **1** | medium | `configureTournamentAdminAction` took `input: unknown` and forwarded it with `as never`, bypassing Zod entirely. The module validates only `evaluationProfiles`, so `bracketSize`, `thirdPlaceEnabled`, `minRegistrations`, `maxRegistrations` and `roundDurations` reached `tournament.update()` unchecked. A server action is a network boundary: an admin could have written a `bracketSize` of 7, which `buildBracketPlan` rejects — stranding the tournament at `GENERATE_BRACKET`. | Added `configureTournamentFormSchema` and routed the action through it. The `as never` cast is gone; the module's own guards (shape frozen once the bracket exists, D20 profile validation) still apply on top. |
+| **2** | low | `archiveTournamentSchema.archived` used `z.coerce.boolean()`. JS truthiness makes every non-empty string `true`, so `"false"` and `"0"` both archived — the same defect `formBoolean` was introduced to fix for `thirdPlaceEnabled`, left behind on this one field. | Switched to the shared `formBoolean`. `z.coerce.boolean()` no longer appears anywhere in the admin schemas. |
+| **3** | medium | The E5 brief lists "evaluation profile" among tournament CRUD fields, but neither `evaluationProfiles` (D20) nor `roundDurations` (D7) appeared in any form, and `thirdPlaceEnabled` was settable only at creation — the settings tab had no control. The one action that could reach them was #1, which nothing called. | Added the **Configuration** panel to the settings tab: third-place toggle, three simulation-round durations, seven knockout-stage durations, and a validated evaluation-profiles JSON editor. `TournamentSummary` now exposes `roundDurations`, `evaluationProfiles` and `bracketGeneratedAt` so the panel can render current values and disable frozen controls. |
+
+Design notes on the Configuration panel:
+
+- **Durations are entered in seconds**, matching storage. Minutes would read better but would
+  round-trip lossily for any value that is not a whole minute, silently rewriting an operator's
+  setting. Each field shows its default in minutes in the hint instead.
+- **Blank means "use the default"** — a missing override is absent, not zero.
+- **A partially-filled simulation list is dropped rather than sent sparse**, because array holes
+  serialise as `null` and would fail the module's positive-integer check.
+- **Evaluation profiles are a JSON editor**, not structured fields: it is a nested policy object
+  (named profiles plus a stage map), edited rarely. Invalid JSON is rejected at the boundary; a
+  structurally valid but unscorable profile still falls back safely at scoring time (D20).
+
+18 regression checks were added to `verify:admin` (71 → 89), covering the boolean parsing, the
+validation of the configure payload, the flat-to-nested duration folding, and the round-trip from
+the settings UI through to `resolveTournamentConfig` and `resolveEvaluationProfile`.
+
 ## Bugs Found During Implementation
 
 - `verify:admin` initially asserted registration removal using an all-status list. The verifier was

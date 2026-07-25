@@ -180,8 +180,147 @@ function ordered(earlier?: Date, later?: Date): boolean {
 
 export const archiveTournamentSchema = z.object({
   tournamentId: z.string().uuid('Invalid tournament'),
-  archived: z.coerce.boolean(),
+  // `formBoolean`, never `z.coerce.boolean()`: JS coercion makes EVERY non-empty
+  // string truthy, so "false" and "0" would both archive. A server action is a
+  // network boundary, so the argument is not guaranteed to arrive as a real
+  // boolean just because the current caller sends one.
+  archived: formBoolean,
 });
+
+// ───────────────────────── Tournament configuration (D7 / D20) ─────────────────
+
+/**
+ * Knockout stages an operator can retime. `SUDDEN_DEATH` is deliberately absent:
+ * sudden death is not implemented yet (E6), and offering a duration control for
+ * a feature that never runs would be a lie in the UI. `resolveTournamentConfig`
+ * still honours it if a value is ever set by other means.
+ */
+export const RETIMEABLE_STAGES = [
+  'R64',
+  'R32',
+  'R16',
+  'QF',
+  'SF',
+  'THIRD_PLACE',
+  'FINAL',
+] as const;
+
+/** How many simulation rounds a tournament plays (D13). */
+export const SIMULATION_ROUND_COUNT = 3;
+
+/** A round duration in seconds. Blank means "leave at the default". */
+const durationSeconds = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.coerce
+    .number()
+    .int()
+    .min(30, 'A round must last at least 30 seconds')
+    .max(86_400, 'A round cannot last longer than 24 hours')
+    .optional(),
+);
+
+/**
+ * Evaluation-profile overrides arrive as JSON text. An empty box means "no
+ * overrides" and is stored as `{}` rather than null — both resolve to the D20
+ * defaults, and `{}` keeps the column's type uniform.
+ */
+const evaluationProfilesJson = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value, ctx) => {
+    if (!value) return {};
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (
+        typeof parsed !== 'object' ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Evaluation profiles must be a JSON object',
+        });
+        return z.NEVER;
+      }
+      return parsed;
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Evaluation profiles must be valid JSON',
+      });
+      return z.NEVER;
+    }
+  });
+
+/**
+ * The tournament configuration a form can submit (D7 round durations, D20 stage
+ * profiles, and the third-place toggle).
+ *
+ * Durations arrive as flat, explicitly-named fields and are folded into the
+ * nested `{ simulation, stages }` shape the tournament module stores. Flat
+ * fields keep the form plain HTML — no JSON editing for a setting that is
+ * really just a list of numbers — and writing them out rather than generating
+ * them keeps the parsed type precise.
+ */
+export const configureTournamentFormSchema = z
+  .object({
+    thirdPlaceEnabled: formBoolean.optional(),
+    evaluationProfiles: evaluationProfilesJson,
+
+    simulationDuration1: durationSeconds,
+    simulationDuration2: durationSeconds,
+    simulationDuration3: durationSeconds,
+
+    stageDurationR64: durationSeconds,
+    stageDurationR32: durationSeconds,
+    stageDurationR16: durationSeconds,
+    stageDurationQF: durationSeconds,
+    stageDurationSF: durationSeconds,
+    stageDurationTHIRD_PLACE: durationSeconds,
+    stageDurationFINAL: durationSeconds,
+  })
+  .transform((value) => {
+    const simulation = [
+      value.simulationDuration1,
+      value.simulationDuration2,
+      value.simulationDuration3,
+    ];
+
+    const stageEntries: Array<[string, number | undefined]> = [
+      ['R64', value.stageDurationR64],
+      ['R32', value.stageDurationR32],
+      ['R16', value.stageDurationR16],
+      ['QF', value.stageDurationQF],
+      ['SF', value.stageDurationSF],
+      ['THIRD_PLACE', value.stageDurationTHIRD_PLACE],
+      ['FINAL', value.stageDurationFINAL],
+    ];
+
+    const stages: Record<string, number> = {};
+    for (const [stage, seconds] of stageEntries) {
+      if (seconds !== undefined) stages[stage] = seconds;
+    }
+
+    // A partially-filled simulation list would serialise holes as null and fail
+    // the module's positive-integer check, so it is only sent when complete.
+    const simulationComplete = simulation.every(
+      (seconds): seconds is number => typeof seconds === 'number',
+    );
+
+    return {
+      thirdPlaceEnabled: value.thirdPlaceEnabled,
+      evaluationProfiles: value.evaluationProfiles,
+      roundDurations: {
+        ...(simulationComplete ? { simulation } : {}),
+        ...(Object.keys(stages).length > 0 ? { stages } : {}),
+      },
+    };
+  });
+
+export type ConfigureTournamentFormInput = z.infer<
+  typeof configureTournamentFormSchema
+>;
 
 export const removeRegistrationSchema = z.object({
   tournamentId: z.string().uuid('Invalid tournament'),

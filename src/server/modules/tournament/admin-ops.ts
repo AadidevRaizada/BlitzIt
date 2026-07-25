@@ -49,6 +49,17 @@ export interface TournamentSummary {
   minRegistrations: number | null;
   maxRegistrations: number | null;
   passPriceMinor: number;
+  /** Per-tournament round durations (D7). Null = deployment defaults. */
+  roundDurations: unknown;
+  /** Stage -> evaluation-profile overrides (D20). Null = built-in defaults. */
+  evaluationProfiles: unknown;
+  /**
+   * Once set, the bracket exists and its shape is frozen — `configureTournament`
+   * refuses size and third-place changes from here on. Surfaced so the settings
+   * UI can disable those controls with an explanation instead of letting the
+   * operator submit a change that will be rejected.
+   */
+  bracketGeneratedAt: Date | null;
   participantCount: number;
   registrations: number;
   submissions: number;
@@ -120,6 +131,9 @@ function summarise(
     minRegistrations: tournament.minRegistrations,
     maxRegistrations: tournament.maxRegistrations,
     passPriceMinor: tournament.passPriceMinor,
+    roundDurations: tournament.roundDurations,
+    evaluationProfiles: tournament.evaluationProfiles,
+    bracketGeneratedAt: tournament.bracketGeneratedAt,
     participantCount: tournament.participantCount,
     ...counts,
     registrationOpensAt: tournament.registrationOpensAt,

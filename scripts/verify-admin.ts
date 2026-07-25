@@ -13,6 +13,9 @@ import {
   setTournamentArchived,
   listBracketRounds,
   registerCompetitor,
+  configureTournament,
+  resolveTournamentConfig,
+  resolveEvaluationProfile,
 } from '../src/server/modules/tournament';
 import {
   addHiddenTest,
@@ -37,6 +40,8 @@ import {
 } from '../src/server/modules/submission';
 import { listAuditLog, listUsers } from '../src/server/modules/admin/directory';
 import {
+  archiveTournamentSchema,
+  configureTournamentFormSchema,
   createProblemFormSchema,
   createTournamentFormSchema,
   removeRegistrationSchema,
@@ -717,6 +722,196 @@ async function main() {
     'challenge can be archived after use',
     (await getProblemDetail(problem.id, admin)).visibility === 'ARCHIVED',
   );
+
+  // ── E5 follow-up: configuration surface + boolean parsing ──────────────────
+
+  // 1. `archived` must not use JS truthiness: Boolean("false") === true, so a
+  //    string-valued argument used to archive when it meant "unarchive".
+  check(
+    'REGRESSION: archive flag parses the string "false" as false',
+    archiveTournamentSchema.safeParse({
+      tournamentId: tournament.id,
+      archived: 'false',
+    }).data?.archived === false,
+  );
+  check(
+    'REGRESSION: archive flag parses "0" as false',
+    archiveTournamentSchema.safeParse({
+      tournamentId: tournament.id,
+      archived: '0',
+    }).data?.archived === false,
+  );
+  check(
+    'archive flag still accepts real booleans and "true"',
+    archiveTournamentSchema.safeParse({
+      tournamentId: tournament.id,
+      archived: true,
+    }).data?.archived === true &&
+      archiveTournamentSchema.safeParse({
+        tournamentId: tournament.id,
+        archived: 'true',
+      }).data?.archived === true,
+  );
+
+  // 2. The configure action used to take `unknown` and cast it with `as never`,
+  //    so nothing validated the payload. Invalid values must now be refused.
+  check(
+    'REGRESSION: configuration schema refuses a negative round duration',
+    configureTournamentFormSchema.safeParse({
+      stageDurationQF: '-60',
+    }).success === false,
+  );
+  check(
+    'REGRESSION: configuration schema refuses malformed evaluation-profile JSON',
+    configureTournamentFormSchema.safeParse({
+      evaluationProfiles: '{not json',
+    }).success === false,
+  );
+  check(
+    'configuration schema refuses a non-object evaluation-profile payload',
+    configureTournamentFormSchema.safeParse({
+      evaluationProfiles: '[1,2,3]',
+    }).success === false,
+  );
+
+  // 3. Flat duration fields fold into the nested shape the module stores.
+  {
+    const parsed = configureTournamentFormSchema.safeParse({
+      thirdPlaceEnabled: 'false',
+      simulationDuration1: '1800',
+      simulationDuration2: '1200',
+      simulationDuration3: '600',
+      stageDurationQF: '2400',
+      evaluationProfiles: '',
+    });
+    check(
+      'configuration form folds durations into { simulation, stages }',
+      JSON.stringify(parsed.data?.roundDurations) ===
+        JSON.stringify({ simulation: [1800, 1200, 600], stages: { QF: 2400 } }),
+      JSON.stringify(parsed.data?.roundDurations),
+    );
+    check(
+      'REGRESSION: third-place toggle survives the configuration form as false',
+      parsed.data?.thirdPlaceEnabled === false,
+    );
+    check(
+      'an empty evaluation-profile box means "no overrides", not invalid',
+      JSON.stringify(parsed.data?.evaluationProfiles) === '{}',
+    );
+  }
+
+  // A partially-filled simulation list must not produce a sparse array — holes
+  // serialise as null and would fail the module's positive-integer check.
+  check(
+    'a partial simulation duration list is omitted rather than sent sparse',
+    configureTournamentFormSchema.safeParse({
+      simulationDuration1: '1800',
+    }).data?.roundDurations.simulation === undefined,
+  );
+
+  // 4. End to end through the real action: the settings UI can now persist all
+  //    three settings the backend supported but no form reached.
+  {
+    const configurable = await createTournament(
+      {
+        name: 'E5 Configuration Target',
+        slug: `${TAG}-configurable`,
+        minRegistrations: 2,
+      },
+      { actorId: admin.id },
+    );
+
+    await configureTournament(
+      configurable.id,
+      {
+        thirdPlaceEnabled: false,
+        roundDurations: {
+          simulation: [900, 600, 300],
+          stages: { FINAL: 3000 },
+        },
+        evaluationProfiles: { stages: { QF: 'full' } },
+      },
+      { actorId: admin.id },
+    );
+
+    const summary = await getTournamentSummary(configurable.id);
+    check(
+      'third-place toggle persists through configuration',
+      summary.thirdPlaceEnabled === false,
+    );
+    // Compared field by field, not as a JSON string: Postgres `jsonb` does not
+    // preserve key insertion order, so a string comparison would be flaky.
+    const storedDurations = summary.roundDurations as {
+      simulation?: number[];
+      stages?: Record<string, number>;
+    } | null;
+    check(
+      'round durations persist and are exposed to the settings UI',
+      JSON.stringify(storedDurations?.simulation) ===
+        JSON.stringify([900, 600, 300]) &&
+        storedDurations?.stages?.FINAL === 3000,
+      JSON.stringify(summary.roundDurations),
+    );
+    check(
+      'evaluation profiles persist and are exposed to the settings UI',
+      JSON.stringify(summary.evaluationProfiles) ===
+        JSON.stringify({ stages: { QF: 'full' } }),
+      JSON.stringify(summary.evaluationProfiles),
+    );
+
+    // The stored overrides must actually reach the resolver, or the UI would be
+    // editing a value nothing reads.
+    const resolved = resolveTournamentConfig({
+      bracketSize: summary.bracketSize,
+      thirdPlaceEnabled: summary.thirdPlaceEnabled,
+      minRegistrations: summary.minRegistrations,
+      maxRegistrations: summary.maxRegistrations,
+      roundDurations: summary.roundDurations,
+    });
+    check(
+      'stored round durations reach resolveTournamentConfig (D7)',
+      resolved.simulationDurationsSeconds[0] === 900 &&
+        resolved.stageDurationsSeconds.FINAL === 3000,
+      `${resolved.simulationDurationsSeconds[0]} / ${resolved.stageDurationsSeconds.FINAL}`,
+    );
+    check(
+      'stored evaluation profiles reach resolveEvaluationProfile (D20)',
+      resolveEvaluationProfile('QF', summary.evaluationProfiles).name ===
+        'full',
+    );
+
+    // The module still refuses a malformed D20 payload.
+    await checkRejects(
+      'configuration refuses an invalid evaluation-profile object',
+      () =>
+        configureTournament(
+          configurable.id,
+          { evaluationProfiles: { stages: 42 } },
+          { actorId: admin.id },
+        ),
+      'VALIDATION',
+    );
+
+    // And the shape freeze still holds once a bracket exists.
+    await db.tournament.update({
+      where: { id: configurable.id },
+      data: { bracketGeneratedAt: new Date() },
+    });
+    await checkRejects(
+      'third-place toggle is refused once the bracket is generated',
+      () =>
+        configureTournament(
+          configurable.id,
+          { thirdPlaceEnabled: true },
+          { actorId: admin.id },
+        ),
+      'CONFLICT',
+    );
+    check(
+      'the settings UI is told the bracket shape is frozen',
+      (await getTournamentSummary(configurable.id)).bracketGeneratedAt !== null,
+    );
+  }
 
   if (failures > 0) {
     throw new Error(`${failures} check(s) FAILED.`);

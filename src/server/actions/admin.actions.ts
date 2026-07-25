@@ -27,6 +27,7 @@ import {
   archiveTournamentSchema,
   assignProblemSchema,
   createProblemFormSchema,
+  configureTournamentFormSchema,
   createTournamentFormSchema,
   hiddenTestIdSchema,
   listAuditSchema,
@@ -309,18 +310,42 @@ export async function updatePrizePoolAdminAction(
   }
 }
 
+/**
+ * Tournament configuration: third-place play-off (D6), round durations (D7) and
+ * stage evaluation profiles (D20).
+ *
+ * Previously this took `unknown` and passed it through with `as never`, which
+ * skipped Zod entirely — a server action is a network boundary, so an admin
+ * could have written a `bracketSize` of 7 or a negative duration straight into
+ * the row. Everything now goes through `configureTournamentFormSchema`, and the
+ * module's own guards (no shape changes once the bracket exists, D20 profile
+ * validation) still apply on top.
+ */
 export async function configureTournamentAdminAction(
   tournamentId: string,
-  input: unknown,
+  _prev: unknown,
+  formData: FormData,
 ): Promise<Result<{ id: string }>> {
   try {
     const admin = await requireAdminOrThrow();
     const id = tournamentIdSchema.safeParse({ tournamentId });
     if (!id.success) return validationError(id.error.issues);
 
-    await configureTournament(id.data.tournamentId, input as never, {
-      actorId: admin.id,
-    });
+    const parsed = configureTournamentFormSchema.safeParse(
+      formObject(formData),
+    );
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    await configureTournament(
+      id.data.tournamentId,
+      {
+        thirdPlaceEnabled: parsed.data.thirdPlaceEnabled,
+        roundDurations: parsed.data.roundDurations,
+        evaluationProfiles: parsed.data.evaluationProfiles,
+      },
+      { actorId: admin.id },
+    );
+
     revalidateAdmin(id.data.tournamentId);
     return ok({ id: id.data.tournamentId });
   } catch (error) {

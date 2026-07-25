@@ -104,3 +104,22 @@ Implemented workflows:
 - route guard and navigation coverage
 
 It is additive to the existing E0-E4 verification suites.
+
+## Tournament configuration (Settings → Configuration)
+
+The three settings the tournament module supports beyond the basics, all editable from the
+tournament detail page's Settings tab:
+
+| Setting | Decision | Notes |
+|---|---|---|
+| Third-place play-off | D6 | Frozen once the bracket is generated — `configureTournament` refuses the change, and the control is disabled with an explanation rather than letting the operator submit something that will be rejected. |
+| Round durations | D7 | Three simulation rounds plus each knockout stage, in **seconds**. Blank uses the deployment default. Seconds rather than minutes because a minute-based field would round-trip lossily for any non-whole-minute value and silently rewrite the setting. |
+| Evaluation profiles | D20 | JSON: `{"stages":{"QF":"full"},"profiles":{…}}`. Empty means the built-in policy (deterministic through the quarter-finals, AI from the semi-finals). Invalid JSON is refused at the boundary; a structurally valid but unscorable profile still falls back safely at scoring time. |
+
+All three go through `configureTournamentAdminAction` → `configureTournament`, so the module keeps
+ownership of validation, the bracket-shape freeze, and auditing. The action validates its payload
+with `configureTournamentFormSchema`; nothing reaches Prisma unvalidated.
+
+**`SUDDEN_DEATH` is deliberately absent** from the duration controls — sudden death is not
+implemented (E6), so a control for it would misrepresent the product. See the deferred-functionality
+table in `CHANGELOG_EPIC_E5.md`.
