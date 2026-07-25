@@ -17,3 +17,21 @@ export function enqueueNoop(
     idempotencyKey: `noop:${randomUUID()}`,
   });
 }
+
+/**
+ * Queue a submission for evaluation (E2). Idempotent per submission+attempt, so
+ * a double-submit or duplicate enqueue collapses to one job.
+ */
+export function enqueueEvaluation(
+  submissionId: string,
+  attempt = 1,
+): Promise<string> {
+  return queue.enqueue(
+    'evaluate',
+    { submissionId },
+    {
+      idempotencyKey: `eval:${submissionId}:${attempt}`,
+      priority: 10, // ahead of housekeeping jobs
+    },
+  );
+}
