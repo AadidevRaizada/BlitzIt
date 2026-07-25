@@ -115,12 +115,28 @@ class Runner {
       this.lastHeartbeat = Date.now();
       try {
         await this.reclaimStaleJobs();
-        const jobs = await queue.claim(this.concurrency, this.instanceId);
+
+        // Only claim what we can actually start now. Awaiting the whole batch
+        // would idle free capacity behind the slowest job in it — an
+        // evaluation can run for minutes, during which newly submitted work
+        // would sit unclaimed despite an open slot.
+        const capacity = this.concurrency - this.inFlight.size;
+        if (capacity <= 0) {
+          await sleep(POLL_INTERVAL_MS);
+          continue;
+        }
+
+        const jobs = await queue.claim(capacity, this.instanceId);
         if (jobs.length === 0) {
           await sleep(POLL_INTERVAL_MS);
           continue;
         }
-        await Promise.all(jobs.map((job) => this.run(job)));
+
+        // Start them and keep polling; `run()` clears its own slot when done.
+        // Errors are handled inside run(), so these never reject.
+        for (const job of jobs) {
+          void this.run(job);
+        }
       } catch (error) {
         // A claim failure (e.g. DB not reachable yet) should not kill the loop.
         captureException(error, { where: 'runner.loop' });
@@ -149,26 +165,32 @@ class Runner {
   }
 
   private async run(job: ClaimedJob): Promise<void> {
-    const processor = processors[job.name];
-    if (!processor) {
-      await queue.fail(job.id, `No processor for job "${job.name}"`, 0);
-      logger.error(
-        { jobId: job.id, name: job.name },
-        'no processor registered',
-      );
-      return;
-    }
-    // Tracked for the duration of the work so the heartbeat keeps the claim
-    // alive; a long-but-healthy job must never be reclaimed and run twice.
+    // Reserve the slot SYNCHRONOUSLY, before the first await. The poll loop no
+    // longer awaits this method, so it computes free capacity immediately
+    // after; adding later would let it over-claim. Also keeps the claim
+    // heartbeated so a long-but-healthy job is never reclaimed and run twice.
     this.inFlight.add(job.id);
     try {
-      await processor(job);
-      await queue.complete(job.id);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'unknown error';
-      const backoff = BASE_BACKOFF_MS * 2 ** Math.max(0, job.attempts - 1);
-      await queue.fail(job.id, message, backoff);
-      captureException(error, { where: 'runner.run', jobId: job.id });
+      const processor = processors[job.name];
+      if (!processor) {
+        await queue.fail(job.id, `No processor for job "${job.name}"`, 0);
+        logger.error(
+          { jobId: job.id, name: job.name },
+          'no processor registered',
+        );
+        return;
+      }
+
+      try {
+        await processor(job);
+        await queue.complete(job.id);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
+        const backoff = BASE_BACKOFF_MS * 2 ** Math.max(0, job.attempts - 1);
+        await queue.fail(job.id, message, backoff);
+        captureException(error, { where: 'runner.run', jobId: job.id });
+      }
     } finally {
       this.inFlight.delete(job.id);
     }

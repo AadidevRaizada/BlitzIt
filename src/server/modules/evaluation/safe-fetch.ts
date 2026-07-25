@@ -45,14 +45,40 @@ function isPrivateIpv4(ip: string): boolean {
   return false;
 }
 
+/**
+ * First 16-bit group of an IPv6 address, which is what the reserved-prefix
+ * ranges are defined against. Handles `::`-compressed forms.
+ */
+function firstHextet(address: string): number {
+  if (address.startsWith('::')) return 0;
+  const head = address.split(':')[0] ?? '';
+  if (head === '') return 0;
+  const value = Number.parseInt(head, 16);
+  return Number.isNaN(value) ? -1 : value;
+}
+
 function isPrivateIpv6(ip: string): boolean {
-  const v = ip.toLowerCase().replace(/^\[|\]$/g, '');
-  if (v === '::1' || v === '::') return true;
-  if (v.startsWith('fe80')) return true; // link-local
-  if (/^f[cd]/.test(v)) return true; // unique local fc00::/7
-  // IPv4-mapped (::ffff:10.0.0.1) — validate the embedded address.
+  // Strip brackets and any zone index (fe80::1%eth0).
+  const v = ip
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '')
+    .split('%')[0]!;
+
+  if (v === '::1' || v === '::') return true; // loopback / unspecified
+
+  // IPv4-mapped (::ffff:10.0.0.1) — validate the embedded IPv4 address.
   const mapped = v.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped?.[1]) return isPrivateIpv4(mapped[1]);
+
+  // Ranges are defined on bit prefixes, so compare numerically rather than by
+  // text prefix: `fe90::1` is link-local even though it doesn't start "fe80".
+  const h = firstHextet(v);
+  if (h < 0) return true; // unparseable → refuse
+  if (h >= 0xfe80 && h <= 0xfebf) return true; // fe80::/10 link-local
+  if (h >= 0xfec0 && h <= 0xfeff) return true; // fec0::/10 site-local (legacy)
+  if (h >= 0xfc00 && h <= 0xfdff) return true; // fc00::/7  unique-local
+  if (h >= 0xff00) return true; // ff00::/8  multicast
+
   return false;
 }
 

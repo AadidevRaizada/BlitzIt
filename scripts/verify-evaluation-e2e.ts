@@ -270,6 +270,67 @@ async function main() {
     `status=${sub2After?.status}`,
   );
 
+  // ---- Exhausted retries must not strand the submission as QUEUED ----
+  // The job dead-letters after maxAttempts; if the submission stayed QUEUED it
+  // would look pending forever with nothing left to run it.
+  const sub3 = await db.submission.create({
+    data: {
+      userId: user.id,
+      tournamentId: tournament.id,
+      roundId: (
+        await db.round.create({
+          data: {
+            tournamentId: tournament.id,
+            type: 'SIMULATION',
+            stage: 'SIMULATION',
+            sequence: 3,
+            durationSeconds: 600,
+            problemId: problem.id,
+          },
+        })
+      ).id,
+      problemId: problem.id,
+      repoUrl: `https://github.com/a/b?${TAG}`,
+      deploymentUrl: 'https://example.com',
+      status: 'RECEIVED',
+    },
+  });
+  // Force a failure that is NOT the "unsupported category" early-return.
+  await db.problem.update({
+    where: { id: problem.id },
+    data: { category: 'REST_API' },
+  });
+  await db.submission.update({
+    where: { id: sub3.id },
+    data: { deploymentUrl: 'https://example.com' },
+  });
+
+  const failingJob = {
+    id: 'exhausted',
+    name: 'evaluate' as const,
+    payload: { submissionId: 'does-not-exist-force-error' },
+    attempts: 3,
+    maxAttempts: 3,
+  };
+  // A missing submission returns early, so drive the exhausted path directly:
+  // run with a submission whose evaluation will throw by pointing the job at a
+  // real submission and an attempts count at the limit.
+  const beforeStatus = (
+    await db.submission.findUnique({ where: { id: sub3.id } })
+  )?.status;
+  await evaluateProcessor({
+    ...failingJob,
+    payload: { submissionId: sub3.id },
+    attempts: 3,
+    maxAttempts: 3,
+  }).catch(() => undefined);
+  const sub3After = await db.submission.findUnique({ where: { id: sub3.id } });
+  check(
+    'exhausted evaluation does not leave the submission QUEUED',
+    sub3After?.status !== 'QUEUED',
+    `before=${beforeStatus} after=${sub3After?.status}`,
+  );
+
   await cleanup();
   console.log(
     failures === 0

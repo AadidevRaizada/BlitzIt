@@ -120,10 +120,22 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
       return;
     }
 
+    // If this was the last attempt the job is about to be dead-lettered, so
+    // the submission must not be left looking QUEUED forever — nothing would
+    // ever pick it up again. Mirror the job's terminal state instead.
+    const exhausted = job.attempts >= job.maxAttempts;
     await db.submission.update({
       where: { id: submissionId },
-      data: { status: 'QUEUED' },
+      data: { status: exhausted ? 'FAILED' : 'QUEUED' },
     });
+
+    if (exhausted) {
+      log.error(
+        { err: message, attempts: job.attempts },
+        'evaluation exhausted all attempts; submission marked FAILED',
+      );
+    }
+
     // Rethrow so the runner applies backoff / dead-letters after maxAttempts.
     throw error;
   }

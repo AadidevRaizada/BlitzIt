@@ -241,6 +241,10 @@ async function main() {
     stolenAfter?.claimedAt?.getTime() === stolenRow?.claimedAt?.getTime(),
   );
 
+  // Exhausted job + submission must reach a terminal state together, so a
+  // submission is never left QUEUED with no job that will ever run it.
+  // (Behaviour is asserted end-to-end in verify:evaluation:e2e.)
+
   // A freshly claimed job must NOT be swept out from under a healthy runner.
   const liveKey = `${runId}:live`;
   await db.evaluationJob.create({

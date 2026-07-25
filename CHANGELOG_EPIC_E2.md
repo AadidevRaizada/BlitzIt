@@ -67,6 +67,16 @@ Both findings were **genuine and fixed**. No false positives.
 | **P1** | **DNS rebinding defeats the SSRF guard** — `assertPublicUrl()` resolved DNS, then `fetch()` resolved *again* independently. A rebinding host (TTL 0) could answer public for the check and private/metadata for the actual connection (TOCTOU). | **Confirmed — serious.** My guard was genuinely bypassable. Fixed by injecting the address check into the socket `lookup` via an `undici` `Agent` dispatcher, so **the address we approve is the address we connect to**. Added `undici` (Node's own fetch implementation — not an architectural change; it's the only way to reach the connect-time hook). Regression test added: a hostname resolving to `127.0.0.1` is now refused. |
 | **P2** | **Stale-claim sweep can duplicate a long-running job** — `claimedAt` was never refreshed during `processor(job)`, so a healthy evaluation outliving the 5-minute timeout would be requeued and run twice. | **Confirmed.** Worse than reported: it bites even with a **single** runner (its own sweep reclaims its own in-flight job and runs it concurrently). Measured worst case > 12 min (40 GitHub fetches × 15s + probes + 60s LLM) against a 5-min timeout. Fixed with a real **claim heartbeat** (`queue.heartbeat`, refreshed every 30s while working, scoped to `lockedBy` so a non-owner can't steal a job back), plus the default timeout raised to 15 min as defence in depth. Two regression tests added. |
 
+## Second Codex review (after the LLM-configurability refactor)
+
+Three more findings, **all genuine, all fixed**. No false positives across either review.
+
+| # | Finding | Verdict & fix |
+|---|---|---|
+| **P1** | **SSRF guard missed most of `fe80::/10`** — the check was `startsWith('fe80')`, but the range is a *bit* prefix covering `fe80`–`febf`. | **Confirmed.** Proved `fe81/fe90/fea5/febf` were treated as public. Replaced text matching with numeric hextet ranges covering link-local (`fe80::/10`), legacy site-local (`fec0::/10`), ULA (`fc00::/7`) and multicast (`ff00::/8`), plus zone-index stripping (`%eth0`). Regression cases added for all of them. |
+| **P2** | **Exhausted evaluation stranded the submission** — on the final retry the job dead-lettered to `FAILED` while the submission was reset to `QUEUED`, so it looked pending forever with nothing left to run it. | **Confirmed.** The processor now mirrors the job's terminal state (`FAILED` when `attempts >= maxAttempts`) and logs it. E2E regression added. |
+| **P2** | **Runner under-used its concurrency** — `await Promise.all(batch)` blocked polling until the slowest job finished, idling free slots. | **Confirmed.** The loop now claims only `concurrency - inFlight` and starts jobs without awaiting the batch. The in-flight slot is reserved **synchronously** before the first `await`, so the next capacity check can't over-claim. |
+
 ## Extra bug found while fixing
 
 My `check()` helper in `verify-queue.ts` lacked the optional `detail` parameter the other scripts
