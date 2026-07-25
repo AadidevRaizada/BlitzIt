@@ -20,13 +20,29 @@ enum Role {
 
 enum TournamentStatus {
   DRAFT
+  // A published tournament is publicly visible but not yet accepting entries.
+  // Splitting it out of DRAFT gives admins a review step before the schedule
+  // goes live, and gives the spectator surface something to show early (E3).
+  PUBLISHED
   REGISTRATION_OPEN
   REGISTRATION_CLOSED
   SIMULATION
   SEEDING
+  // The bracket exists and is inspectable, but no knockout round has opened.
+  // Separating it from LIVE means bracket generation is a committed, auditable
+  // step rather than a side effect of starting the first round (E3).
+  BRACKET_GENERATED
   LIVE
   COMPLETED
   CANCELLED
+}
+
+/// Which side of a match a feeder's outcome lands in. Persisted rather than
+/// derived from `bracketPosition` parity so the topology is fully readable from
+/// the database alone — the advancement engine never recomputes the tree.
+enum MatchSlot {
+  A
+  B
 }
 
 enum RoundType {
@@ -270,9 +286,18 @@ model Tournament {
   slug                      String           @unique
   name                      String
   status                    TournamentStatus @default(DRAFT)
+  /// Knockout stage currently in progress. Only meaningful while `status` is
+  /// LIVE; together the pair forms the full lifecycle state (E3). Persisted so
+  /// the engine can resume mid-bracket after a restart with no in-memory state.
+  currentStage              RoundStage?
   passPriceMinor            Int              @default(10000)
   currency                  String           @default("INR")
   bracketSize               Int?
+  /// Whether the losing semi-finalists play off for 3rd place (configurable).
+  thirdPlaceEnabled         Boolean          @default(true)
+  /// Registration limits (D6 sizing input). Null = fall back to configuration.
+  minRegistrations          Int?
+  maxRegistrations          Int?
   timezoneDisplay           String           @default("Asia/Kolkata")
   youtubeStreamUrl          String?
   // dynamic prize pool (D9/D12)
@@ -288,7 +313,11 @@ model Tournament {
   simulationOpensAt         DateTime?
   simulationClosesAt        DateTime?
   liveStartsAt              DateTime?
+  seededAt                  DateTime?
+  bracketGeneratedAt        DateTime?
   completedAt               DateTime?
+  cancelledAt               DateTime?
+  cancellationReason        String?
   roundDurations            Json?
   // Stage -> evaluation profile overrides (D20). Null = built-in defaults:
   // deterministic through QF, AI enabled from SF/THIRD_PLACE/FINAL.
@@ -302,6 +331,7 @@ model Tournament {
   rankings                  Ranking[]
   payouts                   Payout[]
   evaluations               Evaluation[]
+  opsEvents                 OpsEvent[]
   hallOfFame                HallOfFame?
   createdAt                 DateTime         @default(now())
   updatedAt                 DateTime         @updatedAt
@@ -339,20 +369,38 @@ model Match {
   bracketPosition Int
   competitorAId   String?
   competitorBId   String?
+  /// Seeds occupying each slot. Kept alongside the competitor ids so the
+  /// bracket reads correctly for byes (null competitor, null seed) and so the
+  /// higher-seed fallback for a double no-show needs no extra lookup.
+  seedA           Int?
+  seedB           Int?
   submissionAId   String?     @unique
   submissionBId   String?     @unique
   winnerId        String?
+  loserId         String?
   winReason       WinReason?
   status          MatchStatus @default(PENDING)
+  /// Where the WINNER goes. Null only for the terminal match (FINAL / 3rd place).
   nextMatchId     String?
   nextMatch       Match?      @relation("Bracket", fields: [nextMatchId], references: [id])
   feederMatches   Match[]     @relation("Bracket")
+  nextMatchSlot   MatchSlot?
+  /// Where the LOSER goes — used only by the semi-finals when the third-place
+  /// play-off is enabled. Everywhere else a loss is simply elimination.
+  loserNextMatchId   String?
+  loserNextMatch     Match?   @relation("BracketConsolation", fields: [loserNextMatchId], references: [id])
+  loserFeederMatches Match[]  @relation("BracketConsolation")
+  loserNextMatchSlot MatchSlot?
+  /// Set when the win rule and every D5 tie-break failed to separate the two
+  /// competitors. The match stays JUDGING and needs sudden death (E6).
+  tieUnresolved   Boolean     @default(false)
   decidedAt       DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   @@unique([roundId, bracketPosition])
   @@index([tournamentId])
+  @@index([tournamentId, status])
 }
 
 model Problem {
@@ -634,14 +682,27 @@ model AuditLog {
   @@index([entityType, entityId])
 }
 
+/// Scheduler + manual-ops trail. Every lifecycle transition is recorded here
+/// BEFORE it is applied, keyed by a deterministic `idempotencyKey`, so a cron
+/// replay or a double-click collapses onto the same event instead of running
+/// the transition twice (E3.1/E3.2).
 model OpsEvent {
-  id             String   @id @default(uuid())
+  id             String     @id @default(uuid())
   type           String
   tournamentId   String
+  tournament     Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   scheduledFor   DateTime
-  status         String   @default("SCHEDULED")
-  idempotencyKey String   @unique
+  status         String     @default("SCHEDULED")
+  idempotencyKey String     @unique
   runBy          String?
+  payload        Json?
   result         Json?
-  createdAt      DateTime @default(now())
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([tournamentId, status])
+  @@index([status, scheduledFor])
 }

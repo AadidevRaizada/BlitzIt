@@ -32,21 +32,40 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **Entities:** `Payout` (+ `AuditLog`).
 - **Scalability:** low volume, high scrutiny — correctness and audit over throughput.
 
-## 4. Tournament (lifecycle, scheduling & evaluation policy)
-- **Responsibilities:** the weekly state machine (DRAFT→REGISTRATION→SIMULATION→SEEDING→LIVE→
-  COMPLETED), authoritative timestamps, idempotent transitions driven by cron/admin — **and the
+## 4. Tournament (lifecycle, scheduling, seeding, bracket & evaluation policy)
+> **As built in E3** — see [`17-tournament-lifecycle.md`](./17-tournament-lifecycle.md).
+> E3 also absorbed module 8's seeding/bracket/advancement responsibilities (below), so both live
+> in `server/modules/tournament/` as separate, acyclic files rather than two packages.
+
+- **Responsibilities:** the weekly state machine
+  (DRAFT→PUBLISHED→REGISTRATION_OPEN→REGISTRATION_CLOSED→SIMULATION→SEEDING→BRACKET_GENERATED→
+  LIVE(R64…FINAL)→COMPLETED, CANCELLED from any non-terminal), authoritative timestamps and
+  **submission windows**, registration and its limits, idempotent transitions driven by
+  cron/admin, seeding (D13), bracket generation (D6), match advancement (D5) — **and the
   stage → evaluation-profile policy (D20)**: which scoring dimensions are active in each round.
   This module is the *only* place that knows AI starts at the semifinals; the Evaluation Engine
   never asks what stage it is in.
-- **Dependencies:** Prisma, cron (Railway), Admin, Notification. (Depends on the Evaluation
-  Engine's `EvaluationProfile` *type* only — never the reverse.)
-- **Data ownership:** `Tournament` (incl. `evaluationProfiles` JSON override), `Round`,
-  `AdminTask/OpsEvent`.
-- **APIs:** `advanceTournamentState`, `openRegistration`, `startRound` (admin + system);
+- **Dependencies:** Prisma, cron (Railway), Admin (audit), Notification. Reads `Evaluation` rows.
+  (Depends on the Evaluation Engine's `EvaluationProfile` *type* only — never the reverse, and it
+  never *calls* the engine.)
+- **Data ownership:** `Tournament` (incl. `currentStage`, shape config and the
+  `evaluationProfiles` JSON override), `Round`, `Match`, `Registration` (the state; E4 adds the
+  payment), `Ranking` seeds/placements, `AdminTask/OpsEvent`.
+- **APIs:** `applyTransition(tournamentId, transition, opts)` — the single entry point that
+  writes `status`/`currentStage`; `progressTournament` (decide → advance → complete);
+  CRUD (`createTournament`, `updateTournamentSchedule`, `configureTournament`, …);
+  `registerCompetitor` / `withdrawRegistration` / `assertRegistered`;
+  `isSubmissionWindowOpen(round)` / `getSubmissionWindow(roundId)` — the seam E5 calls instead of
+  re-deriving the schedule; `computeSeeding`, `getSeedingList`, `generateBracket`;
   `resolveEvaluationProfile(stage, config)`, `isAiActiveForStage(stage, config)`.
-- **Entities:** `Tournament`, `Round`, `OpsEvent`.
-- **Scalability:** DB-authoritative schedule makes cron replay-safe; supports many concurrent
-  weekly tournaments later (slug-scoped).
+- **Entities:** `Tournament`, `Round`, `Match`, `OpsEvent`.
+- **Internal boundaries that must not blur:** `lifecycle.ts` and `bracket.ts` and `win-rule.ts`
+  are **pure** (no DB, no clock, no randomness); `state.ts` is a persistence shell around
+  `lifecycle.ts`; seeding aggregates evaluations into a seed list and bracket generation consumes
+  **only** that list — the two never call each other.
+- **Scalability:** DB-authoritative schedule and idempotency keys make cron replay-safe; there is
+  **no in-memory tournament state**, so any process can resume any tournament; supports many
+  concurrent weekly tournaments later (slug-scoped).
 
 ## 5. Problem Delivery Engine
 - **Responsibilities:** author/publish problems + hidden tests; reveal a round's problem to all
@@ -94,15 +113,28 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
   tournament pinned model for reproducibility; retry with backoff via `availableAt`.
 
 ## 8. Bracket (seeding + knockout engine)
-- **Responsibilities:** seed qualifiers from simulation scores, build the bracket for the chosen
-  **size 8/16/32/64 (D6)** (byes for non-power-of-two fields), pair matches, apply the **win rule
-  + tie-breaks (D5)** — Functional → hidden tests passed → faster submission → performance → AI
-  score → **sudden-death challenge** — advance winners atomically, detect walkovers/no-shows.
-- **Dependencies:** Ranking (seeds), Round/Match, Evaluation (results), Notification.
-- **Data ownership:** `Match`, bracket topology (`nextMatchId`).
-- **APIs:** `SeedTournament`, `AdvanceBracket` (triggered after evaluations complete); admin
-  overrides; `startSuddenDeath(matchId)`.
+> **Built inside module 4** as of E3 (`server/modules/tournament/{seeding,bracket,
+> bracket-generate,win-rule,advancement,progress}.ts`). It remains a distinct responsibility with
+> its own boundaries; it is not a separate package. Everything below is as built except
+> sudden death, which is deferred to E6.3.
+
+- **Responsibilities:** seed qualifiers from simulation scores (D13), build the bracket for the
+  chosen **size 8/16/32/64 (D6)** (byes when a field does not fill the chosen size), pair matches,
+  apply the **win rule + tie-breaks (D5)** — Functional → hidden tests passed → faster submission
+  → performance → AI score → **sudden-death challenge** — advance winners atomically, detect
+  walkovers/no-shows, route semi-final losers to the third-place play-off, detect round completion
+  and tournament completion, write final placements.
+- **Dependencies:** Ranking (seeds), Round/Match, Evaluation (results — read only), Notification.
+- **Data ownership:** `Match`, bracket topology (`nextMatchId`/`nextMatchSlot`,
+  `loserNextMatchId`/`loserNextMatchSlot`).
+- **APIs:** `computeSeeding` / `getSeedingList`; `generateBracket`; `decideAndPropagate`,
+  `advanceStage`, `resolveDeterminedMatches`, `getRoundCompletion`, `assignFinalPlacements`;
+  `progressTournament`; jobs `seedTournament` and `advanceBracket`; admin overrides;
+  *(`startSuddenDeath(matchId)` — E6.3, not built)*.
 - **Entities:** `Match`, `Round`.
+- **Key invariant:** the **whole match tree** is materialised at generation with its links wired,
+  so advancement *fills* slots rather than *creating* matches. That is what makes "no duplicate
+  matches, no duplicate participants, no orphan rounds" checkable at generation time.
 - **Scalability:** pure functions over seeds/results → unit-testable; small N; deterministic.
 
 ## 9. Leaderboard & Ranking

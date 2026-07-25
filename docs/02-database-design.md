@@ -41,11 +41,17 @@ providerAccountId, tokens. We read, we don't duplicate.
 
 **Tournament** (one per week / "season week")
 - `id`, `slug` (unique, e.g. `2026-w30`), `name`, `status`
-  (`DRAFT|REGISTRATION_OPEN|REGISTRATION_CLOSED|SIMULATION|SEEDING|LIVE|COMPLETED|CANCELLED`),
+  (`DRAFT|PUBLISHED|REGISTRATION_OPEN|REGISTRATION_CLOSED|SIMULATION|SEEDING|BRACKET_GENERATED|LIVE|COMPLETED|CANCELLED`),
   `passPriceMinor`, `currency`, `bracketSize` (`8|16|32|64`, chosen at seeding),
   `registrationOpensAt`, `registrationClosesAt`, `simulationOpensAt`, `simulationClosesAt`,
-  `liveStartsAt`, `completedAt`, `timezoneDisplay` (default `Asia/Kolkata`), `youtubeStreamUrl`,
+  `liveStartsAt`, `seededAt`, `bracketGeneratedAt`, `completedAt`, `cancelledAt`,
+  `cancellationReason`, `timezoneDisplay` (default `Asia/Kolkata`), `youtubeStreamUrl`,
   `createdBy`, `createdAt`, `updatedAt`.
+- **Lifecycle (E3):** `currentStage` (`RoundStage?`) — the knockout stage in progress. The
+  lifecycle state is the **pair** (`status`, `currentStage`), because every knockout round shares
+  `status = LIVE`. Both are columns, so the engine holds no tournament state in memory. See
+  [`17-tournament-lifecycle.md`](./17-tournament-lifecycle.md).
+- **Shape (E3, all configurable):** `thirdPlaceEnabled`, `minRegistrations`, `maxRegistrations`.
 - **Dynamic prize pool (D9):** `participantCount` (denorm, live), `basePrizePoolMinor`,
   `prizePerRegistrationMinor`, `firstPrizeCapMinor` (₹2,000 = `200000` for Week 1),
   `prizePoolMinor` (computed = base + count·perReg), `prizeDistribution` (jsonb: placement→share).
@@ -53,9 +59,9 @@ providerAccountId, tokens. We read, we don't duplicate.
   defaults — simulation `[1800,1200,600]`, knockout R32..Final `[1200,1800,2400,3000,3600]`.
   All configurable per tournament.
 
-**Round** (a phase within a tournament — simulation, R32, R16, QF, SF, Final)
+**Round** (a phase within a tournament — simulation, R64…Final, third place, sudden death)
 - `id`, `tournamentId` (FK), `type` (`SIMULATION|KNOCKOUT`), `stage`
-  (`SIMULATION|R32|R16|QF|SF|FINAL`), `sequence`, `status`
+  (`SIMULATION|R64|R32|R16|QF|SF|THIRD_PLACE|FINAL|SUDDEN_DEATH`), `sequence`, `status`
   (`PENDING|OPEN|JUDGING|COMPLETED`), `problemId` (FK, revealed on open),
   `opensAt`, `deadlineAt` (server-authoritative), `durationSeconds`, `createdAt`, `updatedAt`.
 - Unique: (`tournamentId`, `stage`, `sequence`).
@@ -64,12 +70,19 @@ providerAccountId, tokens. We read, we don't duplicate.
 - `id`, `roundId` (FK), `tournamentId` (FK, denormalized for queries),
   `bracketPosition` (int, deterministic slot in the bracket tree),
   `competitorAId` (FK User, nullable for byes), `competitorBId` (FK User, nullable),
-  `submissionAId` (FK, nullable), `submissionBId` (FK, nullable),
-  `winnerId` (FK User, nullable), `winReason`
-  (`SCORE|TESTS_PASSED|TIEBREAK_TIME|TIEBREAK_QUALITY|BYE|WALKOVER|ADMIN`),
-  `status` (`PENDING|LIVE|JUDGING|DECIDED`), `nextMatchId` (self-FK, where winner advances),
-  `decidedAt`, `createdAt`, `updatedAt`.
-- Unique: (`roundId`, `bracketPosition`).
+  `seedA`, `seedB` (nullable — null seed and null competitor always agree, which is what makes a
+  bye unambiguous), `submissionAId` (FK, nullable), `submissionBId` (FK, nullable),
+  `winnerId` (FK User, nullable), `loserId` (FK User, nullable), `winReason`
+  (`SCORE|TIEBREAK_FUNCTIONAL|TIEBREAK_TESTS|TIEBREAK_TIME|TIEBREAK_PERFORMANCE|TIEBREAK_AI|SUDDEN_DEATH|BYE|WALKOVER|ADMIN`),
+  `status` (`PENDING|LIVE|JUDGING|DECIDED`), `decidedAt`, `createdAt`, `updatedAt`.
+- **Topology (E3):** `nextMatchId` + `nextMatchSlot` (`A|B`) — where the winner goes;
+  `loserNextMatchId` + `loserNextMatchSlot` — where the loser goes, used **only** by the
+  semi-finals when the third-place play-off is enabled. Slots are persisted rather than derived
+  from `bracketPosition` parity, so the tree is fully readable from the database alone and
+  advancement never recomputes it.
+- `tieUnresolved` (bool) — set when the win rule and every D5 tie-break failed to separate the
+  two competitors; the match holds at `JUDGING` awaiting a sudden-death challenge (D5.6/D14).
+- Unique: (`roundId`, `bracketPosition`). Index: (`tournamentId`, `status`).
 
 **Problem** (challenge statement + hidden test definition)
 - `id`, `title`, `slug`, `statementMarkdown`, `difficulty`,
@@ -178,10 +191,16 @@ providerAccountId, tokens. We read, we don't duplicate.
   `before` (jsonb), `after` (jsonb), `ip`, `userAgent`, `correlationId`, `createdAt`.
 
 **AdminTask / OpsEvent** (scheduler + manual ops trail)
-- `id`, `type` (`OPEN_REGISTRATION|CLOSE_REGISTRATION|UNLOCK_SIMULATION|SEED|START_ROUND|
-  PUBLISH_RESULTS|TRIGGER_PAYOUTS`), `tournamentId` (FK), `scheduledFor`, `status`
-  (`SCHEDULED|RUNNING|DONE|FAILED`), `idempotencyKey` (unique), `runBy` (system|admin),
-  `result` (jsonb), `createdAt`. — Makes cron transitions idempotent and observable.
+- `id`, `type` (the lifecycle transition: `PUBLISH|OPEN_REGISTRATION|CLOSE_REGISTRATION|
+  START_SIMULATION|CLOSE_SIMULATION|GENERATE_BRACKET|START_KNOCKOUT|ADVANCE_STAGE|COMPLETE|
+  CANCEL`), `tournamentId` (FK), `scheduledFor`, `status` (`SCHEDULED|RUNNING|DONE|FAILED`),
+  `idempotencyKey` (unique), `runBy` (system|cron|admin|runner), `payload` (jsonb),
+  `result` (jsonb), `error`, `startedAt`, `completedAt`, `createdAt`, `updatedAt`.
+- Written **before** the transition is applied, in the same transaction. The key is
+  `optransition:{tournamentId}:{transition}` (plus the from-state for `ADVANCE_STAGE`, which
+  happens once per stage) and must stay stable across the transition itself — a replay reads it
+  *after* the state has moved. A `DONE` event makes the replay a no-op instead of a second
+  application.
 
 **FeatureFlag / Setting** — small config table (or rely on PostHog flags + env for V1).
 

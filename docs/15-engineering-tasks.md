@@ -36,12 +36,21 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 - **DoD:** given (repoUrl, deploymentUrl), reproducible `Evaluation` with 4 dims + audit; no code execution anywhere.
 
 ## E3 — Tournament lifecycle & admin authoring (M3)
-- **E3.1 (M)** Tournament/Round state machine + `OpsEvent` idempotent transitions.
-- **E3.2 (M)** Railway cron → `TOURNAMENT_TRANSITION` jobs; DB-authoritative schedule.
-- **E3.3 (M)** Admin Tournaments [17]: create/schedule (UTC in, IST preview)/prize-pool config.
-- **E3.4 (L)** Admin Problems [18]: author problem + hidden tests + publish + assign; test-runner preview.
-- **E3.5 (S)** Admin Dashboard [16] shell + Audit log [23].
-- **DoD:** admin can stand up + drive a full weekly tournament shell.
+> **As delivered, E3 absorbed E6.1/E6.2/E6.5** (seeding + bracket + advancement + their tests) —
+> the epic brief scoped them together. UI tickets were deferred. See
+> [`CHANGELOG_EPIC_E3.md`](../CHANGELOG_EPIC_E3.md) and
+> [`17-tournament-lifecycle.md`](./17-tournament-lifecycle.md).
+
+- **E3.1 (M)** ✅ Tournament/Round state machine + `OpsEvent` idempotent transitions.
+- **E3.2 (M)** ✅ `tournamentTransition` job + DB-authoritative schedule.
+  *(Pointing Railway cron at it remains a deployment step.)*
+- **E3.3 (M)** ⏸ Admin Tournaments [17] — server actions built; screens deferred.
+- **E3.4 (L)** ⏸ Admin Problems [18]: author problem + hidden tests + publish + assign.
+- **E3.5 (S)** ⏸ Admin Dashboard [16] shell + Audit log [23] — `AuditLog` writer built, UI deferred.
+- **Also delivered (from E6):** registration + limits, submission windows, seeding (D13),
+  bracket generation 8/16/32/64 with byes, advancement with the full D5 chain, third place,
+  completion + placements, and three verification suites.
+- **DoD:** ✅ a tournament runs DRAFT → COMPLETED through the engine, resumable in a cold process.
 
 ## E4 — Payments + dynamic prize pool (M4)
 - **E4.1 (M)** `createPassOrder` + Razorpay checkout on Buy Pass [7].
@@ -60,12 +69,19 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 - **DoD:** paid users complete multi-type simulation rounds → scored rankings.
 
 ## E6 — Seeding & bracket engine (M6)
-- **E6.1 (L)** `SEED_TOURNAMENT`: choose 8/16/32/64, rank qualifiers, build Match tree with byes.
-- **E6.2 (L)** `ADVANCE_BRACKET`: win rule + tie-breaks (D5), atomic advancement, walkover.
-- **E6.3 (M)** Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution.
-- **E6.4 (M)** Bracket UI [11] + admin bracket [21].
-- **E6.5 (M)** Unit tests: all bracket sizes, byes, every tie-break path, sudden-death.
+> **E6.1, E6.2 and E6.5 shipped in E3.** Only sudden death and the UI remain.
+
+- **E6.1 (L)** ✅ *(in E3)* `seedTournament`: choose 8/16/32/64, rank qualifiers, build the Match
+  tree with byes.
+- **E6.2 (L)** ✅ *(in E3)* `advanceBracket`: win rule + tie-breaks (D5), atomic advancement,
+  walkover, third place, completion.
+- **E6.3 (M)** ⏳ Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution.
+  *(E3 sets `Match.tieUnresolved` and holds the match — the hook exists, the resolution does not.)*
+- **E6.4 (M)** ⏳ Bracket UI [11] + admin bracket [21].
+- **E6.5 (M)** ✅ *(in E3)* Unit tests: all bracket sizes, byes, every tie-break path.
+  *(Sudden-death coverage lands with E6.3.)*
 - **DoD:** full bracket runs to a champion in fast-forward incl. forced tie → sudden-death.
+  *(Champion path proven in E3; the forced-tie path awaits E6.3.)*
 
 ## E7 — Live knockout arena (M7)
 - **E7.1 (L)** Server-authoritative timers; simultaneous reveal; per-match windows.

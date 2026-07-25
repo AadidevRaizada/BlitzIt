@@ -41,11 +41,21 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 | `getBracket` | `{ tournamentId }` | full bracket tree + match statuses |
 | `getTournamentPublic` | `{ slug }` | status, countdown, participantCount, prizePool, stream URL |
 
+### Registration (E3 — the entry *state*; E4 attaches the payment)
+| Action | Input | Authz | Effect |
+|--------|-------|-------|--------|
+| `registerForTournamentAction` | `{ tournamentId }` | user + `REGISTRATION_OPEN` + inside window + under `maxRegistrations` | `Registration(ACTIVE)` + participant count, in one transaction |
+| `withdrawFromTournamentAction` | `{ tournamentId }` | self, and only while registration is open | `Registration(REVOKED)`, frees the slot |
+
 ### Admin (all `requireAdmin`, all audited)
 | Action | Input | Effect |
 |--------|-------|--------|
 | `createTournament` | tournament fields | new `Tournament(DRAFT)` |
 | `updateTournamentSchedule` | `{ tournamentId, times…, roundDurations }` | set UTC schedule + durations |
+| `configureTournament` | `{ tournamentId, bracketSize?, thirdPlaceEnabled?, min/maxRegistrations?, roundDurations?, evaluationProfiles? }` | shape + policy config (D6/D7/D20); refuses size/third-place changes once the bracket exists |
+| `deleteTournament` | `{ tournamentId }` | DRAFT with no registrations only — anything further along is cancelled, never erased |
+| `transitionTournament` | `{ tournamentId, transition, reason?, force? }` | **the single entry point for lifecycle change** (E3). `force` skips business guards only; an illegal transition is refused regardless |
+| `progressTournament` | `{ tournamentId }` | ops button: seal an expired window, decide matches, advance/complete |
 | `configurePrizePool` | `{ tournamentId, base, perRegistration, firstPrizeCap, distribution }` | dynamic pool params (D9) |
 | `createProblem` | `{ title, category, evaluationStrategy, statement, contractSpec }` | new `Problem(DRAFT)` |
 | `addHiddenTest` | `{ problemId, name, kind, spec, weight, timeoutMs }` | append `HiddenTest` |
@@ -66,6 +76,11 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 See the job contract table in [`05-api-architecture.md`](./05-api-architecture.md#internal-job-contracts-postgres-backed-in-process-runner--d3):
 `EVALUATE`, `SEED_TOURNAMENT`, `ADVANCE_BRACKET`, `SEND_EMAIL`, `PROCESS_PAYOUT`,
 `TOURNAMENT_TRANSITION`, `RECOMPUTE_PRIZE_POOL`.
+
+Registered as of E3: `evaluate`, `tournamentTransition`, `seedTournament`, `advanceBracket`
+(+ `noop`). Retry policy differs by failure kind — a transition that is *illegal from the current
+state* completes rather than retrying (it will never become legal), while one rejected by a
+*business guard* ("evaluations still draining") is retried with backoff.
 
 ### `EVALUATE` job — the core contract
 ```
