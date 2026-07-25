@@ -472,6 +472,13 @@ model Submission {
   updatedAt     DateTime         @updatedAt @default(now())
 
   @@unique([userId, roundId])
+  // Deployment-URL reuse detection (D19), enforced by the DATABASE.
+  // The application also checks this to produce a friendly message, but that
+  // check is read-then-write: two competitors submitting the same URL
+  // concurrently would both see no clash and both insert. Only a constraint
+  // actually prevents it. Sharing a deployment is precisely what the rule
+  // exists to catch, so a disqualified entry still holds its URL.
+  @@unique([roundId, deploymentUrl])
   @@index([tournamentId, status])
   @@index([userId, tournamentId])
 }

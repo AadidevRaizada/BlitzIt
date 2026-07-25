@@ -88,10 +88,12 @@ export {
   openRound,
   closeRound,
   completeRound,
+  getRevealedRound,
   getStageRound,
   getSimulationRounds,
   loadTournamentConfig,
   type SubmissionWindow,
+  type RevealedRound,
 } from './rounds';
 
 // ---- Seeding (D13) ----

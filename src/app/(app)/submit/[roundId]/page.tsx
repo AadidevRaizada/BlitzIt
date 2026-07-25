@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
-import { db } from '@/server/db';
-import { getSubmissionWindow, isRegistered } from '@/server/modules/tournament';
+import { getRevealedRound, isRegistered } from '@/server/modules/tournament';
 import { getMySubmission } from '@/server/modules/submission';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
 import { SubmissionForm } from './submission-form';
@@ -12,9 +11,10 @@ export const metadata = { title: 'Submit — Blitz It' };
 /**
  * Screen [9] — Problem + Submission (E4).
  *
- * The problem statement is only read once the round has opened; the reveal gate
- * is the round's own `opensAt`, which the Tournament module owns. Hidden tests
- * are never loaded here — they never leave the server.
+ * Reads go through the modules, never through Prisma directly: the Tournament
+ * module owns the reveal gate (`opensAt`) and the window, the Submission module
+ * owns the entry. Hidden tests are never selected by either — they must not
+ * leave the server even by accident.
  */
 export default async function SubmitPage({
   params,
@@ -24,33 +24,16 @@ export default async function SubmitPage({
   const { roundId } = await params;
   const user = await requireUser(`/submit/${roundId}`);
 
-  const round = await db.round.findUnique({
-    where: { id: roundId },
-    include: {
-      tournament: {
-        select: { id: true, name: true, slug: true, status: true },
-      },
-      problem: {
-        select: {
-          id: true,
-          title: true,
-          category: true,
-          statementMarkdown: true,
-        },
-      },
-    },
-  });
+  const round = await getRevealedRound(roundId);
   if (!round) notFound();
 
   const registered = await isRegistered(round.tournamentId, user.id);
-  const window = await getSubmissionWindow(roundId);
   const existing = await getMySubmission(user.id, roundId);
 
-  // The problem is revealed simultaneously to everyone at the server's
-  // `opensAt` — never earlier, regardless of who navigates here.
-  const revealed =
-    round.opensAt !== null && new Date() >= round.opensAt && registered;
-
+  const window = round.window;
+  // The module decides when the statement is revealed; a competitor must also
+  // be registered to see it at all.
+  const revealed = round.revealed && registered;
   const editable = registered && window.isOpen && !existing?.sealedAt;
 
   return (
@@ -58,7 +41,7 @@ export default async function SubmitPage({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-muted-foreground text-xs tracking-wide uppercase">
-            {round.tournament.name} · {round.stage}
+            {round.tournamentName} · {round.stage}
           </p>
           <h1 className="text-2xl font-bold tracking-tight">
             {revealed ? (round.problem?.title ?? 'Problem') : 'Round locked'}

@@ -1,5 +1,5 @@
 import 'server-only';
-import type { Prisma } from '@/generated/prisma/client';
+import type { Prisma, SubmissionStatus } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import { runEvaluation } from '@/server/modules/evaluation';
 import { UnsupportedCategoryError } from '@/server/modules/evaluation';
@@ -21,6 +21,38 @@ function readProvider(raw: unknown): string | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const provider = (raw as { provider?: unknown }).provider;
   return typeof provider === 'string' ? provider : null;
+}
+
+/**
+ * Write a submission status ONLY while this job still owns the entry.
+ *
+ * Every status write in this processor has to be conditional, not just the
+ * success path. Two things can happen while an evaluation is out probing the
+ * network:
+ *
+ *  - an admin **disqualifies** the entry — a struck submission must not be
+ *    dragged back to JUDGING/SCORED/FAILED by a job that was already running;
+ *  - the competitor **replaces** the entry — the in-flight result describes a
+ *    revision nobody is competing with, and a fresh job is already queued for
+ *    the new one. Marking the *new* revision FAILED because the *old* one threw
+ *    would cost a competitor their score (E3's seeding counts only SCORED).
+ *
+ * Returns false when the write was skipped because the entry moved on.
+ */
+async function writeStatusIfCurrent(
+  submissionId: string,
+  evaluatedVersion: number,
+  status: SubmissionStatus,
+): Promise<boolean> {
+  const result = await db.submission.updateMany({
+    where: {
+      id: submissionId,
+      version: evaluatedVersion,
+      status: { not: 'DISQUALIFIED' },
+    },
+    data: { status },
+  });
+  return result.count > 0;
 }
 
 export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
@@ -62,10 +94,19 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
   // the result is written (E4).
   const evaluatedVersion = submission.version;
 
-  await db.submission.update({
-    where: { id: submissionId },
-    data: { status: 'JUDGING' },
-  });
+  const claimed = await writeStatusIfCurrent(
+    submissionId,
+    evaluatedVersion,
+    'JUDGING',
+  );
+  if (!claimed) {
+    // Disqualified or replaced between the read above and this write.
+    log.warn(
+      { evaluatedVersion },
+      'submission moved on before evaluation started; skipping',
+    );
+    return;
+  }
 
   const startedAt = new Date();
 
@@ -87,7 +128,11 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
         repoUrl: submission.repoUrl,
         deploymentUrl: submission.deploymentUrl,
         commitSha: submission.commitSha,
-        category: submission.problem.category,
+        // The category the entry was ACCEPTED under, not the problem's current
+        // one. Re-categorising a problem mid-tournament must not retroactively
+        // change how an already-accepted entry is scored — or fail it outright
+        // as unsupported. The snapshot is the whole reason the column exists.
+        category: submission.category,
         contractSpec: submission.problem.contractSpec,
         hiddenTests: submission.problem.hiddenTests.map((test) => ({
           id: test.id,
@@ -176,10 +221,7 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     // An unsupported category (D17) will never succeed on retry — record it and
     // stop rather than burning attempts.
     if (error instanceof UnsupportedCategoryError) {
-      await db.submission.update({
-        where: { id: submissionId },
-        data: { status: 'FAILED' },
-      });
+      await writeStatusIfCurrent(submissionId, evaluatedVersion, 'FAILED');
       log.error({ err: message }, 'category not enabled for evaluation');
       return;
     }
@@ -188,10 +230,11 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
     // the submission must not be left looking QUEUED forever — nothing would
     // ever pick it up again. Mirror the job's terminal state instead.
     const exhausted = job.attempts >= job.maxAttempts;
-    await db.submission.update({
-      where: { id: submissionId },
-      data: { status: exhausted ? 'FAILED' : 'QUEUED' },
-    });
+    await writeStatusIfCurrent(
+      submissionId,
+      evaluatedVersion,
+      exhausted ? 'FAILED' : 'QUEUED',
+    );
 
     if (exhausted) {
       log.error(

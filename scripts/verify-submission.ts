@@ -804,6 +804,178 @@ async function pipeline() {
     );
   }
 
+  // ---- REGRESSION (Codex): every processor status write must be conditional ----
+  // A job that is already in flight must not drag a struck or replaced entry
+  // back to JUDGING / SCORED / FAILED. Previously only the SUCCESS path was
+  // guarded; the initial JUDGING write and both failure writes were not.
+  {
+    const guardRound = await db.round.create({
+      data: {
+        tournamentId: tournament.id,
+        type: 'SIMULATION',
+        stage: 'SIMULATION',
+        sequence: 6,
+        durationSeconds: 1800,
+        problemId: problem.id,
+        status: 'OPEN',
+        opensAt: new Date(Date.now() - 60_000),
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const guarded = await submitSolution({
+      userId: competitor.id,
+      roundId: guardRound.id,
+      repoUrl: 'https://github.com/vercel/next.js',
+      deploymentUrl: 'https://example.guard',
+    });
+
+    const guardJobs = await queue.claim(5, `e4-guard-${TAG}`);
+    const guardJob = guardJobs.find(
+      (j) =>
+        (j.payload as { submissionId?: string }).submissionId ===
+        guarded.submission.id,
+    );
+
+    // Disqualify AFTER the job was claimed but BEFORE it runs — exactly the
+    // window the unconditional JUDGING write used to reopen.
+    await disqualifySubmission(guarded.submission.id, admin, 'guard test');
+    if (guardJob) await evaluateProcessor(guardJob);
+
+    const afterGuard = await db.submission.findUniqueOrThrow({
+      where: { id: guarded.submission.id },
+    });
+    check(
+      'REGRESSION: an in-flight job cannot revive a disqualified entry',
+      afterGuard.status === 'DISQUALIFIED',
+      `status=${afterGuard.status}`,
+    );
+    check(
+      'REGRESSION: no score is written for a disqualified entry',
+      (await db.evaluation.findUnique({
+        where: { submissionId: guarded.submission.id },
+      })) === null,
+    );
+
+    // And the same guard on the FAILURE path: a job for a superseded revision
+    // must not mark the current revision FAILED.
+    const supersededRound = await db.round.create({
+      data: {
+        tournamentId: tournament.id,
+        type: 'SIMULATION',
+        stage: 'SIMULATION',
+        sequence: 7,
+        durationSeconds: 1800,
+        problemId: problem.id,
+        status: 'OPEN',
+        opensAt: new Date(Date.now() - 60_000),
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const superseded = await submitSolution({
+      userId: competitor.id,
+      roundId: supersededRound.id,
+      repoUrl: 'https://github.com/vercel/next.js',
+      deploymentUrl: 'https://example.superseded',
+    });
+    const supersededJobs = await queue.claim(5, `e4-superseded-${TAG}`);
+    const supersededJob = supersededJobs.find(
+      (j) =>
+        (j.payload as { submissionId?: string }).submissionId ===
+        superseded.submission.id,
+    );
+    // Replace the entry, so the claimed job now describes revision 1 of 2.
+    await submitSolution({
+      userId: competitor.id,
+      roundId: supersededRound.id,
+      repoUrl: 'https://github.com/sindresorhus/p-limit',
+      deploymentUrl: 'https://example.superseded',
+    });
+    // Force that stale job down the exhausted-failure path.
+    if (supersededJob) {
+      await evaluateProcessor({
+        ...supersededJob,
+        payload: { submissionId: 'not-a-real-id-forcing-failure' },
+        attempts: 3,
+        maxAttempts: 3,
+      }).catch(() => undefined);
+      await evaluateProcessor({
+        ...supersededJob,
+        attempts: 3,
+        maxAttempts: 3,
+      }).catch(() => undefined);
+    }
+    const afterSuperseded = await db.submission.findUniqueOrThrow({
+      where: { id: superseded.submission.id },
+    });
+    check(
+      'REGRESSION: a stale job never marks the CURRENT revision FAILED',
+      afterSuperseded.status !== 'FAILED',
+      `status=${afterSuperseded.status} version=${afterSuperseded.version}`,
+    );
+  }
+
+  // ---- REGRESSION (Codex): deployment-URL reuse is enforced by the DATABASE ----
+  {
+    const raceRound = await db.round.create({
+      data: {
+        tournamentId: tournament.id,
+        type: 'SIMULATION',
+        stage: 'SIMULATION',
+        sequence: 8,
+        durationSeconds: 1800,
+        problemId: problem.id,
+        status: 'OPEN',
+        opensAt: new Date(Date.now() - 60_000),
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+
+    // Both competitors submit the SAME deployment URL simultaneously. The
+    // application check is read-then-write, so both can pass it; only the
+    // unique index stops the duplicate — and the violation must come back as
+    // the same typed CONFLICT the friendly check produces.
+    const outcomes = await Promise.allSettled([
+      submitSolution({
+        userId: competitor.id,
+        roundId: raceRound.id,
+        repoUrl: 'https://github.com/vercel/next.js',
+        deploymentUrl: 'https://example.race',
+      }),
+      submitSolution({
+        userId: rival.id,
+        roundId: raceRound.id,
+        repoUrl: 'https://github.com/sindresorhus/p-limit',
+        deploymentUrl: 'https://example.race',
+      }),
+    ]);
+    const accepted = outcomes.filter((o) => o.status === 'fulfilled').length;
+    const rejections = outcomes.flatMap((o) =>
+      o.status === 'rejected' ? [o.reason] : [],
+    );
+    check(
+      'REGRESSION: concurrent identical deployment URLs — only one is accepted',
+      accepted === 1,
+      `${accepted} accepted`,
+    );
+    check(
+      'REGRESSION: the loser gets a typed CONFLICT, not a raw Prisma error',
+      rejections.every((e) => e instanceof AppError && e.code === 'CONFLICT'),
+      rejections.map((e) => `${(e as Error).name}`).join(','),
+    );
+    // Note the trailing slash: deployment URLs are NORMALISED on the way in,
+    // which is what makes two spellings of one deployment collide.
+    check(
+      'only one row exists for that deployment URL in the round',
+      (await db.submission.count({
+        where: {
+          roundId: raceRound.id,
+          deploymentUrl: 'https://example.race/',
+        },
+      })) === 1,
+      `rows=${await db.submission.count({ where: { roundId: raceRound.id } })}`,
+    );
+  }
+
   // ---- Admin retry ----
   const retried = await retryEvaluation(first.submission.id, admin);
   check('an admin can retry a completed evaluation', Boolean(retried.jobId));
@@ -847,8 +1019,7 @@ async function pipeline() {
       'VALIDATION',
     );
 
-    // Now force the failure path through the processor itself: a submission
-    // that was accepted while the category was still enabled.
+    // Now force the failure path through the processor itself.
     await db.problem.update({
       where: { id: problem.id },
       data: { category: 'REST_API' },
@@ -859,11 +1030,39 @@ async function pipeline() {
       repoUrl: 'https://github.com/vercel/next.js',
       deploymentUrl: 'https://example.net',
     });
+
+    // REGRESSION (Codex): the processor scores the category the entry was
+    // ACCEPTED under, not the problem's current one. Re-categorising the
+    // PROBLEM must therefore NOT change how this entry is evaluated — only
+    // disabling the snapshot on the submission itself can.
     await db.problem.update({
       where: { id: problem.id },
       data: { category: 'WEB_APP' },
     });
+    const untouched = await queue.claim(5, `e4-untouched-${TAG}`);
+    const untouchedJob = untouched.find(
+      (j) =>
+        (j.payload as { submissionId?: string }).submissionId ===
+        accepted.submission.id,
+    );
+    if (untouchedJob) await evaluateProcessor(untouchedJob);
+    const stillScored = await db.submission.findUnique({
+      where: { id: accepted.submission.id },
+    });
+    check(
+      'REGRESSION: re-categorising the PROBLEM does not fail an accepted entry',
+      stillScored?.status === 'SCORED',
+      `status=${stillScored?.status}`,
+    );
 
+    // Only the snapshot on the entry itself decides.
+    await db.submission.update({
+      where: { id: accepted.submission.id },
+      data: { category: 'WEB_APP' },
+    });
+
+    const { enqueueEvaluation } = await import('../src/server/jobs');
+    await enqueueEvaluation(accepted.submission.id, 99);
     const failJobs = await queue.claim(5, `e4-fail-${TAG}`);
     const failJob = failJobs.find(
       (j) =>

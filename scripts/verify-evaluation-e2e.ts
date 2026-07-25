@@ -320,10 +320,10 @@ async function main() {
   }
 
   // ---- Unsupported category is refused (D17) ----
-  await db.problem.update({
-    where: { id: problem.id },
-    data: { category: 'WEB_APP' },
-  });
+  // As of E4 the processor scores the category the SUBMISSION was accepted
+  // under, not the problem's current one — re-categorising a problem must not
+  // retroactively fail entries already in flight. So the unsupported category
+  // is set on the submission itself, which is what now decides.
   const sub2 = await db.submission.create({
     data: {
       userId: user.id,
@@ -341,7 +341,7 @@ async function main() {
         })
       ).id,
       problemId: problem.id,
-      category: 'REST_API',
+      category: 'WEB_APP',
       repoUrl: `https://github.com/a/b?${TAG}`,
       deploymentUrl: 'https://example.com',
       status: 'RECEIVED',
@@ -388,10 +388,7 @@ async function main() {
     },
   });
   // Force a failure that is NOT the "unsupported category" early-return.
-  await db.problem.update({
-    where: { id: problem.id },
-    data: { category: 'REST_API' },
-  });
+  // (The problem's category was never changed; sub3 is accepted as REST_API.)
   await db.submission.update({
     where: { id: sub3.id },
     data: { deploymentUrl: 'https://example.com' },

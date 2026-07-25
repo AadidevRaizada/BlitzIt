@@ -119,6 +119,18 @@ for the new revision, so nothing is lost.
 `Evaluation.submissionVersion` records which revision produced each score, so a past result can be
 explained without guessing.
 
+**Every** status write in the processor is conditional on
+`{ id, version: evaluatedVersion, status ≠ DISQUALIFIED }` — not just the success path. A job that
+was already running must not drag a struck entry back to `JUDGING`, and a failure in a job for a
+superseded revision must not mark the competitor's *current* revision `FAILED` (E3's seeding counts
+only `SCORED`).
+
+### The evaluated category is the snapshot
+
+The processor passes `submission.category` to the engine, never `submission.problem.category`.
+Re-categorising a problem mid-tournament must not retroactively change how an already-accepted
+entry is scored, nor fail it as unsupported.
+
 ---
 
 ## 4. Validation
@@ -143,6 +155,12 @@ double the cost and still be a TOCTOU check.
 5. For **knockout** rounds, the competitor must be paired into a `Match` in that round —
    derived from the bracket, never from the client having navigated to the page.
 6. The deployment URL is not already claimed by another competitor in the same round (D19).
+
+The last rule has **two halves**: a friendly read-then-write check that produces a clear message,
+and a `@@unique([roundId, deploymentUrl])` index that actually prevents the duplicate. The check
+alone is a race (two competitors submitting the same URL concurrently both pass it); the
+constraint alone gives a useless error. The module translates the constraint violation back into
+the same typed `ConflictError`, so a race is indistinguishable to the caller.
 
 ---
 

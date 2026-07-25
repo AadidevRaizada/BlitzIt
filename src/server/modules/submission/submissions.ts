@@ -199,11 +199,62 @@ async function findMatchId(
   return match?.id ?? null;
 }
 
+/** Postgres unique-constraint violation, surfaced by Prisma. */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: string }).code === 'P2002'
+  );
+}
+
+/**
+ * Which constraint a P2002 was raised on.
+ *
+ * Prisma reports this in more than one shape depending on the driver. With the
+ * `@prisma/adapter-pg` driver adapter (what we run) `meta.target` is absent
+ * entirely and the detail lives under `meta.driverAdapterError.cause` — as a
+ * `constraint.fields` array of *quoted* names plus the raw Postgres message.
+ * Reading only `meta.target`, as the obvious implementation does, silently
+ * matches nothing and lets a raw Prisma error escape the module.
+ */
+function violatedTarget(error: unknown): string {
+  const meta = (error as { meta?: Record<string, unknown> } | null)?.meta;
+  if (!meta) return '';
+
+  const parts: string[] = [];
+
+  const target = meta.target;
+  if (Array.isArray(target)) parts.push(target.join(','));
+  else if (typeof target === 'string') parts.push(target);
+
+  const cause = (
+    meta.driverAdapterError as { cause?: Record<string, unknown> } | undefined
+  )?.cause;
+  if (cause) {
+    const fields = (cause.constraint as { fields?: unknown } | undefined)
+      ?.fields;
+    if (Array.isArray(fields)) parts.push(fields.join(','));
+    if (typeof cause.originalMessage === 'string') {
+      parts.push(cause.originalMessage);
+    }
+  }
+
+  return parts.join(' ');
+}
+
 /**
  * Refuse a deployment URL already claimed by a different competitor in the same
  * round (D19 — deployment-URL reuse detection). Two entries pointing at one
  * deployment are either collusion or a copy-paste mistake; both deserve to fail
  * loudly at submit time rather than produce two identical scores.
+ *
+ * This is the FRIENDLY half of the rule. It is read-then-write, so two
+ * competitors submitting the same URL at once would both pass it; the
+ * `(roundId, deploymentUrl)` unique index is what actually prevents the
+ * duplicate, and `submitSolution` translates that violation back into the same
+ * error. Both halves exist because a constraint alone gives a competitor a
+ * useless message, and a check alone gives a race.
  */
 async function assertDeploymentNotReused(
   client: DbClient,
@@ -258,8 +309,9 @@ export async function submitSolution(
   const now = options.now ?? new Date();
   const validated = validateSubmissionInput(input);
 
-  const { submission, replaced, version } = await db.$transaction(
-    async (tx) => {
+  let accepted;
+  try {
+    accepted = await db.$transaction(async (tx) => {
       const round = await loadSubmittableRound(
         tx,
         input.roundId,
@@ -281,8 +333,29 @@ export async function submitSolution(
         return replaceSubmission(tx, existing, validated, now);
       }
       return createSubmission(tx, input.userId, round, validated, now);
-    },
-  );
+    });
+  } catch (error) {
+    // The checks above are read-then-write, so a concurrent submission can slip
+    // between them and the insert. The unique indexes are what actually hold
+    // the line; translate their violations into the SAME typed errors the
+    // friendly checks produce, so a race is indistinguishable to the caller.
+    if (isUniqueViolation(error)) {
+      const target = violatedTarget(error);
+      if (target.includes('deploymentUrl')) {
+        throw new ConflictError(
+          'That deployment URL has already been submitted by another competitor in this round',
+        );
+      }
+      if (target.includes('roundId')) {
+        throw new ConflictError(
+          'You already have an entry for this round; refresh and try again',
+        );
+      }
+    }
+    throw error;
+  }
+
+  const { submission, replaced, version } = accepted;
 
   // Enqueue AFTER the entry is committed. Enqueuing inside the transaction
   // would let the runner claim a job for a row that has not landed yet — the

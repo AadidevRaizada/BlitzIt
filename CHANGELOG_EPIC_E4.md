@@ -57,6 +57,9 @@ Two, both additive:
   `Evaluation.llmProvider`, the `SubmissionRevision` table, and an index on
   `Submission(userId, tournamentId)`.
 - `20260725122754_e4_evaluation_submission_version` — `Evaluation.submissionVersion`.
+- `20260725140000_e4_deployment_url_unique_per_round` — `@@unique([roundId, deploymentUrl])`,
+  enforcing D19 deployment-URL reuse detection in the database rather than in a racy read-then-write
+  check (Codex finding 3).
 
 `OpsEvent.updatedAt` also gained `@default(now())` in the schema so it matches what the E3
 migration actually created; without it Prisma read the database as drifted and emitted a
@@ -88,14 +91,39 @@ production code path changed behaviour.
    deterministic predicate (`isEvaluationResultCurrent`) that the processor now calls.
 5. **The generated migration would have failed on a non-empty table** (see Migrations).
 
+Four more were found by the Codex review, plus one while fixing them — see
+[Codex review](#codex-review).
+
+## Codex review
+
+Four findings. **All four were genuine and are fixed**, each with a regression test. No false
+positives. Codex separately confirmed clean: the Queue decoupling, Zod + session-derived auth,
+ownership/admin gates, migration additivity, engine stage-agnosticism, E2/E3 enum compatibility,
+and the client-bundle split.
+
+| # | Severity | Finding | Verdict & fix |
+|---|---|---|---|
+| **1** | critical | **Only the success path guarded its status write.** The processor checked `DISQUALIFIED` at load, then wrote `JUDGING` unconditionally — so an admin disqualifying an entry in that window would see it dragged back and scored. Worse, the *catch* path wrote `QUEUED`/`FAILED` unconditionally: a stale job for a superseded revision could mark the competitor's **current** revision `FAILED`, and E3's seeding counts only `SCORED`. | **Confirmed, both halves.** Every status write now goes through `writeStatusIfCurrent`, a conditional `updateMany` on `{ id, version, status ≠ DISQUALIFIED }`; the processor bails if it no longer owns the entry. Two regressions: an in-flight job cannot revive a disqualified entry, and a stale job never marks the current revision `FAILED`. |
+| **2** | high | **The evaluation ignored the snapshotted category.** The processor passed `submission.problem.category` to the engine instead of `submission.category` — contradicting the column's entire purpose. Re-categorising a problem mid-tournament would retroactively change how accepted entries were scored, or fail them outright as unsupported. | **Confirmed.** Now passes `submission.category`. Regression asserts re-categorising the *problem* does not fail an already-accepted entry, and that only the snapshot on the entry decides. The E2 fixture, which relied on the old behaviour, was updated to match the corrected semantics. |
+| **3** | high | **Deployment-URL reuse detection was TOCTOU-racy.** The check was `findFirst`-then-insert with no constraint behind it, so two competitors submitting the same URL concurrently would both pass and both insert — bypassing D19. | **Confirmed.** Added a `@@unique([roundId, deploymentUrl])` index (migration `20260725140000`), and the module now translates the resulting `P2002` back into the same typed `ConflictError` the friendly check produces. Regression fires two concurrent identical submissions and asserts exactly one is accepted with a typed error for the loser. |
+| **4** | medium | **The submit route read Prisma directly**, re-deriving the problem-reveal and editability rules in the page — a second place that can drift from the module's rules, and a violation of the "no Prisma outside module boundaries" constraint. | **Confirmed.** Added `getRevealedRound` to the Tournament module (which owns `opensAt` and therefore the reveal gate); the page now consumes a view model and touches no Prisma. Hidden tests are still never selected. |
+
+### A second bug found while fixing #3
+
+Translating `P2002` did not work at first: the obvious implementation reads `error.meta.target`,
+but with the `@prisma/adapter-pg` driver adapter that field **does not exist** — the constraint
+detail lives under `meta.driverAdapterError.cause`. The raw Prisma error was escaping the module
+boundary. `violatedTarget` now reads every shape. Caught by the regression test asserting the
+error *type*, not just that the insert failed.
+
 ## Verification
 
 | Suite | Result |
 |---|---|
-| `verify:submission` | **172/172** — state machine, validation, job lifecycle, and the full persisted pipeline |
+| `verify:submission` | **179/179** — state machine, validation, job lifecycle, the full persisted pipeline, and a regression for every Codex finding |
 | `verify:auth` / `verify:queue` / `verify:runner` | 36 / 15 / 5 — no regressions |
 | `verify:evaluation` / `verify:evaluation:e2e` / `verify:profiles` | 31 / 19 / 30 — no regressions |
-| `verify:tournament` / `verify:bracket` / `verify:tournament:e2e` | 197 / 112 / 134 — no regressions |
+| `verify:tournament` / `verify:bracket` / `verify:tournament:e2e` | 197 / 118 / 134 — no regressions |
 | tsc · eslint · prettier · next build | all pass |
 
 `verify:submission` covers every item the brief listed: valid submission, invalid URLs (14 cases),

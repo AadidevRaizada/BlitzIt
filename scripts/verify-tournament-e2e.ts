@@ -178,7 +178,9 @@ async function scoreSubmission(
       problemId,
       category: 'REST_API',
       repoUrl: `https://github.com/blitzit/${TAG}`,
-      deploymentUrl: 'https://example.com',
+      // Distinct per competitor: (roundId, deploymentUrl) is unique, because
+      // two entries sharing one deployment is exactly what D19 catches.
+      deploymentUrl: `https://example.com/${userId}`,
       submittedAt: score.submittedAt ?? new Date(),
       status: 'SCORED',
     },
