@@ -9,7 +9,15 @@ import 'server-only';
  * (Prisma models, SQL) through this interface.
  */
 
-export type JobName = 'noop' | 'evaluate';
+export type JobName =
+  | 'noop'
+  | 'evaluate'
+  // E3 — tournament lifecycle. `tournamentTransition` runs a scheduled or
+  // admin-requested state change; `seedTournament` and `advanceBracket` are
+  // the two long-running steps that must survive a restart.
+  | 'tournamentTransition'
+  | 'seedTournament'
+  | 'advanceBracket';
 
 export interface EnqueueOptions {
   /** Idempotency key — duplicate enqueues with the same key collapse to one job. */

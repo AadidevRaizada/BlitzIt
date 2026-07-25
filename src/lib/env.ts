@@ -71,6 +71,31 @@ const serverSchema = z.object({
   POSTHOG_API_KEY: optionalVar(),
   SENTRY_DSN: optionalVar(),
 
+  // Tournament lifecycle & bracket engine (Epic E3). Deployment-wide defaults;
+  // every one of these can be overridden per tournament in the database, so an
+  // organizer never needs a redeploy to change a tournament's shape.
+  /** Force a bracket size (8|16|32|64). Unset = size automatically from the field (D6). */
+  TOURNAMENT_BRACKET_SIZE: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.coerce.number().int().optional(),
+  ),
+  /** Do the losing semi-finalists play off for third place? */
+  TOURNAMENT_THIRD_PLACE_ENABLED: z
+    .string()
+    .transform((v) => v !== 'false')
+    .default('true'),
+  /** Registrations required before a tournament may leave REGISTRATION_OPEN. */
+  TOURNAMENT_MIN_REGISTRATIONS: z.coerce.number().int().min(0).default(8),
+  /** Hard cap on registrations. Further attempts are refused, not queued. */
+  TOURNAMENT_MAX_REGISTRATIONS: z.coerce.number().int().positive().default(512),
+  /** Simulation rounds feeding the seeding sum (D13: three). */
+  TOURNAMENT_SIMULATION_ROUNDS: z.coerce.number().int().positive().default(3),
+  /** Advance the better seed when neither competitor submitted, instead of stalling. */
+  TOURNAMENT_ADVANCE_HIGHER_SEED_ON_NO_SHOW: z
+    .string()
+    .transform((v) => v !== 'false')
+    .default('true'),
+
   // Evaluation runner
   RUNNER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   // How long a job may stay CLAIMED before it is assumed abandoned and
