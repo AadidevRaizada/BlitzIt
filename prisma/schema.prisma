@@ -413,8 +413,16 @@ model Match {
   loserFeederMatches Match[]  @relation("BracketConsolation")
   loserNextMatchSlot MatchSlot?
   /// Set when the win rule and every D5 tie-break failed to separate the two
-  /// competitors. The match stays JUDGING and needs sudden death (E6).
+  /// competitors. The match holds at JUDGING until a sudden-death challenge
+  /// resolves it (D5.6 / D14, E6).
   tieUnresolved   Boolean     @default(false)
+  /// A SUDDEN_DEATH match points back at the deadlocked match it exists to
+  /// settle. When it is decided, its winner is written onto that match with
+  /// `winReason = SUDDEN_DEATH` and advancement continues from there, so the
+  /// main bracket topology never has to know sudden death happened (E6).
+  resolvesMatchId String?     @unique
+  resolvesMatch   Match?      @relation("SuddenDeath", fields: [resolvesMatchId], references: [id])
+  suddenDeathMatch Match?     @relation("SuddenDeath")
   decidedAt       DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt

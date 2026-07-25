@@ -8,6 +8,7 @@ import type {
   RoundStatus,
   Tournament,
   TournamentStatus,
+  WinReason,
 } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
@@ -467,14 +468,24 @@ export interface BracketRoundView {
   stage: RoundStage;
   status: RoundStatus;
   problem: { title: string; category: ChallengeCategory } | null;
+  /** The problem the round is played on, once assigned. */
   matches: Array<{
     id: string;
     bracketPosition: number;
+    /** Display names. */
     competitorA: string | null;
     competitorB: string | null;
     winner: string | null;
+    /** Ids, so a viewer's own path can be highlighted without name matching. */
+    competitorAId: string | null;
+    competitorBId: string | null;
+    seedA: number | null;
+    seedB: number | null;
+    winReason: WinReason | null;
     status: MatchStatus;
     tieUnresolved: boolean;
+    /** Set on a SUDDEN_DEATH match: the deadlocked match it settles (E6). */
+    resolvesMatchId: string | null;
     submissionAId: string | null;
     submissionBId: string | null;
   }>;
@@ -529,8 +540,14 @@ export async function listBracketRounds(
       winner: match.winnerId
         ? (usernameById.get(match.winnerId) ?? 'Unknown')
         : null,
+      competitorAId: match.competitorAId,
+      competitorBId: match.competitorBId,
+      seedA: match.seedA,
+      seedB: match.seedB,
+      winReason: match.winReason,
       status: match.status,
       tieUnresolved: match.tieUnresolved,
+      resolvesMatchId: match.resolvesMatchId,
       submissionAId: match.submissionAId,
       submissionBId: match.submissionBId,
     })),

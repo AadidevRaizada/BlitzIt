@@ -22,6 +22,8 @@ cloning-to-build. See [`docs/DECISIONS.md`](./docs/DECISIONS.md) (D1).
 | **E2** | Evaluation Engine | ✅ complete |
 | **E3** | Tournament lifecycle, seeding & bracket engine | ✅ complete |
 | **E4** | Submission system & evaluation pipeline | ✅ complete |
+| **E5** | Admin platform & tournament management | ✅ complete |
+| **E6** | Sudden death & bracket UI | ✅ complete |
 | **E5** | Admin platform & tournament management UI | complete |
 | E6 | Future epic | not started |
 
@@ -101,6 +103,8 @@ real network probes.
 | `npm run verify:bracket` | Bracket topology at 8/16/32/64, byes, seeding, the D5 win rule |
 | `npm run verify:tournament:e2e` | A tournament from DRAFT to COMPLETED, incl. restart recovery |
 | `npm run verify:submission` | Submission state machine, validation, job lifecycle, full pipeline |
+| `npm run verify:admin` | Admin platform: CRUD, lifecycle, registrations, permissions |
+| `npm run verify:sudden-death` | D14 sudden death: win rule, guards, resolution, bracket DoD |
 | `npm run verify:admin` | Admin platform workflows, guards, audited tournament management |
 | `npm run verify:llm` | LLM provider wiring (needs a configured key) |
 

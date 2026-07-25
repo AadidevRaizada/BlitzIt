@@ -80,13 +80,15 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
   tree with byes.
 - **E6.2 (L)** ✅ *(in E3)* `advanceBracket`: win rule + tie-breaks (D5), atomic advancement,
   walkover, third place, completion.
-- **E6.3 (M)** ⏳ Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution.
-  *(E3 sets `Match.tieUnresolved` and holds the match — the hook exists, the resolution does not.)*
-- **E6.4 (M)** ⏳ Bracket UI [11] + admin bracket [21].
+- **E6.3 (M)** ✅ Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution (D14).
+  One round per originating stage; admin picks a NEW published problem; the winner is written onto
+  the deadlocked match with `winReason = SUDDEN_DEATH` and normal advancement continues.
+- **E6.4 (M)** ✅ Bracket UI [11] (`/bracket/[tournamentId]`, own path highlighted) + admin bracket
+  [21] with the deadlock list and sudden-death controls. *Server-rendered; SSE lands with E7.*
 - **E6.5 (M)** ✅ *(in E3)* Unit tests: all bracket sizes, byes, every tie-break path.
   *(Sudden-death coverage lands with E6.3.)*
-- **DoD:** full bracket runs to a champion in fast-forward incl. forced tie → sudden-death.
-  *(Champion path proven in E3; the forced-tie path awaits E6.3.)*
+- **DoD:** ✅ full bracket runs to a champion in fast-forward incl. forced tie → sudden-death.
+  *(Proven end to end by `verify:sudden-death`.)*
 
 ## E7 — Live knockout arena (M7)
 - **E7.1 (L)** Server-authoritative timers; simultaneous reveal; per-match windows.

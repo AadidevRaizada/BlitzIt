@@ -7,9 +7,11 @@ import { logger } from '@/lib/logger';
 import type { TournamentConfig } from './config';
 import {
   decideMatch,
+  SUDDEN_DEATH_CHAIN,
   type CompetitorResult,
   type MatchOutcome,
 } from './win-rule';
+import { applySuddenDeathResult } from './sudden-death';
 
 /**
  * Match advancement (E3, blueprint E6.2).
@@ -217,9 +219,15 @@ export async function decideAndPropagate(
     };
   }
 
+  const isSuddenDeath = round.stage === 'SUDDEN_DEATH';
   const outcome = decideMatch(a, b, {
     advanceHigherSeedOnDoubleNoShow: config.advanceHigherSeedOnDoubleNoShow,
     windowClosed,
+    // D14: a sudden-death challenge is decided on Functional score alone, then
+    // tests passed, then earliest submission. The other dimensions are not even
+    // evaluated at this stage (D20 `functional-only`), so the D5 chain would be
+    // comparing zeroes.
+    ...(isSuddenDeath ? { chain: SUDDEN_DEATH_CHAIN } : {}),
   });
 
   if (outcome.kind === 'PENDING') {
@@ -238,8 +246,10 @@ export async function decideAndPropagate(
       data: { status: 'JUDGING', tieUnresolved: true },
     });
     logger.warn(
-      { matchId: match.id, stage: base.stage },
-      'match is tied after every D5 tie-break; needs a sudden-death challenge',
+      { matchId: match.id, stage: base.stage, isSuddenDeath },
+      isSuddenDeath
+        ? 'sudden-death challenge is ITSELF tied; an admin must open another one'
+        : 'match is tied after every D5 tie-break; needs a sudden-death challenge',
     );
     return { ...base, outcome, changed: true };
   }
@@ -272,6 +282,35 @@ export async function decideAndPropagate(
       'match was decided concurrently; skipping propagation',
     );
     return { ...base, outcome, changed: false };
+  }
+
+  if (match.resolvesMatchId) {
+    // A sudden-death match settles another match rather than advancing itself.
+    // The winner is written onto the original, and advancement continues from
+    // THERE using the topology the original already owns.
+    const resolved = await applySuddenDeathResult(client, {
+      id: match.id,
+      resolvesMatchId: match.resolvesMatchId,
+      winnerId: outcome.winnerId,
+      loserId: outcome.loserId,
+    });
+    if (resolved) {
+      const originalRound = await client.round.findUniqueOrThrow({
+        where: { id: resolved.roundId },
+        select: { stage: true },
+      });
+      await propagate(client, resolved, outcome.winnerId, outcome.loserId);
+      // Ranked against the ORIGINAL stage: the loser went out at the
+      // quarter-final they were tied in, not "at SUDDEN_DEATH", which is not a
+      // stage anybody is eliminated from and would corrupt the placement bands.
+      await updateRankingsForMatch(
+        client,
+        resolved,
+        outcome,
+        originalRound.stage,
+      );
+    }
+    return { ...base, outcome, changed: true };
   }
 
   await propagate(client, match, outcome.winnerId, outcome.loserId);
@@ -436,6 +475,43 @@ export async function resolveDeterminedMatches(
   return applied;
 }
 
+/**
+ * Decide any open SUDDEN_DEATH matches and write their results onto the matches
+ * they settle.
+ *
+ * Sudden-death rounds sit OUTSIDE the main stage list (`knockoutStages` never
+ * yields SUDDEN_DEATH), so `advanceStage` never visits them. Without this pass a
+ * finished sudden-death challenge would score but never unstick the bracket.
+ *
+ * Safe to call on every progress pass: matches already decided are skipped.
+ */
+export async function resolveSuddenDeathMatches(
+  client: DbClient,
+  tournamentId: string,
+  config: TournamentConfig,
+): Promise<MatchDecision[]> {
+  const rounds = await client.round.findMany({
+    where: { tournamentId, stage: 'SUDDEN_DEATH' },
+    select: { id: true },
+  });
+  if (rounds.length === 0) return [];
+
+  const matches = await client.match.findMany({
+    where: {
+      roundId: { in: rounds.map((round) => round.id) },
+      status: { not: 'DECIDED' },
+    },
+    orderBy: { bracketPosition: 'asc' },
+    select: { id: true },
+  });
+
+  const decisions: MatchDecision[] = [];
+  for (const match of matches) {
+    decisions.push(await decideAndPropagate(client, match.id, config));
+  }
+  return decisions;
+}
+
 export interface RoundCompletion {
   stage: RoundStage;
   roundId: string;
@@ -516,7 +592,11 @@ export async function assignFinalPlacements(
   // Placement band for everyone else: eliminated later = better placement.
   // A stage where `n` competitors go out occupies the band starting one past
   // however many survived it.
-  const stageOrder = rounds.map((r) => r.stage);
+  // SUDDEN_DEATH is not a stage anyone is eliminated *at* — it settles a tie
+  // belonging to another stage — so it must not occupy a placement band.
+  const stageOrder = rounds
+    .map((r) => r.stage)
+    .filter((stage) => stage !== 'SUDDEN_DEATH');
   const eliminated = await client.ranking.findMany({
     where: {
       tournamentId,

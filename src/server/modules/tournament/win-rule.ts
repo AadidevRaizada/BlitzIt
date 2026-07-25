@@ -53,6 +53,11 @@ export interface WinRuleOptions {
    */
   advanceHigherSeedOnDoubleNoShow: boolean;
   /**
+   * Which tie-break chain to apply. Defaults to the D5 chain; sudden death
+   * passes `SUDDEN_DEATH_CHAIN` (D14, functional-only).
+   */
+  chain?: ReadonlyArray<{ reason: WinReason; compare: Comparator }>;
+  /**
    * Has the round's submission window closed?
    *
    * A missing submission only *means* something once nobody can submit any
@@ -109,6 +114,24 @@ export const TIE_BREAK_CHAIN: ReadonlyArray<{
     compare: higher((r) => r.performanceScore),
   },
   { reason: 'TIEBREAK_AI', compare: higher((r) => r.aiScore) },
+] as const;
+
+/**
+ * The SUDDEN-DEATH chain (D14). Deliberately shorter and different from D5:
+ * a sudden-death challenge is decided on **Functional score alone**, then more
+ * hidden tests passed, then the earliest submission.
+ *
+ * Performance, security and AI are NOT consulted — D20 gives sudden death the
+ * `functional-only` profile, so those dimensions are never even evaluated and
+ * comparing them would be comparing zeroes.
+ */
+export const SUDDEN_DEATH_CHAIN: ReadonlyArray<{
+  reason: WinReason;
+  compare: Comparator;
+}> = [
+  { reason: 'TIEBREAK_FUNCTIONAL', compare: higher((r) => r.functionalScore) },
+  { reason: 'TIEBREAK_TESTS', compare: higher((r) => r.testsPassed) },
+  { reason: 'TIEBREAK_TIME', compare: earlier },
 ] as const;
 
 /** A competitor counts as having played only once their submission is scored. */
@@ -180,7 +203,7 @@ export function decideMatch(
     };
   }
 
-  for (const step of TIE_BREAK_CHAIN) {
+  for (const step of options.chain ?? TIE_BREAK_CHAIN) {
     const order = step.compare(a, b);
     if (order === 0) continue;
     const winner = order < 0 ? a : b;
