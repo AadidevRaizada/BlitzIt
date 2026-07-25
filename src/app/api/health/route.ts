@@ -11,21 +11,30 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   const startedAt = Date.now();
   let dbOk = false;
+  let schemaOk = false;
   try {
     await db.$queryRaw`SELECT 1`;
     dbOk = true;
+    // Connectivity alone is not readiness: a deploy that never ran migrations
+    // answers SELECT 1 happily and then fails on the first real query. Touch a
+    // core table (LIMIT 1, so it stays cheap) to prove the schema is applied.
+    await db.$queryRaw`SELECT 1 FROM "User" LIMIT 1`;
+    schemaOk = true;
   } catch {
-    dbOk = false;
+    // dbOk keeps whatever it reached; schemaOk stays false.
   }
+
+  const healthy = dbOk && schemaOk;
 
   const heartbeat = runnerHeartbeat();
   const runnerAgeMs = heartbeat === 0 ? null : Date.now() - heartbeat;
 
   const body = {
-    status: dbOk ? 'ok' : 'degraded',
+    status: healthy ? 'ok' : 'degraded',
     time: new Date().toISOString(),
     checks: {
       db: dbOk,
+      schema: schemaOk,
       runner: {
         started: runnerStarted(),
         lastHeartbeatAgeMs: runnerAgeMs,
@@ -34,5 +43,5 @@ export async function GET() {
     latencyMs: Date.now() - startedAt,
   };
 
-  return NextResponse.json(body, { status: dbOk ? 200 : 503 });
+  return NextResponse.json(body, { status: healthy ? 200 : 503 });
 }

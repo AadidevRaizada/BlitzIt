@@ -13,6 +13,20 @@ and reads the *repository as text* via the GitHub API for an LLM quality pass. *
 Firecracker/E2B/Docker, no cloning-to-build, no Redis/queue.** This removes the entire
 untrusted-code-execution risk class. See [`DECISIONS.md`](./DECISIONS.md).
 
+## Database workflow
+
+The schema is now **migration-backed** (`prisma/migrations/`), baselined at `0_init`.
+
+| Task | Command |
+|------|---------|
+| Change the schema (local) | `npx prisma migrate dev --name <change>` |
+| Apply migrations (CI / deploy) | `npx prisma migrate deploy` (runs automatically on Railway start) |
+| Inspect drift | `npx prisma migrate status` |
+
+⚠️ **Do not use `prisma db push` any more** — it mutates the database without
+recording a migration, which puts it out of sync with `prisma/migrations/` and
+means a fresh deploy would not reproduce your schema.
+
 ## Read order
 
 1. **[`DECISIONS.md`](./DECISIONS.md)** — the 11 locked V1 decisions (start here).
