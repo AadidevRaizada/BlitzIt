@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { RoundStage } from '@/generated/prisma/client';
 import {
   DEFAULT_WEIGHTS,
+  effectiveWeights,
   type EvaluationProfile,
 } from '@/server/modules/evaluation/types';
 import { logger } from '@/lib/logger';
@@ -121,17 +122,47 @@ export type EvaluationProfileConfig = z.infer<
 >;
 
 /**
+ * Last-resort profile. Only used if the built-in table were somehow unavailable.
+ */
+const HARDCODED_FULL: EvaluationProfile = {
+  name: 'full',
+  dimensions: {
+    functional: true,
+    performance: true,
+    securityReliability: true,
+    ai: true,
+  },
+  weights: DEFAULT_WEIGHTS,
+};
+
+/**
+ * A profile is only usable if at least one ACTIVE dimension carries positive
+ * weight. Otherwise `effectiveWeights` sums to 0 and `computeOverallScore`
+ * throws — which would fail the submission instead of scoring it.
+ *
+ * The Zod schema cannot catch this: `{ ai: true, weights.ai: 0 }` and
+ * "every dimension false" are both structurally valid.
+ */
+function isScorable(profile: EvaluationProfile): boolean {
+  const w = effectiveWeights(profile);
+  return w.functional + w.performance + w.securityReliability + w.ai > 0;
+}
+
+/**
  * Resolve the profile for a stage, honouring a tournament's stored config.
  *
- * Never throws: a malformed or unknown configuration falls back to the safe
- * default for that stage and logs, because an evaluation must not be blocked by
- * a bad admin edit mid-tournament.
+ * Never throws, and never returns an unscorable profile: a malformed, unknown,
+ * or degenerate configuration falls back to the safe default for that stage and
+ * logs, because an evaluation must not be blocked by a bad admin edit
+ * mid-tournament.
  */
 export function resolveEvaluationProfile(
   stage: RoundStage,
   rawConfig?: unknown,
 ): EvaluationProfile {
   const fallbackName = DEFAULT_STAGE_PROFILES[stage] ?? 'full';
+  const fallback =
+    BUILT_IN_PROFILES[fallbackName] ?? BUILT_IN_PROFILES.full ?? HARDCODED_FULL;
 
   let config: EvaluationProfileConfig | undefined;
   if (rawConfig !== null && rawConfig !== undefined) {
@@ -155,21 +186,18 @@ export function resolveEvaluationProfile(
       { stage, profileName },
       'unknown evaluation profile; falling back to the stage default',
     );
-    return (
-      BUILT_IN_PROFILES[fallbackName] ??
-      BUILT_IN_PROFILES.full ??
-        // Unreachable in practice — BUILT_IN_PROFILES.full is always defined.
-        {
-          name: 'full',
-          dimensions: {
-            functional: true,
-            performance: true,
-            securityReliability: true,
-            ai: true,
-          },
-          weights: DEFAULT_WEIGHTS,
-        }
+    return fallback;
+  }
+
+  // Structurally valid but unscorable (no active dimension with positive
+  // weight). Scoring it would throw, so fall back rather than fail the
+  // submission for an organizer's misconfiguration.
+  if (!isScorable(profile)) {
+    logger.warn(
+      { stage, profileName },
+      'evaluation profile has no weighted active dimension; falling back to the stage default',
     );
+    return isScorable(fallback) ? fallback : HARDCODED_FULL;
   }
 
   return profile;

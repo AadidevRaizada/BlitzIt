@@ -199,6 +199,88 @@ async function main() {
     resolveEvaluationProfile('FINAL', null).name === 'full',
   );
 
+  // Regression (Codex review): a schema-VALID but degenerate profile must not
+  // reach the scorer. effectiveWeights would sum to 0, computeOverallScore
+  // would throw, and the submission would be retried and finally FAILED — a
+  // competitor losing their score to an organizer's typo.
+  const allDimensionsOff = {
+    profiles: {
+      dead: {
+        name: 'dead',
+        dimensions: {
+          functional: false,
+          performance: false,
+          securityReliability: false,
+          ai: false,
+        },
+        weights: {
+          functional: 0.6,
+          performance: 0.15,
+          securityReliability: 0.1,
+          ai: 0.15,
+        },
+      },
+    },
+    stages: { QF: 'dead' },
+  };
+  const recoveredA = resolveEvaluationProfile('QF', allDimensionsOff);
+  check(
+    'profile with every dimension off falls back (never unscorable)',
+    recoveredA.name === 'deterministic',
+    `got ${recoveredA.name}`,
+  );
+
+  const zeroWeighted = {
+    profiles: {
+      zeroed: {
+        name: 'zeroed',
+        dimensions: {
+          functional: false,
+          performance: false,
+          securityReliability: false,
+          ai: true,
+        },
+        weights: {
+          functional: 0.6,
+          performance: 0.15,
+          securityReliability: 0.1,
+          ai: 0,
+        },
+      },
+    },
+    stages: { FINAL: 'zeroed' },
+  };
+  const recoveredB = resolveEvaluationProfile('FINAL', zeroWeighted);
+  check(
+    'profile whose only active dimension has weight 0 falls back',
+    recoveredB.name === 'full',
+    `got ${recoveredB.name}`,
+  );
+
+  // The real proof: the resolved profile must always be scorable.
+  for (const [label, cfg] of [
+    ['all-off', allDimensionsOff],
+    ['zero-weighted', zeroWeighted],
+  ] as const) {
+    const stage: RoundStage = label === 'all-off' ? 'QF' : 'FINAL';
+    const w = effectiveWeights(resolveEvaluationProfile(stage, cfg));
+    let threw = false;
+    try {
+      computeOverallScore(
+        {
+          functional: 100,
+          performance: 100,
+          securityReliability: 100,
+          ai: 100,
+        },
+        w,
+      );
+    } catch {
+      threw = true;
+    }
+    check(`scoring never throws for a ${label} config`, !threw);
+  }
+
   // ---- 5. Engine honours the profile (the point of the whole change) ----
   // A deterministic profile must not call the LLM or read the repo. We use an
   // unreachable deployment + a bogus repo: if the engine were still calling

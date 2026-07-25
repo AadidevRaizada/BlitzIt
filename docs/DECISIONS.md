@@ -168,7 +168,11 @@ is decided per *stage*, by configuration.
   deterministic run still scores 100 (not capped at 85).
 - Organizers reconfigure via `Tournament.evaluationProfiles` (JSON: custom `profiles` and/or a
   `stages` map) — **no code change**. Invalid config falls back to defaults and logs; it never
-  blocks an evaluation mid-tournament.
+  blocks an evaluation mid-tournament. This includes profiles that are *structurally* valid but
+  **unscorable** — every dimension disabled, or the only active dimension weighted 0 — which
+  would otherwise make the blend throw and fail a competitor's submission over an organizer's
+  typo. `resolveEvaluationProfile` is guaranteed to return a profile with at least one weighted
+  active dimension.
 - Every `Evaluation` records `profileName` + `dimensions` so a past score can be explained.
 - `aiSkipped` (policy) is distinct from `aiDegraded` (the model was wanted but unavailable) —
   only the latter is an incident.
