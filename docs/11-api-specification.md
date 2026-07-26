@@ -10,7 +10,7 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 |--------|------|------|---------|----------|-------|
 | ALL | `/api/auth/[...all]` | — | Better Auth | — | GitHub/Google OAuth, session, callback |
 | POST | `/api/webhooks/razorpay` | signature | raw body + `x-razorpay-signature` | 200/4xx | verify against **raw body**; idempotent via `webhookEventId`; source of truth for payment state |
-| GET | `/api/live/[tournamentId]` | public | — | `text/event-stream` | **E7 ✅** SSE: leaderboard, bracket, current round, participantCount, prizePool, countdown. `event: snapshot` on connect and on every change; `: heartbeat` comment while quiet; `event: reconnect` before the stream's bounded lifetime expires. Withholds the challenge of any round that has not opened; UNLISTED tournaments 404. |
+| GET | `/api/live/[tournamentId]` | public | — | `text/event-stream` | **E7 ✅** SSE: leaderboard, bracket, current round, participantCount, prizePool, countdown. `event: snapshot` on connect and on every change; `: heartbeat` comment while quiet; `event: reconnect` before the stream's bounded lifetime expires. Withholds the challenge of any round that has not opened; UNLISTED tournaments 404; **503 + `Retry-After` when `FEATURE_LIVE_ARENA=false`** — the kill switch closes the transport, not just the links. |
 | GET | `/api/live/[tournamentId]?mode=poll` | public | — | `application/json` | **E7 ✅** The polling fallback — the *identical* `LiveSnapshot`, once. Used when SSE is blocked or buffered by a proxy. |
 | GET | `/api/health` | — | — | `{ db, runner, time }` | Railway liveness/readiness incl. runner heartbeat |
 

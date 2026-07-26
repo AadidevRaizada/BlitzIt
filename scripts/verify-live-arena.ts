@@ -379,6 +379,22 @@ async function featureFlag() {
       'an anonymous viewer resolves without throwing',
       typeof anonymous.enabled === 'boolean',
     );
+
+    // Codex finding 1 (P1): the kill switch has to reach the TRANSPORT. The
+    // live route is public and anonymous, so it evaluates the flag with no
+    // viewer — which must still see the deployment-wide override.
+    process.env[varName] = 'false';
+    const transport = await evaluateFlag(flag, null);
+    check(
+      'REGRESSION: the anonymous evaluation the live route uses honours the kill switch',
+      !transport.enabled && transport.source === 'env',
+      `${transport.enabled} via ${transport.source}`,
+    );
+    delete process.env[varName];
+    check(
+      'REGRESSION: with the switch cleared the live transport is allowed again',
+      (await evaluateFlag(flag, null)).enabled,
+    );
   } finally {
     if (original === undefined) delete process.env[varName];
     else process.env[varName] = original;
@@ -945,6 +961,32 @@ async function pipeline() {
     where: { id: tournament.id },
     data: { participantCount: 8 },
   });
+
+  // Codex finding 2 (P2): a page that renders at version V and connects a
+  // moment later must be able to tell that the first frame is NEWER than what
+  // it rendered. That is only possible if the page captured V as its baseline —
+  // adopting the first frame instead silently swallows the change, and if it
+  // was the last change for a while the page stays stale while the indicator
+  // still reads "Live". `LiveRefresh.initialVersion` is now required so a page
+  // cannot omit it; this proves the versions actually differ across the race.
+  const atRender = (await getLiveSnapshot(tournament.id)).version;
+  await db.tournament.update({
+    where: { id: tournament.id },
+    data: { participantCount: 6 },
+  });
+  const firstFrame = (await getLiveSnapshot(tournament.id)).version;
+  check(
+    'REGRESSION: a change between the render and the first frame is detectable from the render baseline',
+    firstFrame !== atRender,
+  );
+  await db.tournament.update({
+    where: { id: tournament.id },
+    data: { participantCount: 8 },
+  });
+  check(
+    'REGRESSION: and reverting the change returns the original version',
+    (await getLiveSnapshot(tournament.id)).version === atRender,
+  );
 
   await checkRejects(
     'a snapshot of an unknown tournament is a typed NOT_FOUND',

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getCurrentUser } from '@/server/modules/auth';
 import {
+  getLiveSnapshot,
   getTournamentSummary,
   listBracketRounds,
 } from '@/server/modules/tournament';
@@ -49,6 +50,10 @@ export default async function BracketPage({
   const rounds = await listBracketRounds(tournamentId, {
     revealProblems: false,
   });
+  // The version this render is built from. `LiveRefresh` needs it as its
+  // baseline: without one, a change landing between this render and the stream
+  // connecting would be adopted as the baseline and never re-rendered.
+  const { version } = await getLiveSnapshot(tournamentId);
   const tied = rounds
     .flatMap((round) => round.matches)
     .filter((match) => match.tieUnresolved).length;
@@ -66,7 +71,7 @@ export default async function BracketPage({
             />
             {/* E7.3: the tree re-renders on the server when the live snapshot
                 changes, so the bracket updates without a manual reload. */}
-            <LiveRefresh tournamentId={tournamentId} />
+            <LiveRefresh tournamentId={tournamentId} initialVersion={version} />
           </span>
         }
       />

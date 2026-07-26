@@ -95,11 +95,27 @@ gained two optional props (`redirectTo`, `closedHint`); its default behaviour is
 3. **`README.md` carried duplicate, stale epic rows** (E5 twice, E6 listed both complete and "not
    started") — a leftover from the E6 merge. Corrected.
 
+## Codex review
+
+Two findings. **Both were genuine and are fixed**, each with a regression check. No false
+positives. Codex separately raised nothing against the timer arithmetic, the reveal gate, arena
+authorization, the module boundaries, or E3–E6 behaviour.
+
+| # | Severity | Finding | Verdict & fix |
+|---|---|---|---|
+| **1** | P1 | **The kill switch did not reach the transport.** With `FEATURE_LIVE_ARENA=false` the dashboard and arena links were hidden, but `/api/live/[tournamentId]` kept serving both SSE and `?mode=poll` after checking only tournament visibility. Every client that already held the URL — and every already-open `EventSource` — carried on receiving live updates from a feature the operator had switched off. | **Confirmed.** The route now evaluates the flag before anything else and returns **503 + `Retry-After: 60`** when it is off. The viewer is deliberately `null`: the route is public and anonymous, so there is nobody to evaluate a per-user PostHog rollout against, and `evaluateFlag(flag, null)` resolves to the env override or the default. **Per-user rollout still gates the UI; the deployment-wide switch now gates the stream.** 503 rather than 404 because the tournament exists and the state is deliberate and reversible. |
+| **2** | P2 | **`LiveRefresh` could leave a page stale indefinitely.** `initialVersion` was optional, and when omitted the first frame to arrive became the baseline. Any change landing between the server render and the stream connecting was therefore swallowed — and if it was the last change for a while, the page sat stale while the indicator read "Live". | **Confirmed.** `initialVersion` is now **required**, so the compiler refuses a page that omits it, and both call sites pass the version their render was built from. The cost is one `getLiveSnapshot` read per page render; correctness outranks it, and the alternative (refresh on every mount) trades a silent staleness bug for a guaranteed wasted round trip. |
+
+Both fixes were verified against a running server, not only in the suite: with
+`FEATURE_LIVE_ARENA=false` the stream, the poll fallback and an unknown id all return 503 with
+`Retry-After`, and with the switch cleared the stream, the poll, the dashboard and the bracket all
+return to 200.
+
 ## Verification
 
 | Suite | Result |
 |---|---|
-| `verify:live-arena` | **99/99** — new |
+| `verify:live-arena` | **103/103** — new (99 + 4 Codex regressions) |
 | `verify:tournament` / `bracket` / `tournament:e2e` | 197 / 119 / 134 — no regressions |
 | `verify:sudden-death` | 55 — no regressions |
 | `verify:submission` / `admin` | 179 / 89 — no regressions |
@@ -166,6 +182,6 @@ against `next start`:
 - **To roll the arena out gradually:** create a `live-arena` flag in PostHog. Without one it is
   simply on.
 - **To kill it during an event:** set `FEATURE_LIVE_ARENA=false` and restart. This beats PostHog
-  and the admin bypass.
+  and the admin bypass, and closes **both** the UI and `/api/live/*` (503).
 - **Behind nginx:** the route sets `X-Accel-Buffering: no`; any other proxy in front of it needs
   response buffering disabled for `/api/live/*` or the fallback will be doing the work.

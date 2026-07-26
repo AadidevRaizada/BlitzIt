@@ -29,30 +29,31 @@ const CONNECTION_LABEL = {
 export function LiveRefresh({
   tournamentId,
   /**
-   * The version this page was rendered from; a change means new data. Omit it
-   * when the page did not read a snapshot — the first frame to arrive then
-   * becomes the baseline, so mounting never costs a pointless re-render.
+   * The version this page was rendered from.
+   *
+   * **Required.** An earlier draft let a page omit it and adopted the first
+   * frame as the baseline instead — which silently swallowed any change that
+   * landed between the server render and the stream connecting. If that was the
+   * last change for a while, the page stayed stale indefinitely while the
+   * indicator cheerfully read "Live". The caller pays one snapshot read so the
+   * baseline is the version actually rendered.
    */
   initialVersion,
   showIndicator = true,
   className,
 }: {
   tournamentId: string;
-  initialVersion?: string;
+  initialVersion: string;
   showIndicator?: boolean;
   className?: string;
 }) {
   const router = useRouter();
   const { connection, version } = useLiveTournament(tournamentId);
-  const lastAppliedRef = useRef<string | null>(initialVersion ?? null);
+  const lastAppliedRef = useRef(initialVersion);
   const refreshingRef = useRef(false);
 
   useEffect(() => {
     if (!version) return;
-    if (lastAppliedRef.current === null) {
-      lastAppliedRef.current = version;
-      return;
-    }
     if (version === lastAppliedRef.current) return;
     if (refreshingRef.current) return;
 

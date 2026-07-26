@@ -1,7 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
-import { getKnockoutArena, isRegistered } from '@/server/modules/tournament';
+import {
+  getKnockoutArena,
+  getLiveSnapshot,
+  isRegistered,
+} from '@/server/modules/tournament';
 import {
   ARENA_STATE_LABEL,
   isArenaActionable,
@@ -79,6 +83,9 @@ export default async function KnockoutArenaPage({
     arena.mayRevealOpponentProgress && arena.opponent
       ? await hasSubmission(arena.opponent.userId, arena.round.id)
       : null;
+  // The baseline for `LiveRefresh` — the snapshot version this render is built
+  // from, so a change landing before the stream connects is not swallowed.
+  const { version } = await getLiveSnapshot(arena.tournament.id);
   const window = arena.window;
   const actionable = isArenaActionable(arena.state) && registered;
   const timing = classifySubmissionTiming(
@@ -95,7 +102,10 @@ export default async function KnockoutArenaPage({
             <Badge tone={STATE_TONE[arena.state]}>
               {ARENA_STATE_LABEL[arena.state]}
             </Badge>
-            <LiveRefresh tournamentId={arena.tournament.id} />
+            <LiveRefresh
+              tournamentId={arena.tournament.id}
+              initialVersion={version}
+            />
           </span>
         }
         actions={

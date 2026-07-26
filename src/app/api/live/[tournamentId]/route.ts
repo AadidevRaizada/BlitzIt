@@ -4,6 +4,7 @@ import {
   getLiveSnapshot,
   type LiveSnapshot,
 } from '@/server/modules/tournament';
+import { evaluateFlag, FLAGS } from '@/lib/flags';
 import { serverEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
 
@@ -71,6 +72,37 @@ export async function GET(
     );
   }
   const { tournamentId } = parsed.data;
+
+  // The kill switch has to reach the TRANSPORT, not just the links to it.
+  // Hiding the arena while this route keeps streaming would leave every client
+  // that already has the URL — and every already-open EventSource — receiving
+  // live updates from a feature the operator has switched off, which is exactly
+  // the situation the switch exists to end.
+  //
+  // The viewer is deliberately `null`: this route is public and anonymous, so
+  // there is nobody to evaluate a per-user PostHog rollout against.
+  // `evaluateFlag` with no viewer therefore resolves to the env override, or
+  // the default. Per-user rollout still gates the UI; the deployment-wide
+  // switch gates the stream.
+  const flag = await evaluateFlag(FLAGS.LIVE_ARENA, null);
+  if (!flag.enabled) {
+    logger.info(
+      { tournamentId, source: flag.source },
+      'live transport refused: the live arena is disabled',
+    );
+    return Response.json(
+      {
+        error: {
+          code: 'UNAVAILABLE',
+          message: 'Live updates are temporarily disabled',
+        },
+      },
+      // 503, not 404: the tournament exists and this is a deliberate,
+      // reversible operational state. A client should back off and retry, not
+      // conclude the resource is gone.
+      { status: 503, headers: { 'Retry-After': '60' } },
+    );
+  }
 
   const tournament = await db.tournament.findUnique({
     where: { id: tournamentId },
