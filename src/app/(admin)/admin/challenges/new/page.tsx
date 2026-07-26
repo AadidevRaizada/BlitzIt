@@ -2,7 +2,7 @@ import { requireAdmin } from '@/server/modules/auth';
 import { PageHeader } from '@/components/ui/page-header';
 import { ProblemForm } from '../problem-form';
 
-export const metadata = { title: 'New challenge — Blitz It Admin' };
+export const metadata = { title: 'New challenge - The Circuit Admin' };
 
 export default async function NewChallengePage() {
   await requireAdmin('/admin/challenges/new');

@@ -4,7 +4,7 @@ import { listRegistrations } from '@/server/modules/tournament';
 import { PageHeader } from '@/components/ui/page-header';
 import { SubmissionsTable } from '@/components/features/submissions-table';
 
-export const metadata = { title: 'Submissions — Blitz It Admin' };
+export const metadata = { title: 'Submissions - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function AdminSubmissionsPage({

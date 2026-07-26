@@ -57,7 +57,7 @@ function isVideoId(value: string | null | undefined): value is string {
 
 export function StreamEmbed({
   url,
-  title = 'Blitz It livestream',
+  title = 'The Circuit livestream',
 }: {
   url: string | null;
   title?: string;

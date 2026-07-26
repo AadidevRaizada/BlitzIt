@@ -6,7 +6,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/table';
 
-export const metadata = { title: 'My results — Blitz It' };
+export const metadata = { title: 'My results - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 /**

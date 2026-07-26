@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table';
 import { ArchiveProblemButton, PublishProblemButton } from './problem-actions';
 
-export const metadata = { title: 'Challenges — Blitz It Admin' };
+export const metadata = { title: 'Challenges - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function ChallengesPage() {

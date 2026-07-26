@@ -12,7 +12,7 @@ import {
   TableShell,
 } from '@/components/ui/table';
 
-export const metadata = { title: 'Users — Blitz It Admin' };
+export const metadata = { title: 'Users - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function UsersPage({

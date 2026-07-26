@@ -15,7 +15,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'Blitz It — 15 Minutes. One Shot. Just Ship.',
+  title: 'The Circuit - 15 Minutes. One Shot. Just Ship.',
   description:
     'A competitive, AI-native coding esport. Understand a problem, wield AI, and ship a working solution under extreme time pressure.',
 };

@@ -17,7 +17,7 @@ export async function generateMetadata({
   params: Promise<{ username: string }>;
 }) {
   const { username } = await params;
-  return { title: `${username} - Blitz It` };
+  return { title: `${username} - The Circuit` };
 }
 
 export default async function ProfilePage({

@@ -14,7 +14,7 @@ import { DisplayHeading } from '@/components/ui/display-heading';
 import { Section } from '@/components/ui/section';
 import { cn } from '@/lib/utils';
 
-export const metadata = { title: 'Leaderboard - Blitz It' };
+export const metadata = { title: 'Leaderboard - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 const ORDERS: ReadonlyArray<{ value: LeaderboardOrder; label: string }> = [

@@ -9,7 +9,7 @@ import { isLiveArenaEnabled } from '@/lib/flags';
 import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { Countdown } from '@/components/features/countdown';
 
-export const metadata = { title: 'Dashboard — Blitz It' };
+export const metadata = { title: 'Dashboard - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 /**

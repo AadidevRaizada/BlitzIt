@@ -52,7 +52,7 @@ export function NewTournamentForm() {
             name="name"
             label="Name"
             required
-            placeholder="Blitz It — Week 30"
+            placeholder="The Circuit - Week 30"
             maxLength={120}
           />
           <TextField

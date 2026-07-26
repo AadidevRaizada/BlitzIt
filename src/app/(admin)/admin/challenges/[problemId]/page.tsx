@@ -27,7 +27,7 @@ import {
 } from '../problem-actions';
 import { ProblemForm } from '../problem-form';
 
-export const metadata = { title: 'Challenge — Blitz It Admin' };
+export const metadata = { title: 'Challenge - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function ChallengeDetailPage({

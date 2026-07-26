@@ -9,7 +9,7 @@ import {
 import { AppError } from '@/lib/errors';
 import { EvaluationStatus } from './evaluation-status';
 
-export const metadata = { title: 'Submission — Blitz It' };
+export const metadata = { title: 'Submission - The Circuit' };
 
 /**
  * Screen [9b] — Submission detail, evaluation status and results (E4).

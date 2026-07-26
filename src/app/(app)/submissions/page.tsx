@@ -3,7 +3,7 @@ import { requireUser } from '@/server/modules/auth';
 import { listMySubmissions } from '@/server/modules/submission';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
 
-export const metadata = { title: 'My submissions — Blitz It' };
+export const metadata = { title: 'My submissions - The Circuit' };
 
 /**
  * Screen [13b] — My Submissions (E4).

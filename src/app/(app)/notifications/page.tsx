@@ -11,7 +11,7 @@ import { EmptyState } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { MarkAllReadButton, MarkReadButton } from './notification-actions';
 
-export const metadata = { title: 'Notifications — Blitz It' };
+export const metadata = { title: 'Notifications - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 /**

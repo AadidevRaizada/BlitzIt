@@ -21,7 +21,7 @@ export default async function AppLayout({
       <header className="border-border flex items-center justify-between border-b px-6 py-3">
         <nav className="flex items-center gap-4 text-sm">
           <Link href="/dashboard" className="font-semibold">
-            Blitz It
+            The Circuit
           </Link>
           <Link href="/dashboard" className="hover:underline">
             Dashboard

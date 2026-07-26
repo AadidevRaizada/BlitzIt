@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet"><style>
+*{box-sizing:border-box}
+body{margin:0;background:#0A0C0A;color:#EDF2E6;font-family:'IBM Plex Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#C9F24D;text-decoration:none}a:hover{color:#EDF2E6}
+::selection{background:#C9F24D;color:#0A0C0A}
+@keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@keyframes blink{0%,55%{opacity:1}56%,100%{opacity:.12}}
+@keyframes slam{0%{opacity:0;transform:translateY(18px) scaleX(1.06);letter-spacing:.06em}60%{opacity:1}100%{opacity:1;transform:translateY(0) scaleX(1);letter-spacing:-.02em}}
+@keyframes sweep{0%{transform:translateX(-120%)}100%{transform:translateX(420%)}}
+@keyframes pulsering{0%{transform:scale(.9);opacity:.55}100%{transform:scale(1.9);opacity:0}}
+@keyframes rise{0%{opacity:0;transform:translateY(10px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes drift{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(1200%)}}
+</style></helmet>
+
+<div style="min-height:100vh;display:flex;background:#0A0C0A">
+
+  <div style="flex:none;width:92px;border-right:1px solid #1C2019;display:flex;flex-direction:column;align-items:center;padding:20px 0 18px;gap:26px;position:sticky;top:0;height:100vh">
+    <div style="position:relative;width:44px;height:44px;flex:none">
+      <div style="position:absolute;inset:0;border-radius:12px;background:#C9F24D"></div>
+      <div style="position:absolute;inset:0;border-radius:12px;border:1px solid #C9F24D;animation:pulsering 2.6s ease-out infinite"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 17px 'Chakra Petch',sans-serif;color:#0A0C0A;letter-spacing:-.03em">TC</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;width:100%;align-items:center">
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid #C9F24D;background:linear-gradient(90deg,rgba(201,242,77,.10),transparent)">
+        <div style="width:15px;height:15px;border:2px solid #C9F24D;border-radius:3px"></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#C9F24D">HOME</div>
+      </a>
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid transparent" style-hover="background:rgba(237,242,230,.04)">
+        <div style="width:0;height:0;border-left:12px solid #6E7A66;border-top:7px solid transparent;border-bottom:7px solid transparent"></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">PLAY</div>
+      </a>
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid transparent" style-hover="background:rgba(237,242,230,.04)">
+        <div style="display:flex;flex-direction:column;gap:2px;width:15px"><div style="height:2px;background:#6E7A66"></div><div style="height:2px;width:70%;background:#6E7A66"></div><div style="height:2px;width:45%;background:#6E7A66"></div></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">RANK</div>
+      </a>
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid transparent" style-hover="background:rgba(237,242,230,.04)">
+        <div style="width:15px;height:15px;border:2px solid #6E7A66;transform:rotate(45deg)"></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">BRACKET</div>
+      </a>
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid transparent" style-hover="background:rgba(237,242,230,.04)">
+        <div style="width:15px;height:15px;border:2px solid #6E7A66;border-radius:50%"></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">HALL</div>
+      </a>
+      <a href="#" style="width:100%;padding:11px 0;display:flex;flex-direction:column;align-items:center;gap:7px;border-left:2px solid transparent" style-hover="background:rgba(237,242,230,.04)">
+        <div style="width:15px;height:11px;border:2px solid #6E7A66;border-radius:2px"></div>
+        <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">RULES</div>
+      </a>
+    </div>
+    <div style="flex:1"></div>
+    <a href="#" style="display:flex;flex-direction:column;align-items:center;gap:7px">
+      <div style="width:32px;height:32px;border-radius:50%;background:#2A2F26;border:1px solid #3A4034;display:flex;align-items:center;justify-content:center;font:600 12px 'IBM Plex Mono',monospace;color:#98A38F">N</div>
+      <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">YOU</div>
+    </a>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+
+    <div style="height:34px;border-bottom:1px solid #1C2019;display:flex;align-items:stretch;background:#0C0F0B;position:sticky;top:0;z-index:20">
+      <div style="flex:none;display:flex;align-items:center;gap:7px;padding:0 14px;background:#FF3B30;color:#0A0C0A;font:700 9px 'IBM Plex Mono',monospace;letter-spacing:.18em">
+        <span style="width:6px;height:6px;border-radius:50%;background:#0A0C0A;animation:blink 1.2s steps(1) infinite"></span>{{ tickerTag }}
+      </div>
+      <div style="flex:1;overflow:hidden;display:flex;align-items:center;min-width:0">
+        <div style="display:flex;width:200%;animation:tick 38s linear infinite;white-space:nowrap">
+          <div style="display:flex;gap:34px;padding-right:34px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#98A38F">{{ tickerRun }}</div>
+          <div style="display:flex;gap:34px;padding-right:34px;font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.08em;color:#98A38F">{{ tickerRun }}</div>
+        </div>
+      </div>
+      <div style="flex:none;display:flex;align-items:center;padding:0 14px;border-left:1px solid #1C2019;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#6E7A66">JUDGE QUEUE {{ judgeQueue }}</div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:18px;padding:16px 28px;border-bottom:1px solid #1C2019">
+      <div style="font:700 15px 'Chakra Petch',sans-serif;letter-spacing:.04em;text-transform:uppercase">The Circuit</div>
+      <div style="padding:4px 9px;border:1px solid #2A2F26;border-radius:3px;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#98A38F">{{ weekLabel }}</div>
+      <div style="padding:4px 9px;border-radius:3px;background:rgba(201,242,77,.12);color:#C9F24D;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.14em">{{ stageLabel }}</div>
+      <div style="flex:1"></div>
+      <div style="font:500 10px 'IBM Plex Mono',monospace;color:#6E7A66;letter-spacing:.1em">{{ clockLabel }}</div>
+      <a href="#" style="padding:8px 14px;border:1px solid #2A2F26;border-radius:3px;font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:#EDF2E6" style-hover="border-color:#3A4034;background:rgba(237,242,230,.04)">SIGN IN</a>
+      <a href="#" style="padding:8px 15px;border-radius:3px;background:#C9F24D;color:#0A0C0A;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:.12em" style-hover="background:#D6FF5E">WEEKLY PASS ₹100</a>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid #1C2019">
+      <div style="padding:12px 16px;border-right:1px solid #1C2019;background:rgba(237,242,230,.02)">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#6E7A66">TUE–THU</span><span style="font:600 8px 'IBM Plex Mono',monospace;color:#6E7A66">DONE</span></div>
+        <div style="font:600 13px 'Chakra Petch',sans-serif;letter-spacing:.03em;margin-top:6px;color:#98A38F;text-transform:uppercase">Registration</div>
+        <div style="height:2px;background:#2A2F26;margin-top:9px"></div>
+      </div>
+      <div style="padding:12px 16px;border-right:1px solid #1C2019;background:rgba(237,242,230,.02)">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#6E7A66">FRIDAY</span><span style="font:600 8px 'IBM Plex Mono',monospace;color:#6E7A66">DONE</span></div>
+        <div style="font:600 13px 'Chakra Petch',sans-serif;letter-spacing:.03em;margin-top:6px;color:#98A38F;text-transform:uppercase">Sim Unlock</div>
+        <div style="height:2px;background:#2A2F26;margin-top:9px"></div>
+      </div>
+      <div style="padding:12px 16px;border-right:1px solid #1C2019;position:relative;overflow:hidden">
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(201,242,77,.10),transparent)"></div>
+        <div style="position:relative;display:flex;align-items:center;justify-content:space-between"><span style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#C9F24D">SATURDAY</span><span style="font:600 8px 'IBM Plex Mono',monospace;color:#C9F24D">NOW</span></div>
+        <div style="position:relative;font:700 13px 'Chakra Petch',sans-serif;letter-spacing:.03em;margin-top:6px;text-transform:uppercase">Simulation · Seeding</div>
+        <div style="position:relative;height:2px;background:#2A2F26;margin-top:9px"><div style="height:2px;background:#C9F24D;width:{{ satProgress }}"></div></div>
+      </div>
+      <div style="padding:12px 16px;border-right:1px solid #1C2019">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#6E7A66">SUNDAY</span><span style="font:600 8px 'IBM Plex Mono',monospace;color:#6E7A66">NEXT</span></div>
+        <div style="font:600 13px 'Chakra Petch',sans-serif;letter-spacing:.03em;margin-top:6px;text-transform:uppercase">R32 → Finals</div>
+        <div style="height:2px;background:#2A2F26;margin-top:9px"></div>
+      </div>
+      <div style="padding:12px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#6E7A66">MONDAY</span><span style="font:600 8px 'IBM Plex Mono',monospace;color:#6E7A66">—</span></div>
+        <div style="font:600 13px 'Chakra Petch',sans-serif;letter-spacing:.03em;margin-top:6px;text-transform:uppercase">Payouts</div>
+        <div style="height:2px;background:#2A2F26;margin-top:9px"></div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.62fr) minmax(340px,.85fr)">
+
+      <div style="border-right:1px solid #1C2019;position:relative;overflow:hidden;padding:44px 40px 30px">
+        <div style="position:absolute;inset:0;background-image:linear-gradient(#141810 1px,transparent 1px),linear-gradient(90deg,#141810 1px,transparent 1px);background-size:46px 46px;opacity:.85"></div>
+        <div style="position:absolute;left:-140px;top:-120px;width:620px;height:620px;border-radius:50%;background:radial-gradient(circle,rgba(201,242,77,.09),transparent 62%)"></div>
+        <div style="position:absolute;left:0;right:0;top:0;height:2px;background:linear-gradient(90deg,transparent,rgba(201,242,77,.5),transparent);animation:scanline 9s linear infinite"></div>
+
+        <div style="position:relative;display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
+          <div style="font:600 10px 'IBM Plex Mono',monospace;letter-spacing:.26em;color:#C9F24D">THE CIRCUIT · AI-NATIVE CODING ESPORT</div>
+          <div style="flex:none;display:flex;align-items:center;gap:10px;padding:7px 11px;border:1px solid #2A2F26;border-radius:3px;background:rgba(10,12,10,.6)">
+            <span style="width:7px;height:7px;border-radius:50%;background:#FF3B30;animation:blink 1.2s steps(1) infinite"></span>
+            <span style="font:700 9px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#FF3B30">{{ broadcastBadge }}</span>
+          </div>
+        </div>
+
+        <div style="position:relative;margin-top:26px">
+          <div style="font:700 clamp(44px,6.4vw,86px)/0.92 'Chakra Petch',sans-serif;text-transform:uppercase;letter-spacing:-.02em">
+            <div style="animation:slam .7s cubic-bezier(.2,.9,.2,1) both">Build.</div>
+            <div style="animation:slam .7s cubic-bezier(.2,.9,.2,1) .13s both">Qualify.</div>
+            <div style="animation:slam .7s cubic-bezier(.2,.9,.2,1) .26s both;color:#C9F24D">Win Live.</div>
+          </div>
+        </div>
+
+        <div style="position:relative;font:400 15px/1.6 'IBM Plex Sans',sans-serif;color:#98A38F;max-width:520px;margin-top:20px;text-wrap:pretty;animation:rise .6s ease-out .45s both">
+          Fifteen minutes. One shot. Sealed challenges drop simultaneously, an automated judge grades what you shipped, and the survivors fight it out live on Sunday.
+        </div>
+
+        <div style="position:relative;display:flex;gap:10px;flex-wrap:wrap;margin-top:26px;animation:rise .6s ease-out .55s both">
+          <a href="#" style="display:flex;align-items:center;gap:10px;padding:14px 22px;border-radius:3px;background:#C9F24D;color:#0A0C0A;font:700 11px 'IBM Plex Mono',monospace;letter-spacing:.16em" style-hover="background:#D6FF5E">ENTER SIMULATION<span style="font-size:13px">→</span></a>
+          <a href="#" style="display:flex;align-items:center;gap:10px;padding:14px 22px;border-radius:3px;border:1px solid #2A2F26;color:#EDF2E6;font:700 11px 'IBM Plex Mono',monospace;letter-spacing:.16em" style-hover="border-color:#3A4034;background:rgba(237,242,230,.04)">WATCH LIVE</a>
+        </div>
+
+        <div style="position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#1C2019;margin-top:38px;border:1px solid #1C2019;animation:rise .6s ease-out .65s both">
+          <div style="background:#0C0F0B;padding:14px 16px">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">COMPETITORS</div>
+            <div style="font:700 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;margin-top:7px;font-variant-numeric:tabular-nums">{{ competitors }}</div>
+            <div style="height:2px;background:#1C2019;margin-top:10px;overflow:hidden"><div style="height:2px;width:40%;background:#C9F24D;animation:sweep 4.4s linear infinite"></div></div>
+          </div>
+          <div style="background:#0C0F0B;padding:14px 16px">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">PRIZE POOL</div>
+            <div style="font:700 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;margin-top:7px;font-variant-numeric:tabular-nums">{{ prizePoolText }}</div>
+            <div style="height:2px;background:#1C2019;margin-top:10px;overflow:hidden"><div style="height:2px;width:40%;background:#C9F24D;animation:sweep 5.6s linear infinite"></div></div>
+          </div>
+          <div style="background:#0C0F0B;padding:14px 16px">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">SHIPS / MIN</div>
+            <div style="font:700 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;margin-top:7px;font-variant-numeric:tabular-nums">{{ shipsPerMin }}</div>
+            <div style="height:2px;background:#1C2019;margin-top:10px;overflow:hidden"><div style="height:2px;width:40%;background:#C9F24D;animation:sweep 3.8s linear infinite"></div></div>
+          </div>
+          <div style="background:#0C0F0B;padding:14px 16px">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">SEATS LEFT</div>
+            <div style="font:700 26px 'IBM Plex Mono',monospace;letter-spacing:-.02em;margin-top:7px;font-variant-numeric:tabular-nums">{{ seatsLeft }}</div>
+            <div style="height:2px;background:#1C2019;margin-top:10px;overflow:hidden"><div style="height:2px;width:40%;background:#FF3B30;animation:sweep 4.9s linear infinite"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column">
+        <div style="padding:18px 20px;border-bottom:1px solid #1C2019">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6E7A66">MATCH CENTER</div>
+            <div style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#C9F24D">{{ nextLabel }}</div>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:14px">
+            <div style="flex:1;background:#12160F;border:1px solid #1C2019;padding:10px 0;text-align:center">
+              <div style="font:700 30px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;letter-spacing:-.03em">{{ cdH }}</div>
+              <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66;margin-top:6px">HRS</div>
+            </div>
+            <div style="flex:1;background:#12160F;border:1px solid #1C2019;padding:10px 0;text-align:center">
+              <div style="font:700 30px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;letter-spacing:-.03em">{{ cdM }}</div>
+              <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66;margin-top:6px">MIN</div>
+            </div>
+            <div style="flex:1;background:#12160F;border:1px solid #1C2019;padding:10px 0;text-align:center">
+              <div style="font:700 30px/1 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums;letter-spacing:-.03em;color:#C9F24D">{{ cdS }}</div>
+              <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66;margin-top:6px">SEC</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px;border-bottom:1px solid #1C2019;position:relative;overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6E7A66">BROADCAST</div>
+            <div style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#FF3B30">{{ broadcastBadge }}</div>
+          </div>
+          <div style="margin-top:12px;height:150px;border:1px solid #1C2019;background:repeating-linear-gradient(135deg,#0E120C 0 8px,#12160F 8px 16px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;position:relative;overflow:hidden">
+            <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(201,242,77,.07),transparent);width:34%;animation:sweep 6s linear infinite"></div>
+            <div style="position:relative;width:46px;height:46px;border-radius:50%;border:1px solid #C9F24D;display:flex;align-items:center;justify-content:center">
+              <div style="width:0;height:0;border-left:13px solid #C9F24D;border-top:8px solid transparent;border-bottom:8px solid transparent;margin-left:4px"></div>
+              <div style="position:absolute;inset:0;border-radius:50%;border:1px solid #C9F24D;animation:pulsering 2.4s ease-out infinite"></div>
+            </div>
+            <div style="position:relative;font:500 9px/1.6 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66;text-align:center">YOUTUBE EMBED · SEMIS + FINALS<br>{{ streamNote }}</div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px;flex:1">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6E7A66">EVENT FEED</div>
+            <div style="display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;border-radius:50%;background:#C9F24D;animation:blink 1.6s steps(1) infinite"></span><span style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66">AUTO</span></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:1px;margin-top:12px">
+            <sc-for list="{{ feed }}" as="line" hint-placeholder-count="6">
+              <div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #14180F;animation:rise .45s ease-out both">
+                <div style="flex:none;font:500 10px 'IBM Plex Mono',monospace;color:#4E5848;font-variant-numeric:tabular-nums">{{ line.t }}</div>
+                <div style="flex:1;font:400 11px/1.45 'IBM Plex Sans',sans-serif;color:#98A38F;min-width:0">{{ line.text }}</div>
+                <div style="flex:none;font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#C9F24D">{{ line.tag }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="padding:14px 20px;border-top:1px solid #1C2019">
+          <a href="#" style="display:block;text-align:center;padding:13px 0;background:#12160F;border:1px solid #2A2F26;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#EDF2E6" style-hover="border-color:#C9F24D;color:#C9F24D">OPEN FULL MATCH CENTER</a>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);border-top:1px solid #1C2019">
+
+      <div style="border-right:1px solid #1C2019;padding:24px 28px 28px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px">
+          <div style="font:700 20px 'Chakra Petch',sans-serif;letter-spacing:.03em;text-transform:uppercase">Live Standings</div>
+          <a href="#" style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.16em">ALL 128 →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:34px 1fr 62px 74px 52px;gap:12px;padding:14px 0 8px;border-bottom:1px solid #1C2019;font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#4E5848">
+          <div>#</div><div>COMPETITOR</div><div>CITY</div><div style="text-align:right">SCORE</div><div style="text-align:right">Δ</div>
+        </div>
+        <sc-for list="{{ standings }}" as="row" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:34px 1fr 62px 74px 52px;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid #14180F" style-hover="background:rgba(237,242,230,.03)">
+            <div style="font:700 12px 'IBM Plex Mono',monospace;color:{{ row.rankColor }};font-variant-numeric:tabular-nums">{{ row.rank }}</div>
+            <div style="display:flex;align-items:center;gap:9px;min-width:0">
+              <div style="flex:none;width:22px;height:22px;border-radius:50%;background:#1C2019;border:1px solid #2A2F26;display:flex;align-items:center;justify-content:center;font:600 9px 'IBM Plex Mono',monospace;color:#98A38F">{{ row.initial }}</div>
+              <div style="font:500 13px 'IBM Plex Sans',sans-serif;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ row.name }}</div>
+            </div>
+            <div style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6E7A66">{{ row.city }}</div>
+            <div style="text-align:right;font:600 13px 'IBM Plex Mono',monospace;font-variant-numeric:tabular-nums">{{ row.score }}</div>
+            <div style="text-align:right;font:600 10px 'IBM Plex Mono',monospace;color:{{ row.deltaColor }}">{{ row.delta }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="padding:24px 28px 28px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;gap:16px">
+          <div style="font:700 20px 'Chakra Petch',sans-serif;letter-spacing:.03em;text-transform:uppercase">Sunday Bracket</div>
+          <a href="#" style="font:600 9px 'IBM Plex Mono',monospace;letter-spacing:.16em">OPEN BRACKET →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:16px;font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#4E5848">
+          <div>R32</div><div>R16</div><div>QF</div><div>SF</div><div style="color:#C9F24D">FINAL</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:8px;align-items:start">
+          <div style="min-width:0;display:flex;flex-direction:column;gap:5px">
+            <sc-for list="{{ r32 }}" as="n" hint-placeholder-count="8"><div title="{{ n.who }}" style="min-width:0;height:22px;border:1px solid #1C2019;background:#0E120C;display:flex;align-items:center;justify-content:center;font:500 10px 'IBM Plex Mono',monospace;color:#6E7A66;font-variant-numeric:tabular-nums">{{ n.seed }}</div></sc-for>
+          </div>
+          <div style="min-width:0;display:flex;flex-direction:column;gap:32px;padding-top:13.5px">
+            <sc-for list="{{ r16 }}" as="n" hint-placeholder-count="4"><div title="{{ n.who }}" style="min-width:0;height:22px;border:1px solid #2A2F26;background:#12160F;display:flex;align-items:center;justify-content:center;font:500 10px 'IBM Plex Mono',monospace;color:#98A38F;font-variant-numeric:tabular-nums">{{ n.seed }}</div></sc-for>
+          </div>
+          <div style="min-width:0;display:flex;flex-direction:column;gap:86px;padding-top:40.5px">
+            <sc-for list="{{ qf }}" as="n" hint-placeholder-count="2"><div title="{{ n.who }}" style="min-width:0;height:22px;border:1px solid #3A4034;background:#161B12;display:flex;align-items:center;justify-content:center;font:500 10px 'IBM Plex Mono',monospace;color:#EDF2E6;font-variant-numeric:tabular-nums">{{ n.seed }}</div></sc-for>
+          </div>
+          <div style="min-width:0;display:flex;flex-direction:column;padding-top:94.5px">
+            <div title="{{ sfWho }}" style="min-width:0;height:22px;border:1px solid rgba(201,242,77,.4);background:rgba(201,242,77,.07);display:flex;align-items:center;justify-content:center;font:600 10px 'IBM Plex Mono',monospace;color:#C9F24D;font-variant-numeric:tabular-nums">{{ sfSeed }}</div>
+          </div>
+          <div style="min-width:0;display:flex;flex-direction:column;padding-top:92.9px">
+            <div style="min-width:0;height:30px;background:#C9F24D;display:flex;align-items:center;justify-content:center;font:700 9px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#0A0C0A;animation:drift 3.6s ease-in-out infinite">TBD</div>
+          </div>
+        </div>
+        <div style="font:500 9px 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4E5848;margin-top:10px">SEEDS SHOWN · HOVER A NODE FOR THE COMPETITOR</div>
+        <div style="margin-top:22px;padding-top:18px;border-top:1px solid #1C2019;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0">
+          <div style="min-width:0;padding:0 18px 0 0">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">REIGNING CHAMPION</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+              <div style="width:34px;height:34px;border:1px solid #2A2F26;background:repeating-linear-gradient(135deg,#0E120C 0 6px,#12160F 6px 12px)"></div>
+              <div><div style="font:600 14px 'IBM Plex Sans',sans-serif">{{ championName }}</div><div style="font:500 9px 'IBM Plex Mono',monospace;letter-spacing:.12em;color:#6E7A66;margin-top:3px">{{ championMeta }}</div></div>
+            </div>
+          </div>
+          <div style="min-width:0;padding:0 0 0 18px;border-left:1px solid #1C2019">
+            <div style="font:600 8px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#6E7A66">JUDGE WEIGHTING</div>
+            <div style="display:flex;gap:3px;margin-top:12px;height:8px">
+              <div style="flex:6;background:#C9F24D"></div><div style="flex:2.5;background:#4E5848"></div><div style="flex:1.5;background:#2A2F26"></div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:9px;font:500 9px 'IBM Plex Mono',monospace;color:#6E7A66;flex-wrap:wrap">
+              <span style="white-space:nowrap;color:#C9F24D">FUNCTIONAL 60</span><span style="white-space:nowrap">TECHNICAL 25</span><span style="white-space:nowrap">QUALITY 15</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid #1C2019;padding:16px 28px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <div style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4E5848">THE CIRCUIT · {{ weekLabel }} · ALL TIMES IST</div>
+      <div style="flex:1"></div>
+      <a href="#" style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66" style-hover="color:#C9F24D">RULES</a>
+      <a href="#" style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66" style-hover="color:#C9F24D">HALL OF FAME</a>
+      <a href="#" style="font:500 10px 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6E7A66" style-hover="color:#C9F24D">DISCORD</a>
+    </div>
+
+    <sc-if value="{{ showMatchDock }}" hint-placeholder-val="{{ true }}">
+      <div style="position:sticky;bottom:0;z-index:30;margin:0 20px 18px;border:1px solid #2A2F26;border-radius:999px;background:rgba(12,15,11,.94);backdrop-filter:blur(10px);padding:9px 10px 9px 18px;display:flex;align-items:center;gap:16px;box-shadow:0 12px 40px rgba(0,0,0,.6)">
+        <div style="display:flex;align-items:center;gap:9px;flex:none">
+          <span style="width:7px;height:7px;border-radius:50%;background:#FF3B30;animation:blink 1.2s steps(1) infinite"></span>
+          <span style="font:700 9px 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#FF3B30">{{ dockState }}</span>
+        </div>
+        <div style="width:1px;height:22px;background:#1C2019;flex:none"></div>
+        <div style="font:500 12px 'IBM Plex Sans',sans-serif;color:#EDF2E6;flex:none">{{ dockTitle }}</div>
+        <div style="font:600 12px 'IBM Plex Mono',monospace;color:#C9F24D;font-variant-numeric:tabular-nums;flex:none">{{ dockClock }}</div>
+        <div style="flex:1;min-width:20px;height:2px;background:#1C2019;overflow:hidden"><div style="height:2px;width:{{ dockProgress }};background:#C9F24D"></div></div>
+        <a href="#" style="flex:none;padding:10px 18px;border-radius:999px;background:#C9F24D;color:#0A0C0A;font:700 10px 'IBM Plex Mono',monospace;letter-spacing:.14em" style-hover="background:#D6FF5E">{{ dockCta }}</a>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

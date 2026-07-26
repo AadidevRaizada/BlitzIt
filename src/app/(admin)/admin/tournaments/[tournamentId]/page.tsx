@@ -13,7 +13,7 @@ import { SubmissionsTab } from './tabs/submissions';
 import { BracketTab } from './tabs/bracket';
 import { SettingsTab } from './tabs/settings';
 
-export const metadata = { title: 'Tournament — Blitz It Admin' };
+export const metadata = { title: 'Tournament - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 const TABS = [

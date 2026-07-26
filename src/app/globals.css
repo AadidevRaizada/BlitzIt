@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&display=swap');
 @import 'tailwindcss';
 
 /*
@@ -183,6 +184,7 @@
   --color-hairline: var(--hairline);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: 'Pixelify Sans', 'Courier New', ui-monospace, monospace;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Radius (§5) — static, so defined here directly rather than in :root. */

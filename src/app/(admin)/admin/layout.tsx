@@ -27,7 +27,7 @@ export default async function AdminLayout({
             href="/admin"
             className="focus-visible:ring-ring rounded-sm text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
           >
-            Blitz It
+            The Circuit
             <span className="text-muted-foreground ml-1.5 font-normal">
               Admin
             </span>

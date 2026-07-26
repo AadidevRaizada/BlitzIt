@@ -3,7 +3,7 @@ import { enabledProviders } from '@/server/auth';
 import { getSession } from '@/server/modules/auth';
 import { LoginButtons } from './login-buttons';
 
-export const metadata = { title: 'Sign in — Blitz It' };
+export const metadata = { title: 'Sign in - The Circuit' };
 
 /**
  * Login screen (E1). Functional, not styled — visual polish comes later.
@@ -22,7 +22,7 @@ export default async function LoginPage({
     <main className="flex min-h-screen items-center justify-center p-8">
       <div className="w-full max-w-sm space-y-6">
         <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-bold">Sign in to Blitz It</h1>
+          <h1 className="text-2xl font-bold">Sign in to The Circuit</h1>
           <p className="text-muted-foreground text-sm">
             15 Minutes. One Shot. Just Ship.
           </p>

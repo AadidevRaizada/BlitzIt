@@ -8,7 +8,7 @@ import { SubmissionStatusBadge } from '@/components/features/submission-status-b
 import { Countdown } from '@/components/features/countdown';
 import { SubmissionForm } from '@/components/features/submission-form';
 
-export const metadata = { title: 'Submit — Blitz It' };
+export const metadata = { title: 'Submit - The Circuit' };
 
 /**
  * Screen [9] — Problem + Submission (E4).

@@ -2,7 +2,7 @@ import { requireAdmin } from '@/server/modules/auth';
 import { Card, CardContent } from '@/components/ui/card';
 import { DataRow, PageHeader } from '@/components/ui/page-header';
 
-export const metadata = { title: 'Admin settings — Blitz It Admin' };
+export const metadata = { title: 'Admin settings - The Circuit Admin' };
 
 export default async function AdminSettingsPage() {
   await requireAdmin('/admin/settings');

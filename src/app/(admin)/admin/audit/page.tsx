@@ -13,7 +13,7 @@ import {
   TableShell,
 } from '@/components/ui/table';
 
-export const metadata = { title: 'Audit log — Blitz It Admin' };
+export const metadata = { title: 'Audit log - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 function JsonSummary({ value }: { value: unknown }) {

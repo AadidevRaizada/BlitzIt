@@ -12,7 +12,7 @@ import { TournamentStatusBadge } from '@/components/features/tournament-status-b
 import { BracketTree } from '@/components/features/bracket-tree';
 import { LiveRefresh } from '@/components/features/live-refresh';
 
-export const metadata = { title: 'Bracket — Blitz It' };
+export const metadata = { title: 'Bracket - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 /**

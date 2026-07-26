@@ -1,14 +1,24 @@
 import Link from 'next/link';
-import { Radio, Trophy } from 'lucide-react';
+import {
+  BookOpen,
+  Crown,
+  Home,
+  ListChecks,
+  Play,
+  Radio,
+  Trophy,
+  UserRound,
+} from 'lucide-react';
 import { getCurrentUser } from '@/server/modules/auth';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { href: '/', label: 'Competitions' },
-  { href: '/leaderboard', label: 'Leaderboard' },
-  { href: '/hall-of-fame', label: 'Hall of Fame' },
-  { href: '/rules', label: 'Rules' },
+  { href: '/', label: 'Home', icon: Home },
+  { href: '/', label: 'Play', icon: Play },
+  { href: '/leaderboard', label: 'Ranking', icon: ListChecks },
+  { href: '/hall-of-fame', label: 'Hall', icon: Crown },
+  { href: '/rules', label: 'Rules', icon: BookOpen },
 ];
 
 export default async function MarketingLayout({
@@ -23,8 +33,8 @@ export default async function MarketingLayout({
       data-surface="broadcast"
       className="bg-background text-foreground min-h-screen"
     >
-      <header className="border-hairline bg-surface-deep/95 sticky top-0 z-40 border-b backdrop-blur">
-        <div className="mx-auto flex min-h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+      <header className="border-hairline bg-surface-deep/95 sticky top-0 z-50 border-b backdrop-blur lg:hidden">
+        <div className="flex min-h-16 items-center justify-between gap-4 px-4">
           <Link
             href="/"
             className="focus-visible:ring-ring inline-flex items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none"
@@ -33,24 +43,9 @@ export default async function MarketingLayout({
               <Radio className="size-4" aria-hidden />
             </span>
             <span className="text-lg font-extrabold tracking-[-0.03em]">
-              Blitz It
+              The Circuit
             </span>
           </Link>
-
-          <nav
-            aria-label="Marketing navigation"
-            className="hidden items-center gap-1 md:flex"
-          >
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-muted-foreground hover:text-foreground focus-visible:ring-ring rounded-md px-3 py-2 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
 
           <Link
             href={user ? '/dashboard' : '/login'}
@@ -61,14 +56,51 @@ export default async function MarketingLayout({
         </div>
       </header>
 
-      {children}
+      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-28 flex-col border-r lg:flex">
+        <Link
+          href="/"
+          className="border-hairline focus-visible:ring-ring flex h-24 items-center justify-center border-b px-3 focus-visible:ring-2 focus-visible:outline-none"
+          aria-label="The Circuit home"
+        >
+          <span className="bg-secondary text-secondary-foreground flex size-12 items-center justify-center rounded-md shadow-[var(--glow-live)]">
+            <Radio className="size-6" aria-hidden />
+          </span>
+        </Link>
+
+        <nav aria-label="Marketing navigation" className="flex flex-1 flex-col">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <Link
+                key={`${item.href}-${item.label}`}
+                href={item.href}
+                className="font-pixel text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-20 flex-col items-center justify-center gap-2 px-2 text-center text-xs font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+              >
+                <Icon className="size-6" aria-hidden />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        <Link
+          href={user ? '/dashboard' : '/login'}
+          className="font-pixel border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-20 flex-col items-center justify-center gap-2 border-t px-2 text-center text-xs font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+        >
+          <UserRound className="size-6" aria-hidden />
+          <span>{user ? 'Dashboard' : 'Login'}</span>
+        </Link>
+      </aside>
+
+      <div className="lg:pl-28">{children}</div>
 
       <footer className="border-hairline bg-surface-deep border-t">
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr]">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-32">
           <div>
             <div className="flex items-center gap-2 font-extrabold">
               <Trophy className="text-secondary size-5" aria-hidden />
-              Blitz It
+              The Circuit
             </div>
             <p className="text-muted-foreground mt-3 max-w-xl text-sm">
               Weekly builder tournaments, scored by measurable product behavior,

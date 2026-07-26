@@ -3,7 +3,7 @@ import { requireUser } from '@/server/modules/auth';
 import { getEditableProfile } from '@/server/modules/auth/profile';
 import { ProfileForm } from './profile-form';
 
-export const metadata = { title: 'Settings — Blitz It' };
+export const metadata = { title: 'Settings - The Circuit' };
 
 /** Profile edit screen for the signed-in user. */
 export default async function SettingsPage() {

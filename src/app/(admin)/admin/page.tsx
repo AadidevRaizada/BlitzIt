@@ -14,7 +14,7 @@ import { buttonVariants } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/table';
 import { TournamentCard } from './tournaments/tournament-card';
 
-export const metadata = { title: 'Admin — Blitz It' };
+export const metadata = { title: 'Admin - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 /**

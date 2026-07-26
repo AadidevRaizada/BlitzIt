@@ -3,7 +3,7 @@ import { listAllSubmissions } from '@/server/modules/submission';
 import { PageHeader } from '@/components/ui/page-header';
 import { SubmissionsTable } from '@/components/features/submissions-table';
 
-export const metadata = { title: 'Evaluations — Blitz It Admin' };
+export const metadata = { title: 'Evaluations - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 export default async function EvaluationsPage() {

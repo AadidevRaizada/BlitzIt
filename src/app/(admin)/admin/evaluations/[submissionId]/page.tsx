@@ -19,7 +19,7 @@ import {
 } from '@/components/features/submission-status-badge';
 import { SubmissionRowActions } from '@/components/features/submission-row-actions';
 
-export const metadata = { title: 'Evaluation — Blitz It Admin' };
+export const metadata = { title: 'Evaluation - The Circuit Admin' };
 export const dynamic = 'force-dynamic';
 
 function JsonBlock({ value }: { value: unknown }) {

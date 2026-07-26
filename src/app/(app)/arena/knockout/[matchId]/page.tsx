@@ -21,7 +21,7 @@ import { LiveRefresh } from '@/components/features/live-refresh';
 import { SubmissionForm } from '@/components/features/submission-form';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
 
-export const metadata = { title: 'Knockout Arena - Blitz It' };
+export const metadata = { title: 'Knockout Arena - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 export default async function KnockoutArenaPage({

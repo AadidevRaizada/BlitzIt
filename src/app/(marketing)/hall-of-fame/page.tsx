@@ -7,7 +7,7 @@ import { DisplayHeading } from '@/components/ui/display-heading';
 import { Section } from '@/components/ui/section';
 import { EmptyState } from '@/components/ui/table';
 
-export const metadata = { title: 'Hall of Fame - Blitz It' };
+export const metadata = { title: 'Hall of Fame - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 export default async function HallOfFamePage() {

@@ -3,7 +3,7 @@ import { Card } from '@/components/ui/card';
 import { DisplayHeading } from '@/components/ui/display-heading';
 import { Section } from '@/components/ui/section';
 
-export const metadata = { title: 'Rules - Blitz It' };
+export const metadata = { title: 'Rules - The Circuit' };
 
 const score = [
   {
@@ -37,10 +37,10 @@ export default function RulesPage() {
           Measured first. Reviewed when it matters.
         </DisplayHeading>
         <p className="text-muted-foreground mt-5 max-w-3xl text-lg leading-8">
-          Blitz It never executes competitor code. Each entry is a public GitHub
-          repository plus a live deployment URL. The platform probes the running
-          product, reads the repository as text, and advances the bracket from
-          those results.
+          The Circuit never executes competitor code. Each entry is a public
+          GitHub repository plus a live deployment URL. The platform probes the
+          running product, reads the repository as text, and advances the
+          bracket from those results.
         </p>
       </Section>
 
