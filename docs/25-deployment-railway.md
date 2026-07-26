@@ -1,0 +1,218 @@
+# Deployment checklist — Railway
+
+Everything below is derived from this repo's actual config: `railway.json`,
+`src/lib/env.ts`, and the route handlers under `src/app/api/`.
+
+---
+
+## 1. Topology — what services you actually need
+
+| Service | Needed? | Why |
+|---|---|---|
+| Web service (this repo) | Yes | Next.js **and** the evaluation runner |
+| Postgres | Yes | All state |
+| Volume | **No** | Nothing writes to disk; all state is Postgres |
+| Separate worker service | **No** | The runner is in-process |
+| Separate PostHog service | **No** | Use PostHog Cloud |
+
+**The runner is in-process.** `startRunner()` is called from
+`src/instrumentation.ts`, so the web service *is* the worker. There is no
+separate queue process to deploy.
+
+Because of that, **start with `replicas = 1`.** Job claiming is DB-based with a
+claim timeout (`RUNNER_CLAIM_TIMEOUT_MS`), so extra replicas would not corrupt
+jobs, but every replica runs its own runner and its own SSE loops. Scale only
+after you've watched one instance under load.
+
+`railway.json` is already correct — don't change it:
+
+- build: `npm ci && npm run build`
+- start: `npx prisma migrate deploy && npm run start` (migrations run on every deploy)
+- healthcheck: `/api/health`
+
+---
+
+## 2. Order of operations (this order matters)
+
+`NEXT_PUBLIC_*` vars are **inlined into the client bundle at build time**, so
+they must exist *before* the build that ships them. On Railway that means:
+
+1. Create the Postgres service first.
+2. Create the web service from the repo, but **don't rely on the first build**.
+3. Generate the public domain (Settings → Networking → Generate Domain), or
+   attach your custom domain, so you know the final URL.
+4. Set every variable in section 3, using that final URL.
+5. **Redeploy** so the build picks up the `NEXT_PUBLIC_*` values.
+6. Only then register the OAuth callbacks and the Razorpay webhook (section 4).
+
+Do not set `PORT` yourself — Railway injects it and `next start` reads it.
+
+---
+
+## 3. Environment variables
+
+Reference the database with Railway's variable reference syntax rather than
+pasting a URL, so it stays in sync:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+```
+
+### Required — the app refuses to boot without these
+
+| Var | Notes |
+|---|---|
+| `DATABASE_URL` | Reference the Postgres service |
+| `NODE_ENV` | `production` |
+| `BETTER_AUTH_SECRET` | **min 32 chars**; `openssl rand -base64 32`. Boot throws in production if missing |
+| `BETTER_AUTH_URL` | `https://YOUR-DOMAIN` |
+| `NEXT_PUBLIC_APP_URL` | `https://YOUR-DOMAIN` — build-time, no trailing slash |
+
+### Required for paid tournaments
+
+`src/lib/env.ts` throws if `RAZORPAY_USE_FAKE=true` in production, and after the
+E9 hardening the payment layer **fails closed** — missing Razorpay credentials
+now throw instead of silently falling back to the built-in fake gateway.
+
+| Var | Notes |
+|---|---|
+| `RAZORPAY_KEY_ID` | Live or test key id |
+| `RAZORPAY_KEY_SECRET` | Never client-visible |
+| `RAZORPAY_WEBHOOK_SECRET` | The secret you type into the Razorpay webhook form — **not** the API key secret |
+| `NEXT_PUBLIC_RAZORPAY_KEY_ID` | Same value as `RAZORPAY_KEY_ID`; the only payment value in the client bundle |
+| `RAZORPAY_USE_FAKE` | Leave unset. Must never be `true` in production |
+
+### OAuth (providers register only when both id and secret are present)
+
+`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`
+
+### Evaluation
+
+`LLM_PROVIDER` (`openai` | `anthropic`), `LLM_MODEL`, `LLM_TEMPERATURE`,
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`, `GITHUB_API_TOKEN` (repo reads during
+evaluation — raises the GitHub rate limit).
+
+### Email
+
+`RESEND_API_KEY`, `EMAIL_FROM` (must be a verified Resend sender domain).
+
+### Analytics / monitoring
+
+`NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`, `POSTHOG_API_KEY`,
+`SENTRY_DSN`, `NEXT_PUBLIC_SENTRY_DSN` — see section 5 for the caveat.
+
+### Tuning (all have sane defaults — skip unless you need them)
+
+`RUNNER_ENABLED`, `RUNNER_CONCURRENCY` (2), `RUNNER_CLAIM_TIMEOUT_MS` (300000),
+`LIVE_STREAM_POLL_MS` (3000), `LIVE_STREAM_HEARTBEAT_MS` (15000),
+`LIVE_STREAM_MAX_DURATION_MS` (900000), `LIVE_LEADERBOARD_TAKE` (25),
+`TOURNAMENT_*` lifecycle defaults.
+
+---
+
+## 4. Endpoints to register externally
+
+Replace `YOUR-DOMAIN` with the Railway domain.
+
+### GitHub OAuth app
+
+- Homepage URL: `https://YOUR-DOMAIN`
+- Authorization callback URL: `https://YOUR-DOMAIN/api/auth/callback/github`
+
+### Google OAuth client
+
+- Authorized JavaScript origin: `https://YOUR-DOMAIN`
+- Authorized redirect URI: `https://YOUR-DOMAIN/api/auth/callback/google`
+- While the consent screen is unpublished, add yourself under **Test users**
+
+### Razorpay webhook
+
+Dashboard → Account & Settings → Webhooks → Add New Webhook.
+
+- URL: `https://YOUR-DOMAIN/api/webhooks/razorpay`
+- Secret: the same value as `RAZORPAY_WEBHOOK_SECRET`
+- Alert email: an address you actually read — Razorpay **disables a webhook
+  after 24 hours of continuous failure**
+
+Subscribe to exactly these events:
+
+| Event | Handling |
+|---|---|
+| `payment.captured` | Activates the paid registration |
+| `payment.authorized` | Recorded as pending — deliberately does **not** register anyone, because an authorization is not settled money |
+| `payment.failed` | Marks the payment failed; the competitor can retry |
+| `refund.processed` | Marks refunded, releases the seat, recomputes the prize pool |
+
+### Other routes (no external registration needed)
+
+| Route | Purpose |
+|---|---|
+| `/api/health` | Railway healthcheck — DB reachability + runner heartbeat |
+| `/api/live/[tournamentId]` | SSE live stream |
+| `/api/me/export` | Authenticated self-serve data export |
+| `/api/auth/[...all]` | Better Auth handler |
+
+---
+
+## 5. PostHog and Sentry — the honest answers
+
+### PostHog: use Cloud. No separate instance, no volume.
+
+PostHog's own docs recommend Cloud "for all teams" and state that self-hosted
+open-source deployments are **officially unsupported** — no commercial support,
+no ticket debugging, and it's aimed at hobbyists. Self-hosting it would also
+mean running ClickHouse, Kafka, Redis and Postgres, which is far more
+infrastructure than this app itself.
+
+Use PostHog Cloud's free tier:
+
+- `NEXT_PUBLIC_POSTHOG_KEY` — the project API key
+- `NEXT_PUBLIC_POSTHOG_HOST` — `https://us.i.posthog.com` or `https://eu.i.posthog.com`
+- `POSTHOG_API_KEY` — server-side key
+
+`posthog-js` and `posthog-node` are already dependencies, so this works as soon
+as the vars are set. Pick the EU host if you want EU data residency for the
+GDPR-friendly export story.
+
+### Sentry: the DSN currently does nothing
+
+`src/lib/observability.ts` is a **stub**. `captureException` writes to the
+structured logger and the DSN is explicitly unused:
+
+```ts
+// TODO(observability): forward to Sentry when SDK is wired and `dsn` is set.
+void dsn;
+```
+
+`@sentry/nextjs` is **not** in `package.json`. Setting `SENTRY_DSN` today buys
+you nothing — errors go to Railway logs only. Installing the SDK behind that
+existing interface is a small follow-up; the call sites won't change. Set the
+vars now if you like, but don't assume you have error monitoring until the SDK
+is wired.
+
+---
+
+## 6. Post-deploy verification
+
+1. `GET /api/health` returns 200 with `runner.started: true` and a recent
+   `lastHeartbeatAgeMs`.
+2. Sign in with GitHub and with Google.
+3. Promote yourself to admin: `npm run make:admin` against the production
+   database.
+4. Create a tournament in `/admin`, open registration.
+5. Run one **real Razorpay test-mode payment** end to end (see below).
+6. Confirm the webhook shows delivered in the Razorpay dashboard and appears in
+   `/admin/payments` webhook history.
+7. Confirm the prize pool moved by exactly one entry fee.
+8. Refund that payment from `/admin/payments` and confirm the seat is released
+   and the pool decreases.
+
+### Razorpay sandbox pass — still outstanding
+
+The automated suite (`npm run verify:payments`) covers the full matrix against a
+deterministic fake gateway, so none of it has ever touched Razorpay's servers.
+Before taking real money, run at least these against **test keys** on the
+deployed URL: successful capture, cancelled checkout, failed payment then a
+successful retry, a duplicate/replayed webhook, and a refund. The signature and
+raw-body handling are the parts a fake gateway cannot truly prove.
