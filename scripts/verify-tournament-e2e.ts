@@ -132,6 +132,13 @@ async function cleanup() {
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.user.deleteMany({ where: { email: { contains: EMAIL_DOMAIN } } });
+
+  // Transition jobs are keyed `optransition:<tournamentId>:<transition>`, which
+  // carries no run tag — so they survive this suite's cleanup and are claimed by
+  // the NEXT run's runner, which then fails with "tournament not found" against
+  // a tournament this run already deleted. Purging by dangling reference is
+  // exact: a transition job whose tournament no longer exists can never succeed.
+  await db.$executeRaw`DELETE FROM "EvaluationJob" j WHERE j."name" = 'tournamentTransition' AND NOT EXISTS (SELECT 1 FROM "Tournament" t WHERE t."id" = (j."payload"->>'tournamentId'))`;
 }
 
 /** Deterministic competitor pool, reused across the scenarios. */
