@@ -1,8 +1,10 @@
 import 'server-only';
 import { createHash } from 'node:crypto';
 import type {
+  MatchStatus,
   RoundStage,
   RoundStatus,
+  SubmissionStatus,
   TournamentStatus,
 } from '@/generated/prisma/client';
 import { db } from '@/server/db';
@@ -144,6 +146,11 @@ export interface LiveSnapshot {
   prizePoolMinor: number;
   currency: string;
   youtubeStreamUrl: string | null;
+  registrationOpensAt: string | null;
+  registrationClosesAt: string | null;
+  simulationOpensAt: string | null;
+  simulationClosesAt: string | null;
+  liveStartsAt: string | null;
   /** The next thing that happens, and when. Null once the tournament is over. */
   countdown: (Countdown & { of: string }) | null;
   currentRound: LiveRoundView | null;
@@ -319,6 +326,12 @@ export async function getLiveSnapshot(
     prizePoolMinor: tournament.prizePoolMinor,
     currency: tournament.currency,
     youtubeStreamUrl: tournament.youtubeStreamUrl,
+    registrationOpensAt: tournament.registrationOpensAt?.toISOString() ?? null,
+    registrationClosesAt:
+      tournament.registrationClosesAt?.toISOString() ?? null,
+    simulationOpensAt: tournament.simulationOpensAt?.toISOString() ?? null,
+    simulationClosesAt: tournament.simulationClosesAt?.toISOString() ?? null,
+    liveStartsAt: tournament.liveStartsAt?.toISOString() ?? null,
     countdown: resolveCountdown(tournament, round, now),
     currentRound,
     leaderboard,
@@ -330,6 +343,184 @@ export async function getLiveSnapshot(
     ...snapshot,
     version: snapshotVersion(snapshot),
     serverTime: now.toISOString(),
+  };
+}
+
+export interface MyTournamentState {
+  tournamentId: string;
+  isRegistered: boolean;
+  registrationId: string | null;
+  registeredAt: Date | null;
+  seed: number | null;
+  placement: number | null;
+  qualified: boolean;
+  eliminatedAtStage: RoundStage | null;
+  simulationScore: number;
+  currentRound: {
+    id: string;
+    stage: RoundStage;
+    status: RoundStatus;
+    opensAt: Date | null;
+    deadlineAt: Date | null;
+    submitted: boolean;
+    submissionStatus: SubmissionStatus | null;
+    submissionId: string | null;
+  } | null;
+  currentMatch: {
+    id: string;
+    stage: RoundStage;
+    status: MatchStatus;
+    roundStatus: RoundStatus;
+    opensAt: Date | null;
+    deadlineAt: Date | null;
+    opponentUsername: string | null;
+  } | null;
+  readiness: {
+    githubConnected: boolean;
+    avatarSet: boolean;
+    profileLocationSet: boolean;
+    registered: boolean;
+  };
+}
+
+/**
+ * One competitor's tournament state, scoped by user and tournament.
+ *
+ * This powers the public tournament page and the dashboard without exposing
+ * submissions or private opponent facts. Each row is derived from existing
+ * persisted state; when a fact is not tracked, it is absent from this shape.
+ */
+export async function getMyTournamentState(
+  userId: string,
+  tournamentId: string,
+  client: DbClient = db,
+): Promise<MyTournamentState> {
+  const [user, registration, ranking, round, match] = await Promise.all([
+    client.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        avatarUrl: true,
+        displayName: true,
+        city: true,
+        authUserId: true,
+      },
+    }),
+    client.registration.findUnique({
+      where: { userId_tournamentId: { userId, tournamentId } },
+      select: { id: true, status: true, registeredAt: true },
+    }),
+    client.ranking.findUnique({
+      where: { tournamentId_userId: { tournamentId, userId } },
+      select: {
+        seed: true,
+        placement: true,
+        qualified: true,
+        eliminatedAtStage: true,
+        simulationScore: true,
+      },
+    }),
+    client.round.findFirst({
+      where: {
+        tournamentId,
+        type: 'SIMULATION',
+        status: { in: ['OPEN', 'JUDGING', 'PENDING'] },
+      },
+      orderBy: [{ sequence: 'asc' }],
+      select: {
+        id: true,
+        stage: true,
+        status: true,
+        opensAt: true,
+        deadlineAt: true,
+        submissions: {
+          where: { userId },
+          select: { id: true, status: true },
+          take: 1,
+        },
+      },
+    }),
+    client.match.findFirst({
+      where: {
+        tournamentId,
+        OR: [{ competitorAId: userId }, { competitorBId: userId }],
+        round: { status: { not: 'COMPLETED' } },
+      },
+      orderBy: [{ createdAt: 'desc' }, { bracketPosition: 'asc' }],
+      select: {
+        id: true,
+        status: true,
+        competitorAId: true,
+        competitorBId: true,
+        round: {
+          select: {
+            stage: true,
+            status: true,
+            opensAt: true,
+            deadlineAt: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const opponentId =
+    match?.competitorAId === userId
+      ? match.competitorBId
+      : match?.competitorBId === userId
+        ? match.competitorAId
+        : null;
+  const opponent = opponentId
+    ? await client.user.findUnique({
+        where: { id: opponentId },
+        select: { username: true },
+      })
+    : null;
+  const githubAccount = await client.authAccount.findFirst({
+    where: { userId: user.authUserId, providerId: 'github' },
+    select: { id: true },
+  });
+  const submission = round?.submissions[0] ?? null;
+  const isRegistered = registration?.status === 'ACTIVE';
+
+  return {
+    tournamentId,
+    isRegistered,
+    registrationId: isRegistered ? (registration?.id ?? null) : null,
+    registeredAt: isRegistered ? (registration?.registeredAt ?? null) : null,
+    seed: ranking?.seed ?? null,
+    placement: ranking?.placement ?? null,
+    qualified: ranking?.qualified ?? false,
+    eliminatedAtStage: ranking?.eliminatedAtStage ?? null,
+    simulationScore: ranking?.simulationScore ?? 0,
+    currentRound: round
+      ? {
+          id: round.id,
+          stage: round.stage,
+          status: round.status,
+          opensAt: round.opensAt,
+          deadlineAt: round.deadlineAt,
+          submitted: submission !== null,
+          submissionStatus: submission?.status ?? null,
+          submissionId: submission?.id ?? null,
+        }
+      : null,
+    currentMatch: match
+      ? {
+          id: match.id,
+          stage: match.round.stage,
+          status: match.status,
+          roundStatus: match.round.status,
+          opensAt: match.round.opensAt,
+          deadlineAt: match.round.deadlineAt,
+          opponentUsername: opponent?.username ?? null,
+        }
+      : null,
+    readiness: {
+      githubConnected: githubAccount !== null,
+      avatarSet: Boolean(user.avatarUrl),
+      profileLocationSet: Boolean(user.displayName && user.city),
+      registered: isRegistered,
+    },
   };
 }
 

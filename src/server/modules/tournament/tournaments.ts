@@ -1,5 +1,6 @@
 import 'server-only';
 import type {
+  ChallengeCategory,
   Prisma,
   Tournament,
   TournamentStatus,
@@ -347,6 +348,37 @@ export interface ListTournamentsOptions {
   skip?: number;
 }
 
+export type PublicTournamentBucket =
+  'LIVE_NOW' | 'REGISTERING' | 'COMING_SOON' | 'PAST';
+
+export interface PublicTournamentCard {
+  id: string;
+  slug: string;
+  name: string;
+  status: TournamentStatus;
+  currentStage: string | null;
+  participantCount: number;
+  bracketSize: number | null;
+  maxRegistrations: number | null;
+  thirdPlaceEnabled: boolean;
+  passPriceMinor: number;
+  prizePoolMinor: number;
+  currency: string;
+  registrationOpensAt: Date | null;
+  registrationClosesAt: Date | null;
+  simulationOpensAt: Date | null;
+  simulationClosesAt: Date | null;
+  liveStartsAt: Date | null;
+  completedAt: Date | null;
+  youtubeStreamUrl: string | null;
+  categories: ChallengeCategory[];
+}
+
+export interface ListPublicTournamentsOptions {
+  slug?: string;
+  take?: number;
+}
+
 export async function listTournaments(
   options: ListTournamentsOptions = {},
   client: DbClient = db,
@@ -361,6 +393,134 @@ export async function listTournaments(
     take: options.take ?? 50,
     skip: options.skip ?? 0,
   });
+}
+
+const PUBLIC_TOURNAMENT_STATUSES: readonly TournamentStatus[] = [
+  'PUBLISHED',
+  'REGISTRATION_OPEN',
+  'REGISTRATION_CLOSED',
+  'SIMULATION',
+  'SEEDING',
+  'BRACKET_GENERATED',
+  'LIVE',
+  'COMPLETED',
+];
+
+export function publicTournamentBucket(
+  status: TournamentStatus,
+): PublicTournamentBucket | null {
+  switch (status) {
+    case 'SIMULATION':
+    case 'SEEDING':
+    case 'BRACKET_GENERATED':
+    case 'LIVE':
+      return 'LIVE_NOW';
+    case 'REGISTRATION_OPEN':
+      return 'REGISTERING';
+    case 'PUBLISHED':
+    case 'REGISTRATION_CLOSED':
+      return 'COMING_SOON';
+    case 'COMPLETED':
+      return 'PAST';
+    default:
+      return null;
+  }
+}
+
+/**
+ * Public-safe tournament discovery.
+ *
+ * This is intentionally narrower than `listTournaments`: unlisted, archived,
+ * draft and cancelled tournaments are excluded at the query boundary so public
+ * pages cannot accidentally reveal rehearsals or shelved records.
+ */
+export async function listPublicTournaments(
+  options: ListPublicTournamentsOptions = {},
+  client: DbClient = db,
+): Promise<Record<PublicTournamentBucket, PublicTournamentCard[]>> {
+  const tournaments = await client.tournament.findMany({
+    where: {
+      slug: options.slug,
+      visibility: 'PUBLIC',
+      archivedAt: null,
+      status: { in: [...PUBLIC_TOURNAMENT_STATUSES] },
+    },
+    orderBy: [
+      { liveStartsAt: 'asc' },
+      { registrationOpensAt: 'asc' },
+      { createdAt: 'desc' },
+    ],
+    take: options.take ?? 100,
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      status: true,
+      currentStage: true,
+      participantCount: true,
+      bracketSize: true,
+      maxRegistrations: true,
+      thirdPlaceEnabled: true,
+      passPriceMinor: true,
+      prizePoolMinor: true,
+      currency: true,
+      registrationOpensAt: true,
+      registrationClosesAt: true,
+      simulationOpensAt: true,
+      simulationClosesAt: true,
+      liveStartsAt: true,
+      completedAt: true,
+      youtubeStreamUrl: true,
+      rounds: {
+        select: { problem: { select: { category: true } } },
+      },
+    },
+  });
+
+  const grouped: Record<PublicTournamentBucket, PublicTournamentCard[]> = {
+    LIVE_NOW: [],
+    REGISTERING: [],
+    COMING_SOON: [],
+    PAST: [],
+  };
+
+  for (const tournament of tournaments) {
+    const bucket = publicTournamentBucket(tournament.status);
+    if (!bucket) continue;
+
+    grouped[bucket].push({
+      id: tournament.id,
+      slug: tournament.slug,
+      name: tournament.name,
+      status: tournament.status,
+      currentStage: tournament.currentStage,
+      participantCount: tournament.participantCount,
+      bracketSize: tournament.bracketSize,
+      maxRegistrations: tournament.maxRegistrations,
+      thirdPlaceEnabled: tournament.thirdPlaceEnabled,
+      passPriceMinor: tournament.passPriceMinor,
+      prizePoolMinor: tournament.prizePoolMinor,
+      currency: tournament.currency,
+      registrationOpensAt: tournament.registrationOpensAt,
+      registrationClosesAt: tournament.registrationClosesAt,
+      simulationOpensAt: tournament.simulationOpensAt,
+      simulationClosesAt: tournament.simulationClosesAt,
+      liveStartsAt: tournament.liveStartsAt,
+      completedAt: tournament.completedAt,
+      youtubeStreamUrl: tournament.youtubeStreamUrl,
+      categories: [
+        ...new Set(
+          tournament.rounds
+            .map((round) => round.problem?.category)
+            .filter((category): category is ChallengeCategory =>
+              Boolean(category),
+            ),
+        ),
+      ],
+    });
+  }
+
+  return grouped;
 }
 
 export async function requireTournament(

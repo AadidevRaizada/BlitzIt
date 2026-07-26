@@ -2,13 +2,15 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireUserOrThrow } from '@/server/modules/auth';
+import { db } from '@/server/db';
+import { recordAudit } from '@/server/modules/admin/audit';
 import {
   notifyRegistrationConfirmed,
   registerCompetitor,
   withdrawRegistration,
 } from '@/server/modules/tournament';
 import { tournamentIdSchema } from '@/lib/validation/tournament.schema';
-import { ok, toErr, type Result } from '@/lib/errors';
+import { err, ok, toErr, type Result } from '@/lib/errors';
 import { captureException } from '@/lib/observability';
 
 /**
@@ -25,9 +27,17 @@ import { captureException } from '@/lib/observability';
 
 export async function registerForTournamentAction(
   tournamentId: unknown,
+  options: { acceptedRules?: boolean } = {},
 ): Promise<Result<{ registrationId: string; participantCount: number }>> {
   try {
     const user = await requireUserOrThrow();
+    if (options.acceptedRules !== true) {
+      return err(
+        'VALIDATION',
+        'You must accept the tournament rules to enter.',
+      );
+    }
+
     const parsed = tournamentIdSchema.safeParse({ tournamentId });
     if (!parsed.success) {
       return {
@@ -43,6 +53,21 @@ export async function registerForTournamentAction(
       actorId: user.id,
     });
 
+    await recordAudit(
+      {
+        actorId: user.id,
+        action: 'tournament.registerAccepted',
+        entityType: 'Registration',
+        entityId: result.registration.id,
+        after: {
+          userId: user.id,
+          tournamentId: parsed.data.tournamentId,
+          acceptedRules: true,
+        },
+      },
+      db,
+    );
+
     // After the registration transaction commits, never inside it (E8.3): an
     // email job enqueued in a transaction that rolls back would point at a
     // notification row that never existed. Non-fatal — a competitor who is
@@ -55,6 +80,7 @@ export async function registerForTournamentAction(
     }
 
     revalidatePath('/dashboard');
+    revalidatePath('/tournaments');
     return ok({
       registrationId: result.registration.id,
       participantCount: result.participantCount,

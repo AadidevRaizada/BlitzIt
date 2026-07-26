@@ -65,8 +65,13 @@ export {
   getTournament,
   getTournamentBySlug,
   listTournaments,
+  listPublicTournaments,
+  publicTournamentBucket,
   requireTournament,
   type ListTournamentsOptions,
+  type ListPublicTournamentsOptions,
+  type PublicTournamentBucket,
+  type PublicTournamentCard,
 } from './tournaments';
 
 // ---- Registration ----
@@ -199,10 +204,12 @@ export {
   getSpectatorTournamentId,
   getLeaderboard,
   listMyResults,
+  getMyTournamentState,
   listPublicPlacements,
   snapshotVersion,
   LEADERBOARD_DEFAULT_TAKE,
   type MyTournamentResult,
+  type MyTournamentState,
   type MyResultSubmission,
   type PublicPlacement,
   type LiveSnapshot,

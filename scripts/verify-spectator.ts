@@ -6,10 +6,12 @@ import {
   createTournament,
   getLeaderboard,
   getLiveSnapshot,
+  getMyTournamentState,
   getSpectatorSnapshot,
   getSpectatorTournamentId,
   listMyResults,
   listPublicPlacements,
+  listPublicTournaments,
   notifyRegistrationConfirmed,
   progressTournament,
   registerCompetitor,
@@ -131,6 +133,12 @@ async function cleanup() {
   });
   await db.problem.deleteMany({ where: { slug: { contains: TAG } } });
   await db.user.deleteMany({ where: { email: { contains: EMAIL_DOMAIN } } });
+  await db.authAccount.deleteMany({
+    where: { user: { email: { contains: EMAIL_DOMAIN } } },
+  });
+  await db.authUser.deleteMany({
+    where: { email: { contains: EMAIL_DOMAIN } },
+  });
 }
 
 /** Records what would have been sent, so delivery can be asserted precisely. */
@@ -554,8 +562,61 @@ async function pipeline() {
     data: {
       registrationOpensAt: new Date(Date.now() - 60_000),
       registrationClosesAt: new Date(Date.now() + 3_600_000),
+      simulationOpensAt: new Date(Date.now() + 3_900_000),
+      simulationClosesAt: new Date(Date.now() + 7_200_000),
+      liveStartsAt: new Date(Date.now() + 8_000_000),
     },
   });
+
+  const draft = await createTournament(
+    {
+      name: 'E8 Draft Hidden',
+      slug: `draft-${TAG}`,
+      bracketSize: 8,
+    },
+    { actorId: admin.id },
+  );
+  const unlisted = await createTournament(
+    {
+      name: 'E8 Unlisted Hidden',
+      slug: `unlisted-${TAG}`,
+      bracketSize: 8,
+    },
+    { actorId: admin.id },
+  );
+  await applyTransition(unlisted.id, 'PUBLISH', { actorId: admin.id });
+  await db.tournament.update({
+    where: { id: unlisted.id },
+    data: { visibility: 'UNLISTED' },
+  });
+  const archived = await createTournament(
+    {
+      name: 'E8 Archived Hidden',
+      slug: `archived-${TAG}`,
+      bracketSize: 8,
+    },
+    { actorId: admin.id },
+  );
+  await applyTransition(archived.id, 'PUBLISH', { actorId: admin.id });
+  await db.tournament.update({
+    where: { id: archived.id },
+    data: { archivedAt: new Date() },
+  });
+
+  const publicTournaments = await listPublicTournaments();
+  const publicIds = Object.values(publicTournaments)
+    .flat()
+    .map((row) => row.id);
+  check(
+    'the public tournament list includes the registering cup',
+    publicTournaments.REGISTERING.some((row) => row.id === tournament.id),
+  );
+  check(
+    'the public tournament list excludes draft, unlisted and archived tournaments',
+    !publicIds.includes(draft.id) &&
+      !publicIds.includes(unlisted.id) &&
+      !publicIds.includes(archived.id),
+  );
 
   // ── Spectator resolution ──
   // Asserted as a RULE rather than an identity: the development database may
@@ -603,6 +664,32 @@ async function pipeline() {
   for (const player of players) {
     await registerCompetitor(tournament.id, player.id);
   }
+  await db.authUser.create({
+    data: {
+      id: `auth-${TAG}-p0`,
+      email: `auth-p0@${EMAIL_DOMAIN}`,
+    },
+  });
+  await db.authAccount.create({
+    data: {
+      userId: `auth-${TAG}-p0`,
+      accountId: `github-${TAG}-p0`,
+      providerId: 'github',
+    },
+  });
+  await db.user.update({
+    where: { id: players[0]!.id },
+    data: { avatarUrl: 'https://example.com/avatar.png' },
+  });
+  const mine = await getMyTournamentState(players[0]!.id, tournament.id);
+  check(
+    'my tournament state reports registration and readiness from real rows',
+    mine.isRegistered &&
+      mine.readiness.registered &&
+      mine.readiness.githubConnected &&
+      mine.readiness.avatarSet &&
+      mine.readiness.profileLocationSet,
+  );
 
   // ── Registration confirmation (E8.3) ──
   mailer.sent.length = 0;
@@ -1132,6 +1219,14 @@ async function pipeline() {
     'the snapshot carries the prize pool and participant count',
     snapshot.prizePoolMinor === 80000 && snapshot.participantCount === 8,
     `${snapshot.prizePoolMinor} / ${snapshot.participantCount}`,
+  );
+  check(
+    'the snapshot carries public schedule fields',
+    snapshot.registrationOpensAt !== null &&
+      snapshot.registrationClosesAt !== null &&
+      snapshot.simulationOpensAt !== null &&
+      snapshot.simulationClosesAt !== null &&
+      snapshot.liveStartsAt !== null,
   );
   check(
     'the completed snapshot ranks the champion first',
