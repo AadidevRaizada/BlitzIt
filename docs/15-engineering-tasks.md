@@ -91,11 +91,21 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
   *(Proven end to end by `verify:sudden-death`.)*
 
 ## E7 — Live knockout arena (M7)
-- **E7.1 (L)** Server-authoritative timers; simultaneous reveal; per-match windows.
-- **E7.2 (M)** Knockout Arena [10]; disconnect/late-submit rules; JUDGING state when eval > timer.
-- **E7.3 (M)** SSE `/api/live/[id]` (bracket/leaderboard/match/countdown) + polling fallback + hooks.
-- **E7.4 (S)** PostHog feature flag to gate the live arena.
-- **DoD:** a live Sunday-style event runs head-to-head to a champion.
+- **E7.1 (L)** ✅ Server-authoritative timers (`timers.public.ts` — pure, shared by the server and
+  the browser countdown, which corrects its own clock against a server anchor); simultaneous
+  reveal; per-match windows (`getMatchWindow` — *derived* from the round, which stays the single
+  schedule so every match at a stage opens at the same instant).
+- **E7.2 (M)** ✅ Knockout Arena [10] (`/arena/knockout/[matchId]`); disconnect rules (nothing is
+  in memory — a reload restores the same state and the same time remaining); late submissions
+  refused by the Submission module, not by the UI; explicit JUDGING state when evaluation outlasts
+  the timer.
+- **E7.3 (M)** ✅ SSE `/api/live/[tournamentId]` (bracket/leaderboard/current match/countdown/
+  participant count/prize pool) + `?mode=poll` fallback serving the identical snapshot +
+  `useLiveTournament` hook and the `LiveRefresh` island.
+- **E7.4 (S)** ✅ Feature flag `live-arena` gating the arena, with an env kill switch that beats
+  PostHog and the admin bypass.
+- **DoD:** ✅ a live Sunday-style event runs head-to-head to a champion — proven by
+  `verify:live-arena` on top of `verify:tournament:e2e` and `verify:sudden-death`.
 
 ## E8 — Spectator landing, leaderboard, notifications, HoF (M8)
 - **E8.1 (L)** Landing [1] (D10): stream embed, live leaderboard, bracket, current match, participant count, prize pool, countdown — all SSE.

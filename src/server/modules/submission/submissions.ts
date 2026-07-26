@@ -733,6 +733,27 @@ export async function getMySubmission(
   return row ? toView(row) : null;
 }
 
+/**
+ * Whether a competitor has an entry for a round — nothing more (E7).
+ *
+ * The Knockout Arena needs to tell one competitor whether their opponent has
+ * submitted, *after* the window closes. It must not learn anything else about
+ * that entry, so this returns a bare boolean rather than a view: the caller
+ * cannot accidentally render a rival's repository URL.
+ *
+ * It lives here, not in the Tournament module, because the existence of an
+ * entry is a fact about a Submission. The arena composes the two.
+ */
+export async function hasSubmission(
+  userId: string,
+  roundId: string,
+): Promise<boolean> {
+  const count = await db.submission.count({
+    where: { userId, roundId },
+  });
+  return count > 0;
+}
+
 export async function listMySubmissions(
   userId: string,
   filter: { tournamentId?: string; take?: number } = {},

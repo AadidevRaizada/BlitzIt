@@ -64,11 +64,16 @@ it has tests (where logic exists), passes CI, and is deployable to Railway.
 - **Deliverable:** from a set of simulation scores, a full bracket of any supported size runs to
   a champion in a simulated fast-forward, including a forced tie → sudden-death path.
 
-### Milestone 7 — Live knockout arena
+### Milestone 7 — Live knockout arena ✅ *(E7, complete)*
 - Server-authoritative round timers (knockout 20/30/40/50/60), simultaneous reveal, per-match
   submission windows, live progression, disconnect/late-submit rules, SSE updates.
 - Feature-flagged rollout.
 - **Deliverable:** a live Sunday-style event runs head-to-head rounds to a champion.
+- **As built:** timers are absolute instants published with a server clock anchor, so no client
+  clock can move a deadline; per-match windows are *derived* from the round, which stays the one
+  schedule (simultaneous reveal); SSE re-reads a hashed snapshot on an interval rather than
+  needing a message bus (D3 rules out Redis), with a polling fallback serving the identical
+  payload; the flag has an env kill switch that outranks PostHog.
 
 ### Milestone 8 — Spectator landing, leaderboard, notifications, Hall of Fame
 - **Landing = spectator experience (D10):** embedded YouTube, live leaderboard, live bracket,

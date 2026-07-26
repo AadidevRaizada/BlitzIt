@@ -150,7 +150,13 @@ export function ConfigurationForm({
                     type="number"
                     min={30}
                     placeholder={String(fallback)}
-                    hint={`Default ${fallback} (${minutes(fallback)})`}
+                    hint={
+                      stage === 'SUDDEN_DEATH'
+                        ? // Not a stage of the bracket: the decider that
+                          // unsticks a tie at any stage (D14).
+                          `Tie decider · default ${fallback} (${minutes(fallback)})`
+                        : `Default ${fallback} (${minutes(fallback)})`
+                    }
                     defaultValue={readStage(roundDurations, stage)}
                   />
                 );

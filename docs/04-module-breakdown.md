@@ -166,6 +166,11 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
 - **APIs:** RSC read queries + SSE `/api/live/[tournamentId]`.
 - **Entities:** `Ranking`, `SeasonStanding`.
 - **Scalability:** read-model with proper indexes; cache/SSE for spectators.
+- **E7 as built:** the live read model is `tournament/live.ts` (`getLiveSnapshot`,
+  `getLeaderboard`) rather than a separate module — it reads `Ranking` and the bracket the
+  Tournament module already owns, and a module whose only job is to `SELECT` from another
+  module's tables would be a boundary in name only. It moves out if and when it grows a season
+  standing of its own (E8/E9).
 
 ## 10. Notifications
 - **Responsibilities:** create notification intents, dedupe, deliver via Resend (email) and

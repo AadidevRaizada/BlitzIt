@@ -55,10 +55,14 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 - Razorpay checkout (`createPassOrder` → Razorpay modal). Price ₹100, dynamic prize-pool context
   ("your entry grows the pool"). States: idle, processing, success (webhook-confirmed), failed.
 
-### 8. Simulation Arena — `/arena/simulation`  [RSC shell + C timer]
+### 8. Simulation Arena — `/arena/simulation`  [RSC shell + C timer] — **not built**
 - Lists the three simulation rounds (30/20/10 min) with per-round status/countdown; entry to the
   active round's problem + submission. States: locked (before open), active (timer running),
   submitted (evaluation pending), scored.
+- **Status.** Not in E7's scope (E7.1–E7.4 are knockout-only). Simulation rounds are fully
+  playable today through [9] `/submit/[roundId]`; what is missing is the three-round index page.
+  The pieces it needs — the countdown island and `getSubmissionWindow` — now exist, so it is a
+  small page rather than a feature.
 
 ### 9. Problem + Submission — `/submit/[roundId]`  [RSC problem + C form]
 - **Problem panel:** revealed statement (only after `opensAt`), category badge, contract summary.
@@ -67,14 +71,27 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 - **After submit:** immutable summary + evaluation status (queued → running → scored) [C/poll].
 - **States:** not-open, open, submitted, sealed/deadline-passed, evaluating, scored, failed.
 
-### 10. Live Knockout Arena — `/arena/knockout/[matchId]`  [RSC + C]
+### 10. Live Knockout Arena — `/arena/knockout/[matchId]`  [RSC + C] — **E7 ✅**
 - Head-to-head view: opponent, current stage, **round timer** [C], problem + submission (reuses
   #9), live match status [SSE]. Post-round: win/lose result, advance/eliminated. Sudden-death
   banner if triggered (D5).
+- **As built (E7).** Server-rendered; two client islands only — the countdown (which corrects the
+  browser clock against a server anchor) and `LiveRefresh` (which re-runs the server render when
+  the live snapshot changes). Rendering, authorization and the reveal gate therefore exist in
+  exactly one place.
+- Private to the two competitors: anyone else gets a 404, and spectators watch through [11].
+- **An opponent's progress is withheld while the window is open** — knowing a rival has already
+  submitted would have a competitor play the person instead of the problem. It appears once the
+  window closes.
+- **States:** NOT_STARTED, WAITING (scheduled, sealed), LIVE, JUDGING (evaluation outlasting the
+  timer — normal, not an error), TIED (awaiting a D14 decider), SUDDEN_DEATH, WON, LOST.
+- Reached from the dashboard's "your matches" panel — a competitor never needs a match id.
 
-### 11. Bracket — `/bracket/[tournamentId]`  [C/SSE]
+### 11. Bracket — `/bracket/[tournamentId]`  [C/SSE] — **E6 ✅ · live in E7**
 - Visual knockout tree for 8/16/32/64, live match statuses, my path highlighted, click match →
   detail. Reused as an embed on the landing page.
+- **As built.** Server-rendered tree (E6) kept current by `LiveRefresh` (E7). The landing-page
+  embed is E8.
 
 ### 12. Leaderboard — `/leaderboard`  [C/SSE]
 - Rankings by score / city / seed; my row pinned; filters. Reused (top N) on landing.

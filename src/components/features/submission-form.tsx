@@ -23,17 +23,31 @@ interface Props {
   } | null;
   /** False once the window has closed or the entry has been sealed. */
   editable: boolean;
+  /**
+   * Where to go after a successful submit. Defaults to the submission detail
+   * page ([9]'s behaviour); the arena ([10]) passes its own URL so a competitor
+   * mid-round is never navigated away from their timer.
+   */
+  redirectTo?: string;
+  /** Copy for the closed state, which differs between the two screens. */
+  closedHint?: string;
 }
 
 /**
- * Screen [9] — the submission form (E4).
+ * The submission form — screen [9], reused by the Knockout Arena [10].
  *
  * The same form creates and replaces: the server decides which, because "does
  * an entry already exist?" is a question about persisted state, not about which
  * button the browser rendered. Validation here is only for fast feedback; the
  * server re-validates everything and is the one that decides.
  */
-export function SubmissionForm({ roundId, existing, editable }: Props) {
+export function SubmissionForm({
+  roundId,
+  existing,
+  editable,
+  redirectTo,
+  closedHint,
+}: Props) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<State, FormData>(
     submitSolutionAction,
@@ -48,21 +62,22 @@ export function SubmissionForm({ roundId, existing, editable }: Props) {
           ? `Entry replaced — now version ${state.data.version}`
           : 'Entry accepted and queued for evaluation',
       );
-      router.push(`/submissions/${state.data.submissionId}`);
+      router.push(redirectTo ?? `/submissions/${state.data.submissionId}`);
       router.refresh();
     } else {
       toast.error(state.error.message);
     }
-  }, [state, router]);
+  }, [state, router, redirectTo]);
 
   if (!editable) {
     return (
       <div className="border-border bg-muted/40 rounded-md border p-4 text-sm">
         <p className="font-medium">This round is closed</p>
         <p className="text-muted-foreground mt-1">
-          {existing
-            ? 'Your entry has been sealed and can no longer be changed.'
-            : 'The submission window has passed.'}
+          {closedHint ??
+            (existing
+              ? 'Your entry has been sealed and can no longer be changed.'
+              : 'The submission window has passed.')}
         </p>
       </div>
     );

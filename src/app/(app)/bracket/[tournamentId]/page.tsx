@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { StatCard } from '@/components/ui/card';
 import { TournamentStatusBadge } from '@/components/features/tournament-status-badge';
 import { BracketTree } from '@/components/features/bracket-tree';
+import { LiveRefresh } from '@/components/features/live-refresh';
 
 export const metadata = { title: 'Bracket — Blitz It' };
 export const dynamic = 'force-dynamic';
@@ -63,6 +64,9 @@ export default async function BracketPage({
               status={summary.status}
               stage={summary.currentStage}
             />
+            {/* E7.3: the tree re-renders on the server when the live snapshot
+                changes, so the bracket updates without a manual reload. */}
+            <LiveRefresh tournamentId={tournamentId} />
           </span>
         }
       />

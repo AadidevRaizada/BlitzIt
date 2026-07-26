@@ -17,6 +17,7 @@ export {
   getAdminSubmission,
   getSubmission,
   getMySubmission,
+  hasSubmission,
   listMySubmissions,
   getSubmissionHistory,
   listAllSubmissions,

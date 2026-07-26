@@ -96,6 +96,30 @@ const serverSchema = z.object({
     .transform((v) => v !== 'false')
     .default('true'),
 
+  // Live surfaces (Epic E7). D3 rules out Redis, so the SSE stream detects
+  // change by re-reading a snapshot on an interval; these tune that loop.
+  /** How often a live stream re-reads the snapshot looking for a change. */
+  LIVE_STREAM_POLL_MS: z.coerce.number().int().positive().default(3_000),
+  /** Comment frames that keep proxies and load balancers from idling us out. */
+  LIVE_STREAM_HEARTBEAT_MS: z.coerce.number().int().positive().default(15_000),
+  /**
+   * A stream is closed after this long and the browser reconnects on its own.
+   * Bounded so a forgotten spectator tab cannot hold a connection (and a
+   * database client) open for the whole event.
+   */
+  LIVE_STREAM_MAX_DURATION_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(900_000),
+  /** How many rows the public leaderboard carries. */
+  LIVE_LEADERBOARD_TAKE: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(200)
+    .default(25),
+
   // Evaluation runner
   RUNNER_CONCURRENCY: z.coerce.number().int().positive().default(2),
   // How long a job may stay CLAIMED before it is assumed abandoned and
