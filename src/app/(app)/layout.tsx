@@ -26,6 +26,15 @@ export default async function AppLayout({
           <Link href="/dashboard" className="hover:underline">
             Dashboard
           </Link>
+          <Link href="/tournaments" className="hover:underline">
+            Tournaments
+          </Link>
+          <Link href="/leaderboard" className="hover:underline">
+            Leaderboard
+          </Link>
+          <Link href="/hall-of-fame" className="hover:underline">
+            Hall of Fame
+          </Link>
           <Link href="/submissions" className="hover:underline">
             Submissions
           </Link>

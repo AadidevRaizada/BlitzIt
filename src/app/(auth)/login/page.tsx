@@ -12,11 +12,16 @@ export const metadata = { title: 'Sign in - The Circuit' };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackURL?: string; error?: string }>;
+  searchParams: Promise<{
+    callbackURL?: string;
+    next?: string;
+    error?: string;
+  }>;
 }) {
-  const { callbackURL, error } = await searchParams;
+  const { callbackURL, next, error } = await searchParams;
+  const returnTo = safeCallback(next ?? callbackURL);
   const session = await getSession();
-  if (session) redirect(safeCallback(callbackURL));
+  if (session) redirect(returnTo);
 
   return (
     <main className="flex min-h-screen items-center justify-center p-8">
@@ -38,10 +43,7 @@ export default async function LoginPage({
         ) : null}
 
         {enabledProviders.length > 0 ? (
-          <LoginButtons
-            providers={enabledProviders}
-            callbackURL={safeCallback(callbackURL)}
-          />
+          <LoginButtons providers={enabledProviders} callbackURL={returnTo} />
         ) : (
           <div className="border-border bg-muted rounded-md border px-3 py-3 text-sm">
             <p className="font-medium">No sign-in providers configured.</p>

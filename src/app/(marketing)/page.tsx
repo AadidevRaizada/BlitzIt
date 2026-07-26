@@ -45,12 +45,16 @@ export default async function HomePage() {
   const live = snapshot?.status === 'LIVE';
   const registering = snapshot?.status === 'REGISTRATION_OPEN';
   const completed = snapshot?.status === 'COMPLETED';
-  const ctaHref = user ? '/dashboard' : '/login';
+  const ctaHref = registering
+    ? `/tournaments/${snapshot?.slug}`
+    : user
+      ? '/dashboard'
+      : '/tournaments';
   const ctaLabel = registering
-    ? 'Enter Simulation'
+    ? 'Register'
     : user
       ? 'Open Dashboard'
-      : 'Sign In';
+      : 'View Tournaments';
   const stats = getHeroStats(snapshot);
 
   return (
@@ -154,6 +158,8 @@ export default async function HomePage() {
                     <HeroStatCard key={stat.label} stat={stat} />
                   ))}
                 </div>
+
+                <WeekSchedule snapshot={snapshot} />
               </div>
 
               <aside className="bg-background">
@@ -338,7 +344,7 @@ function Ticker({
         snapshot.name,
         statusLabel(snapshot.status),
         `${snapshot.participantCount} competitors`,
-        formatMinor(snapshot.prizePoolMinor, snapshot.currency),
+        '₹0 prize pool while entries are free',
         snapshot.currentRound
           ? `${snapshot.currentRound.matchesDecided}/${snapshot.currentRound.matchesTotal} matches decided`
           : 'Bracket pending',
@@ -520,6 +526,46 @@ function HeroStatCard({ stat }: { stat: HeroStat }) {
   );
 }
 
+function WeekSchedule({ snapshot }: { snapshot: LiveSnapshot }) {
+  const rows = [
+    { label: 'Registration opens', at: snapshot.registrationOpensAt },
+    { label: 'Registration closes', at: snapshot.registrationClosesAt },
+    { label: 'Qualifiers open', at: snapshot.simulationOpensAt },
+    { label: 'Qualifiers close', at: snapshot.simulationClosesAt },
+    { label: 'Live bracket', at: snapshot.liveStartsAt },
+  ].filter((row) => row.at);
+
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="home-rise border-hairline bg-background/70 relative mt-5 border p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-pixel text-lg font-bold uppercase">
+          Week Schedule
+        </h2>
+        <Link
+          href={`/tournaments/${snapshot.slug}`}
+          className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Tournament page
+        </Link>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-5">
+        {rows.map((row) => (
+          <div key={row.label} className="border-hairline border p-3">
+            <p className="text-muted-foreground font-mono text-[0.68rem] uppercase">
+              {row.label}
+            </p>
+            <p className="mt-1 text-sm font-semibold">
+              {formatSchedule(row.at)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-hairline flex items-center justify-between gap-3 border-b py-2">
@@ -641,7 +687,7 @@ function getHeroStats(snapshot: LiveSnapshot | null): HeroStat[] {
     },
     {
       label: 'Prize Pool',
-      value: formatMinor(snapshot.prizePoolMinor, snapshot.currency),
+      value: '₹0',
     },
     {
       label: 'Current Stage',
@@ -682,4 +728,14 @@ function statusLabel(status: string | null | undefined): string {
 
 function formatStage(value: string): string {
   return value.replace(/_/g, ' ');
+}
+
+function formatSchedule(value: string | null): string {
+  if (!value) return 'TBA';
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date(value));
 }

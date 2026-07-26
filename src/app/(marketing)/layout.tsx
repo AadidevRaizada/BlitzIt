@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import {
-  BookOpen,
+  BarChart3,
   Crown,
+  Gauge,
   Home,
-  ListChecks,
-  Play,
   Radio,
   Trophy,
   UserRound,
@@ -15,10 +14,10 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { href: '/', label: 'Home', icon: Home },
-  { href: '/', label: 'Play', icon: Play },
-  { href: '/leaderboard', label: 'Ranking', icon: ListChecks },
-  { href: '/hall-of-fame', label: 'Hall', icon: Crown },
-  { href: '/rules', label: 'Rules', icon: BookOpen },
+  { href: '/tournaments', label: 'Tournaments', icon: Trophy },
+  { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
+  { href: '/hall-of-fame', label: 'Hall of Fame', icon: Crown },
+  { href: '/dashboard', label: 'Dashboard', icon: Gauge },
 ];
 
 export default async function MarketingLayout({
@@ -48,7 +47,7 @@ export default async function MarketingLayout({
           </Link>
 
           <Link
-            href={user ? '/dashboard' : '/login'}
+            href={user ? '/dashboard' : '/login?next=/dashboard'}
             className={cn(buttonVariants({ variant: 'broadcast', size: 'sm' }))}
           >
             {user ? 'Dashboard' : 'Sign In'}
@@ -85,7 +84,7 @@ export default async function MarketingLayout({
         </nav>
 
         <Link
-          href={user ? '/dashboard' : '/login'}
+          href={user ? '/dashboard' : '/login?next=/dashboard'}
           className="font-pixel border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 border-t px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
         >
           <UserRound className="size-6" aria-hidden />
