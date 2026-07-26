@@ -142,8 +142,17 @@ enum PaymentStatus {
   CREATED
   PENDING
   PAID
+  PENDING_REFUND
+  REFUND_FAILED
   FAILED
   REFUNDED
+}
+
+enum WebhookOutcome {
+  APPLIED
+  DEDUPED
+  IGNORED
+  REJECTED
 }
 
 enum RegistrationStatus {
@@ -194,13 +203,13 @@ enum NotificationStatus {
 /// Do not write to these directly — Better Auth owns them. Our domain `User`
 /// links to `AuthUser` via `User.authUserId`.
 model AuthUser {
-  id            String            @id @default(cuid())
+  id            String        @id @default(cuid())
   name          String?
-  email         String            @unique
-  emailVerified Boolean           @default(false)
+  email         String        @unique
+  emailVerified Boolean       @default(false)
   image         String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   sessions      AuthSession[]
   accounts      AuthAccount[]
 
@@ -257,25 +266,26 @@ model AuthVerification {
 
 /// ─────────────────────────── Identity ───────────────────────────
 model User {
-  id            String         @id @default(uuid())
-  authUserId    String         @unique
-  email         String         @unique
-  username      String         @unique
-  displayName   String?
-  avatarUrl     String?
-  city          String?
-  country       String?        @default("IN")
-  role          Role           @default(USER)
-  profile       Profile?
-  registrations Registration[]
-  payments      Payment[]
-  submissions   Submission[]
-  rankings      Ranking[]
-  payouts       Payout[]
-  notifications Notification[]
-  userBadges    UserBadge[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id               String            @id @default(uuid())
+  authUserId       String            @unique
+  email            String            @unique
+  username         String            @unique
+  displayName      String?
+  avatarUrl        String?
+  city             String?
+  country          String?           @default("IN")
+  role             Role              @default(USER)
+  profile          Profile?
+  registrations    Registration[]
+  payments         Payment[]
+  submissions      Submission[]
+  rankings         Ranking[]
+  payouts          Payout[]
+  notifications    Notification[]
+  userBadges       UserBadge[]
+  termsAcceptances TermsAcceptance[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([city])
 }
@@ -296,8 +306,8 @@ model Profile {
 
 /// ─────────────────────────── Competition ───────────────────────────
 model Tournament {
-  id                        String           @id @default(uuid())
-  slug                      String           @unique
+  id                        String               @id @default(uuid())
+  slug                      String               @unique
   name                      String
   /// Operator-facing blurb shown on admin cards and (later) the public page.
   description               String?
@@ -313,27 +323,29 @@ model Tournament {
   /// other one). Archived tournaments are hidden from the default admin list
   /// and are never resurrected into a different phase.
   archivedAt                DateTime?
-  status                    TournamentStatus @default(DRAFT)
+  status                    TournamentStatus     @default(DRAFT)
   /// Knockout stage currently in progress. Only meaningful while `status` is
   /// LIVE; together the pair forms the full lifecycle state (E3). Persisted so
   /// the engine can resume mid-bracket after a restart with no in-memory state.
   currentStage              RoundStage?
-  passPriceMinor            Int              @default(10000)
-  currency                  String           @default("INR")
+  passPriceMinor            Int                  @default(10000)
+  currency                  String               @default("INR")
   bracketSize               Int?
   /// Whether the losing semi-finalists play off for 3rd place (configurable).
-  thirdPlaceEnabled         Boolean          @default(true)
+  thirdPlaceEnabled         Boolean              @default(true)
   /// Registration limits (D6 sizing input). Null = fall back to configuration.
   minRegistrations          Int?
   maxRegistrations          Int?
-  timezoneDisplay           String           @default("Asia/Kolkata")
+  timezoneDisplay           String               @default("Asia/Kolkata")
   youtubeStreamUrl          String?
   // dynamic prize pool (D9/D12)
-  participantCount          Int              @default(0)
-  basePrizePoolMinor        Int              @default(0)
-  prizePerRegistrationMinor Int              @default(10000)
-  firstPrizeCapMinor        Int              @default(200000)
-  prizePoolMinor            Int              @default(0)
+  participantCount          Int                  @default(0)
+  basePrizePoolMinor        Int                  @default(0)
+  prizePerRegistrationMinor Int                  @default(10000)
+  sponsorContributionMinor  Int                  @default(0)
+  bonusContributionMinor    Int                  @default(0)
+  firstPrizeCapMinor        Int                  @default(200000)
+  prizePoolMinor            Int                  @default(0)
   prizeDistribution         Json?
   // schedule (all UTC)
   registrationOpensAt       DateTime?
@@ -361,8 +373,8 @@ model Tournament {
   evaluations               Evaluation[]
   opsEvents                 OpsEvent[]
   hallOfFame                HallOfFame?
-  createdAt                 DateTime         @default(now())
-  updatedAt                 DateTime         @updatedAt
+  createdAt                 DateTime             @default(now())
+  updatedAt                 DateTime             @updatedAt
 
   @@index([status])
 }
@@ -389,50 +401,50 @@ model Round {
 }
 
 model Match {
-  id              String      @id @default(uuid())
-  roundId         String
-  round           Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
-  tournamentId    String
-  tournament      Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  bracketPosition Int
-  competitorAId   String?
-  competitorBId   String?
+  id                 String      @id @default(uuid())
+  roundId            String
+  round              Round       @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  tournamentId       String
+  tournament         Tournament  @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  bracketPosition    Int
+  competitorAId      String?
+  competitorBId      String?
   /// Seeds occupying each slot. Kept alongside the competitor ids so the
   /// bracket reads correctly for byes (null competitor, null seed) and so the
   /// higher-seed fallback for a double no-show needs no extra lookup.
-  seedA           Int?
-  seedB           Int?
-  submissionAId   String?     @unique
-  submissionBId   String?     @unique
-  winnerId        String?
-  loserId         String?
-  winReason       WinReason?
-  status          MatchStatus @default(PENDING)
+  seedA              Int?
+  seedB              Int?
+  submissionAId      String?     @unique
+  submissionBId      String?     @unique
+  winnerId           String?
+  loserId            String?
+  winReason          WinReason?
+  status             MatchStatus @default(PENDING)
   /// Where the WINNER goes. Null only for the terminal match (FINAL / 3rd place).
-  nextMatchId     String?
-  nextMatch       Match?      @relation("Bracket", fields: [nextMatchId], references: [id])
-  feederMatches   Match[]     @relation("Bracket")
-  nextMatchSlot   MatchSlot?
+  nextMatchId        String?
+  nextMatch          Match?      @relation("Bracket", fields: [nextMatchId], references: [id])
+  feederMatches      Match[]     @relation("Bracket")
+  nextMatchSlot      MatchSlot?
   /// Where the LOSER goes — used only by the semi-finals when the third-place
   /// play-off is enabled. Everywhere else a loss is simply elimination.
   loserNextMatchId   String?
-  loserNextMatch     Match?   @relation("BracketConsolation", fields: [loserNextMatchId], references: [id])
-  loserFeederMatches Match[]  @relation("BracketConsolation")
+  loserNextMatch     Match?      @relation("BracketConsolation", fields: [loserNextMatchId], references: [id])
+  loserFeederMatches Match[]     @relation("BracketConsolation")
   loserNextMatchSlot MatchSlot?
   /// Set when the win rule and every D5 tie-break failed to separate the two
   /// competitors. The match holds at JUDGING until a sudden-death challenge
   /// resolves it (D5.6 / D14, E6).
-  tieUnresolved   Boolean     @default(false)
+  tieUnresolved      Boolean     @default(false)
   /// A SUDDEN_DEATH match points back at the deadlocked match it exists to
   /// settle. When it is decided, its winner is written onto that match with
   /// `winReason = SUDDEN_DEATH` and advancement continues from there, so the
   /// main bracket topology never has to know sudden death happened (E6).
-  resolvesMatchId String?     @unique
-  resolvesMatch   Match?      @relation("SuddenDeath", fields: [resolvesMatchId], references: [id])
-  suddenDeathMatch Match?     @relation("SuddenDeath")
-  decidedAt       DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  resolvesMatchId    String?     @unique
+  resolvesMatch      Match?      @relation("SuddenDeath", fields: [resolvesMatchId], references: [id])
+  suddenDeathMatch   Match?      @relation("SuddenDeath")
+  decidedAt          DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
   @@unique([roundId, bracketPosition])
   @@index([tournamentId])
@@ -476,16 +488,16 @@ model HiddenTest {
 
 /// ─────────────────────────── Submissions & evaluation ───────────────────────────
 model Submission {
-  id            String           @id @default(uuid())
+  id            String               @id @default(uuid())
   userId        String
-  user          User             @relation(fields: [userId], references: [id])
+  user          User                 @relation(fields: [userId], references: [id])
   tournamentId  String
-  tournament    Tournament       @relation(fields: [tournamentId], references: [id])
+  tournament    Tournament           @relation(fields: [tournamentId], references: [id])
   roundId       String
-  round         Round            @relation(fields: [roundId], references: [id])
+  round         Round                @relation(fields: [roundId], references: [id])
   matchId       String?
   problemId     String
-  problem       Problem          @relation(fields: [problemId], references: [id])
+  problem       Problem              @relation(fields: [problemId], references: [id])
   /// Challenge category this entry was accepted under (E4). Snapshotted from
   /// the Problem at submit time rather than joined on read: it is the category
   /// the submission was validated and scored against, and re-categorising a
@@ -496,16 +508,16 @@ model Submission {
   commitSha     String?
   /// Current revision number. A competitor may replace their entry while the
   /// window is open; every accepted version is kept in `revisions` (E4).
-  version       Int              @default(1)
-  submittedAt   DateTime         @default(now())
+  version       Int                  @default(1)
+  submittedAt   DateTime             @default(now())
   /// Set when the window closes. A sealed submission is immutable.
   sealedAt      DateTime?
-  status        SubmissionStatus @default(RECEIVED)
+  status        SubmissionStatus     @default(RECEIVED)
   evaluation    Evaluation?
   revisions     SubmissionRevision[]
   jobs          EvaluationJob[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt @default(now())
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @default(now()) @updatedAt
 
   @@unique([userId, roundId])
   // Deployment-URL reuse detection (D19), enforced by the DATABASE.
@@ -637,26 +649,72 @@ model Ranking {
 
 /// ─────────────────────────── Payments ───────────────────────────
 model Payment {
-  id                String        @id @default(uuid())
-  userId            String
-  user              User          @relation(fields: [userId], references: [id])
-  tournamentId      String
-  tournament        Tournament    @relation(fields: [tournamentId], references: [id])
-  provider          String        @default("RAZORPAY")
-  providerOrderId   String        @unique
-  providerPaymentId String?       @unique
-  amountMinor       Int
-  currency          String        @default("INR")
-  status            PaymentStatus @default(CREATED)
-  signatureVerified Boolean       @default(false)
-  webhookEventId    String?       @unique
-  paidAt            DateTime?
-  refundedAt        DateTime?
-  registration      Registration?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  id                    String         @id @default(uuid())
+  userId                String
+  user                  User           @relation(fields: [userId], references: [id])
+  tournamentId          String
+  tournament            Tournament     @relation(fields: [tournamentId], references: [id])
+  provider              String         @default("RAZORPAY")
+  providerOrderId       String         @unique
+  providerPaymentId     String?        @unique
+  amountMinor           Int
+  currency              String         @default("INR")
+  status                PaymentStatus  @default(CREATED)
+  signatureVerified     Boolean        @default(false)
+  webhookEventId        String?        @unique
+  paidAt                DateTime?
+  refundedAt            DateTime?
+  providerRefundId      String?        @unique
+  refundIntentId        String?        @unique
+  refundIntentAt        DateTime?
+  refundFailedAt        DateTime?
+  supersededAt          DateTime?
+  supersededByPaymentId String?
+  refundRequiredAt      DateTime?
+  refundReason          String?
+  registration          Registration?
+  webhookEvents         WebhookEvent[]
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
   @@index([userId, tournamentId])
+  @@index([tournamentId, refundRequiredAt])
+}
+
+/// Append-only payment webhook ledger (E9.3).
+///
+/// Verified events dedupe on provider event id plus verified outcomes. Rejected
+/// rows are namespaced away from the provider id so they remain audit evidence
+/// without suppressing real events.
+model WebhookEvent {
+  id                String         @id @default(uuid())
+  providerEventId   String
+  eventType         String
+  paymentId         String?
+  payment           Payment?       @relation(fields: [paymentId], references: [id])
+  rawPayload        Json
+  signatureVerified Boolean        @default(false)
+  outcome           WebhookOutcome
+  errorMessage      String?
+  receivedAt        DateTime       @default(now())
+
+  @@index([paymentId, receivedAt])
+  @@index([providerEventId, signatureVerified, outcome])
+  @@index([outcome, receivedAt])
+}
+
+model TermsAcceptance {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  version        String
+  acceptedAt     DateTime @default(now())
+  ip             String?
+  userAgent      String?
+  idempotencyKey String   @unique
+
+  @@unique([userId, version])
+  @@index([userId, acceptedAt(sort: Desc)])
 }
 
 model Registration {
@@ -697,30 +755,30 @@ model Payout {
 
 /// ─────────────────────────── Engagement ───────────────────────────
 model Notification {
-  id        String              @id @default(uuid())
-  userId    String
-  user      User                @relation(fields: [userId], references: [id])
-  type      NotificationType
-  channel   NotificationChannel @default(EMAIL)
-  payload   Json?
+  id           String              @id @default(uuid())
+  userId       String
+  user         User                @relation(fields: [userId], references: [id])
+  type         NotificationType
+  channel      NotificationChannel @default(EMAIL)
+  payload      Json?
   /// The idempotency key for the whole notification pipeline (E8). Unique, so
   /// raising the same intent twice — a replayed job, a cron overlap, an admin
   /// who also clicked — collapses to one row and therefore one email. Built by
   /// `notificationDedupeKey`, never by hand at a call site.
-  dedupeKey String              @unique
-  status    NotificationStatus  @default(PENDING)
-  sentAt    DateTime?
+  dedupeKey    String              @unique
+  status       NotificationStatus  @default(PENDING)
+  sentAt       DateTime?
   /// Distinct from `status = READ`: the in-app list sorts and filters by WHEN
   /// something was read, which a status enum cannot answer.
-  readAt    DateTime?
+  readAt       DateTime?
   /// Mirrors the job table so a failed send can be explained without joining.
-  attempts  Int                 @default(0)
-  lastError String?
+  attempts     Int                 @default(0)
+  lastError    String?
   /// Which tournament raised it, for grouping in the in-app list. Deliberately
   /// not a relation: a notification outlives the tournament it describes, and
   /// a cascade delete would erase a competitor's history.
   tournamentId String?
-  createdAt DateTime            @default(now())
+  createdAt    DateTime            @default(now())
 
   @@index([userId, status])
   @@index([userId, createdAt(sort: Desc)])
@@ -756,22 +814,22 @@ model UserBadge {
 }
 
 model HallOfFame {
-  id            String     @id @default(uuid())
-  tournamentId  String     @unique
-  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  championId    String
-  runnerUpId    String?
+  id               String     @id @default(uuid())
+  tournamentId     String     @unique
+  tournament       Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  championId       String
+  runnerUpId       String?
   /// Recorded alongside the podium so a completed tournament reads from one
   /// row. Null when the third-place play-off was disabled (D6).
-  thirdPlaceId  String?
-  finalMatchId  String?
-  highlightsUrl String?
+  thirdPlaceId     String?
+  finalMatchId     String?
+  highlightsUrl    String?
   /// Frozen at publication: the tournament's counters keep moving (archival,
   /// recomputation), but the Hall of Fame is a historical record and must not
   /// change after the fact.
-  participantCount Int     @default(0)
-  prizePoolMinor   Int     @default(0)
-  publishedAt   DateTime   @default(now())
+  participantCount Int        @default(0)
+  prizePoolMinor   Int        @default(0)
+  publishedAt      DateTime   @default(now())
 }
 
 /// ─────────────────────────── Admin & audit ───────────────────────────
@@ -813,7 +871,7 @@ model OpsEvent {
   /// Defaulted as well as @updatedAt so the column matches what the E3
   /// migration created. Without the default here Prisma reads the database as
   /// drifted and emits a DROP DEFAULT on the next migration.
-  updatedAt      DateTime   @updatedAt @default(now())
+  updatedAt      DateTime   @default(now()) @updatedAt
 
   @@index([tournamentId, status])
   @@index([status, scheduledFor])

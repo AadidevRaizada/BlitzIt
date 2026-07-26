@@ -55,13 +55,18 @@ export interface Queue {
   claim(limit: number, lockedBy: string): Promise<ClaimedJob[]>;
 
   /** Mark a claimed job as successfully completed. */
-  complete(jobId: string): Promise<void>;
+  complete(jobId: string, lockedBy?: string): Promise<void>;
 
   /**
    * Mark a claimed job as failed. If attempts remain, it is rescheduled with
    * backoff; otherwise it is marked FAILED (dead-letter).
    */
-  fail(jobId: string, error: string, backoffMs: number): Promise<void>;
+  fail(
+    jobId: string,
+    error: string,
+    backoffMs: number,
+    lockedBy?: string,
+  ): Promise<void>;
 
   /**
    * Recover jobs abandoned mid-flight (process crash, redeploy, OOM). A job
@@ -83,6 +88,22 @@ export interface Queue {
    * a runner cannot resurrect a claim that was already reclaimed from it.
    */
   heartbeat(jobIds: string[], lockedBy: string): Promise<void>;
+
+  /**
+   * Delete old terminal jobs and reclaim stale claims. FAILED rows are the
+   * dead-letter queue; cleanup only removes them after an operator-visible
+   * retention window.
+   */
+  cleanup(options?: {
+    completedOlderThanMs?: number;
+    failedOlderThanMs?: number;
+    staleClaimTimeoutMs?: number;
+  }): Promise<{
+    completedDeleted: number;
+    failedDeleted: number;
+    staleRequeued: number;
+    staleFailed: number;
+  }>;
 }
 
 /** A processor handles one job name. Registered in `processors/index.ts`. */

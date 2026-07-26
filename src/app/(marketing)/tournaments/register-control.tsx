@@ -4,10 +4,22 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { CheckCircle2, CircleAlert, CreditCard } from 'lucide-react';
+import { acceptCurrentTermsAction } from '@/server/actions/compliance.actions';
+import { createPassOrderAction } from '@/server/actions/payment.actions';
 import { registerForTournamentAction } from '@/server/actions/registration.actions';
 import type { MyTournamentState } from '@/server/modules/tournament';
+import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+type PaymentStatus =
+  | 'CREATED'
+  | 'PENDING'
+  | 'PAID'
+  | 'PENDING_REFUND'
+  | 'REFUND_FAILED'
+  | 'FAILED'
+  | 'REFUNDED';
 
 export function RegisterControl({
   tournamentId,
@@ -15,29 +27,33 @@ export function RegisterControl({
   status,
   participantCount,
   maxRegistrations,
+  entryFeeMinor,
+  currency,
   userSignedIn,
   state,
-  intent,
 }: {
   tournamentId: string;
   slug: string;
   status: string;
   participantCount: number;
   maxRegistrations: number | null;
+  entryFeeMinor: number;
+  currency: string;
   userSignedIn: boolean;
   state: MyTournamentState | null;
   intent?: string;
 }) {
   const router = useRouter();
   const [accepted, setAccepted] = useState(false);
-  const [step, setStep] = useState<'rules' | 'payment'>(
-    intent === 'join' ? 'rules' : 'rules',
-  );
+  const [step, setStep] = useState<'rules' | 'payment'>('rules');
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const full =
     maxRegistrations !== null && participantCount >= maxRegistrations;
+  const paidEntry = entryFeeMinor > 0;
+  const termsAccepted = accepted || state?.readiness.termsAccepted === true;
+  const paymentStatus = state?.payment?.status ?? null;
   const started = [
     'SIMULATION',
     'SEEDING',
@@ -76,20 +92,38 @@ export function RegisterControl({
 
   if (!userSignedIn) {
     return (
-      <Link
-        href={loginHref}
-        className={cn(
-          buttonVariants({ variant: 'broadcast', size: 'broadcast' }),
-        )}
-      >
-        Register
-      </Link>
+      <div className="space-y-4">
+        <SurfaceState title="Sign in required">
+          Sign in before registration so the entry can be attached to your
+          competitor profile.
+        </SurfaceState>
+        <ReadinessList
+          signedIn={false}
+          profileComplete={false}
+          termsAccepted={false}
+          paymentSettled={!paidEntry}
+          registered={false}
+        />
+        <Link
+          href={loginHref}
+          className={cn(
+            buttonVariants({ variant: 'broadcast', size: 'broadcast' }),
+          )}
+        >
+          Register
+        </Link>
+      </div>
     );
   }
 
   if (primary) {
     return (
-      <div className="space-y-3">
+      <div className="space-y-4">
+        <SurfaceState title="Registration confirmed">
+          {state?.payment?.status === 'PAID'
+            ? 'Payment is settled and your entry is active.'
+            : 'Your entry is active for this tournament.'}
+        </SurfaceState>
         <Link
           href={primary.href}
           className={cn(
@@ -99,30 +133,71 @@ export function RegisterControl({
           <CheckCircle2 className="size-4" aria-hidden />
           {primary.label}
         </Link>
-        <p className="text-muted-foreground text-sm">
-          Your entry is active for this tournament.
-        </p>
+        <ReadinessList
+          signedIn
+          profileComplete={state?.readiness.profileComplete ?? false}
+          termsAccepted={state?.readiness.termsAccepted ?? false}
+          paymentSettled={!paidEntry || state?.payment?.status === 'PAID'}
+          registered={state?.isRegistered ?? false}
+        />
       </div>
     );
   }
 
+  const closed = [
+    'REGISTRATION_CLOSED',
+    'SIMULATION',
+    'SEEDING',
+    'BRACKET_GENERATED',
+    'LIVE',
+    'COMPLETED',
+    'CANCELLED',
+  ].includes(status);
+
   if (status !== 'REGISTRATION_OPEN' || full) {
     return (
-      <div className="border-hairline bg-surface-raised space-y-2 border p-4">
-        <p className="font-semibold">
-          {full ? 'Registration is full.' : 'Registration is not open.'}
-        </p>
-        <p className="text-muted-foreground text-sm">
-          {status === 'PUBLISHED'
-            ? 'The opening date is shown in the timeline.'
+      <SurfaceState
+        title={
+          full
+            ? 'Registration is full'
+            : status === 'PUBLISHED'
+              ? 'Registration has not opened'
+              : closed
+                ? 'Registration is closed'
+                : 'Registration is not open'
+        }
+      >
+        {full
+          ? 'Capacity is filled. If a slot is released, the control will reopen while the window is active.'
+          : status === 'PUBLISHED'
+            ? 'The opening date is shown in the schedule.'
             : 'Return when the next registration window opens.'}
-        </p>
+      </SurfaceState>
+    );
+  }
+
+  if (paidEntry && paymentStatus && paymentStatus !== 'FAILED') {
+    return (
+      <div className="space-y-4">
+        <SurfaceState title="Payment confirmation pending">
+          {paymentStatus === 'PAID'
+            ? 'Payment is settled; registration confirmation is being refreshed.'
+            : 'A checkout order exists. Complete payment in Razorpay, then return for confirmation.'}
+        </SurfaceState>
+        <PaymentStateBadge status={paymentStatus} />
+        <ReadinessList
+          signedIn
+          profileComplete={state?.readiness.profileComplete ?? false}
+          termsAccepted={termsAccepted}
+          paymentSettled={paymentStatus === 'PAID'}
+          registered={state?.isRegistered ?? false}
+        />
       </div>
     );
   }
 
   function submit() {
-    if (!accepted) {
+    if (!termsAccepted) {
       setMessage('Accept the tournament rules before continuing.');
       return;
     }
@@ -134,6 +209,27 @@ export function RegisterControl({
     }
 
     startTransition(async () => {
+      const termsResult = await acceptCurrentTermsAction();
+      if (!termsResult.ok) {
+        setMessage(termsResult.error.message);
+        return;
+      }
+
+      if (paidEntry) {
+        const result = await createPassOrderAction({ tournamentId });
+        if (!result.ok) {
+          setMessage(result.error.message);
+          return;
+        }
+        setMessage(
+          paymentStatus === 'FAILED'
+            ? 'Retry order created. Complete payment in Razorpay.'
+            : 'Checkout order created. Complete payment in Razorpay.',
+        );
+        router.refresh();
+        return;
+      }
+
       const result = await registerForTournamentAction(tournamentId, {
         acceptedRules: true,
       });
@@ -151,12 +247,16 @@ export function RegisterControl({
       <div>
         <p className="font-semibold">
           {step === 'payment'
-            ? 'Free beta confirmation'
+            ? paidEntry
+              ? 'Payment confirmation'
+              : 'Free registration confirmation'
             : 'Join this tournament'}
         </p>
         <p className="text-muted-foreground mt-1 text-sm">
           {step === 'payment'
-            ? 'No entry fee is collected today. Razorpay will replace this slot later without moving the flow.'
+            ? paidEntry
+              ? 'A paid pass is required before registration can be confirmed.'
+              : 'No entry fee is collected for this tournament.'
             : 'Rules acceptance is required and recorded when you register.'}
         </p>
       </div>
@@ -170,7 +270,20 @@ export function RegisterControl({
         />
         <span>
           I accept the tournament rules, sealed reveal timing, evaluation
-          policy, and disqualification terms.
+          policy, terms, privacy policy, and refund policy.
+          <span className="mt-1 block">
+            <Link href="/terms" className="text-secondary underline">
+              Terms
+            </Link>
+            {' · '}
+            <Link href="/privacy" className="text-secondary underline">
+              Privacy
+            </Link>
+            {' · '}
+            <Link href="/refunds" className="text-secondary underline">
+              Refunds
+            </Link>
+          </span>
         </span>
       </label>
 
@@ -178,13 +291,36 @@ export function RegisterControl({
         <div className="border-hairline flex items-center gap-3 border p-3 text-sm">
           <CreditCard className="text-secondary size-5" aria-hidden />
           <div>
-            <p className="font-medium">Free beta - no entry fee</p>
+            <p className="font-medium">
+              {paidEntry
+                ? `${formatAmount(entryFeeMinor, currency)} entry fee`
+                : 'Free entry'}
+            </p>
             <p className="text-muted-foreground">
-              Prize pool is ₹0 while entries are free.
+              {paidEntry
+                ? paymentStatus === 'FAILED'
+                  ? 'Previous payment failed. Create a retry order.'
+                  : 'Payment must settle before your slot is active.'
+                : 'Registration activates immediately after confirmation.'}
             </p>
           </div>
         </div>
       ) : null}
+
+      {state?.payment?.status === 'FAILED' ? (
+        <SurfaceState title="Payment failed">
+          {state.payment.failureReason ??
+            'You can retry payment while registration is open.'}
+        </SurfaceState>
+      ) : null}
+
+      <ReadinessList
+        signedIn
+        profileComplete={state?.readiness.profileComplete ?? false}
+        termsAccepted={termsAccepted}
+        paymentSettled={!paidEntry || state?.payment?.status === 'PAID'}
+        registered={state?.isRegistered ?? false}
+      />
 
       {message ? (
         <p className="flex items-center gap-2 text-sm" role="status">
@@ -200,11 +336,79 @@ export function RegisterControl({
         disabled={pending}
       >
         {pending
-          ? 'Registering...'
+          ? paidEntry
+            ? 'Creating order...'
+            : 'Registering...'
           : step === 'payment'
-            ? 'Confirm registration'
+            ? paidEntry
+              ? paymentStatus === 'FAILED'
+                ? 'Retry payment'
+                : 'Create payment order'
+              : 'Confirm registration'
             : 'Continue to payment'}
       </Button>
     </div>
   );
+}
+
+function SurfaceState({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-hairline bg-surface-raised space-y-2 border p-4">
+      <p className="font-semibold">{title}</p>
+      <p className="text-muted-foreground text-sm">{children}</p>
+    </div>
+  );
+}
+
+function ReadinessList({
+  signedIn,
+  profileComplete,
+  termsAccepted,
+  paymentSettled,
+  registered,
+}: {
+  signedIn: boolean;
+  profileComplete: boolean;
+  termsAccepted: boolean;
+  paymentSettled: boolean;
+  registered: boolean;
+}) {
+  return (
+    <ul className="grid gap-2 text-sm">
+      <Ready ok={signedIn}>Signed in</Ready>
+      <Ready ok={profileComplete}>Profile complete</Ready>
+      <Ready ok={termsAccepted}>Terms accepted</Ready>
+      <Ready ok={paymentSettled}>Payment settled</Ready>
+      <Ready ok={registered}>Ready to compete</Ready>
+    </ul>
+  );
+}
+
+function Ready({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center justify-between gap-3">
+      <span>{children}</span>
+      <Badge tone={ok ? 'success' : 'neutral'}>{ok ? 'Done' : 'Open'}</Badge>
+    </li>
+  );
+}
+
+function PaymentStateBadge({ status }: { status: PaymentStatus }) {
+  const tone =
+    status === 'PAID' ? 'success' : status === 'FAILED' ? 'danger' : 'warning';
+  return <Badge tone={tone}>{status}</Badge>;
+}
+
+function formatAmount(amountMinor: number, currency: string): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency,
+    maximumFractionDigits: 0,
+  }).format(amountMinor / 100);
 }

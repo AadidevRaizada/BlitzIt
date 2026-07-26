@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
 import { isAdmin } from '@/server/modules/auth/roles';
@@ -7,12 +6,14 @@ import {
   getSubmissionHistory,
 } from '@/server/modules/submission';
 import { AppError } from '@/lib/errors';
+import { Card } from '@/components/ui/card';
+import { PageHeader, SectionTitle } from '@/components/ui/page-header';
 import { EvaluationStatus } from './evaluation-status';
 
 export const metadata = { title: 'Submission - The Circuit' };
 
 /**
- * Screen [9b] — Submission detail, evaluation status and results (E4).
+ * Screen [9b] - Submission detail, evaluation status and results (E4).
  *
  * Authorisation is the module's (`getSubmission` refuses anyone but the owner
  * or an admin); this page just renders what it is allowed to see.
@@ -30,7 +31,7 @@ export default async function SubmissionDetailPage({
     submission = await getSubmission(submissionId, user);
   } catch (error) {
     // A competitor must not be able to distinguish "does not exist" from
-    // "belongs to someone else" — both are a 404 to them.
+    // "belongs to someone else" - both are a 404 to them.
     if (
       error instanceof AppError &&
       (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN')
@@ -45,24 +46,19 @@ export default async function SubmissionDetailPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <Link
-          href="/submissions"
-          className="text-muted-foreground text-sm hover:underline"
-        >
-          ← My submissions
-        </Link>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">
-          Submission detail
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          {submission.category} · revision {submission.version}
-          {submission.sealedAt ? ' · sealed' : null}
-          {isAdmin(user) && submission.userId !== user.id
-            ? ' · viewing as admin'
-            : null}
-        </p>
-      </div>
+      <PageHeader
+        title="Submission detail"
+        back={{ href: '/submissions', label: 'My submissions' }}
+        description={
+          <>
+            {submission.category} / revision {submission.version}
+            {submission.sealedAt ? ' / sealed' : null}
+            {isAdmin(user) && submission.userId !== user.id
+              ? ' / viewing as admin'
+              : null}
+          </>
+        }
+      />
 
       <EvaluationStatus
         submissionId={submission.id}
@@ -74,23 +70,21 @@ export default async function SubmissionDetailPage({
         }}
       />
 
-      <section className="border-border space-y-2 rounded-md border p-4">
-        <h2 className="text-sm font-semibold tracking-wide uppercase">Entry</h2>
+      <Card className="space-y-2 p-4">
+        <SectionTitle>Entry</SectionTitle>
         <Detail label="Repository" value={submission.repoUrl} link />
         <Detail label="Deployment" value={submission.deploymentUrl} link />
-        <Detail label="Commit" value={submission.commitSha ?? '—'} />
+        <Detail label="Commit" value={submission.commitSha ?? '-'} />
         <Detail
           label="Submitted"
           value={`${submission.submittedAt.toISOString().replace('T', ' ').slice(0, 19)} UTC`}
         />
-      </section>
+      </Card>
 
       {evaluation ? (
-        <section className="border-border space-y-3 rounded-md border p-4">
+        <Card className="space-y-3 p-4">
           <div className="flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold tracking-wide uppercase">
-              Results
-            </h2>
+            <SectionTitle>Results</SectionTitle>
             <p className="text-2xl font-bold tabular-nums">
               {evaluation.overallScore.toFixed(2)}
               <span className="text-muted-foreground text-sm font-normal">
@@ -119,34 +113,32 @@ export default async function SubmissionDetailPage({
               label="Deployment reachable"
               value={evaluation.deploymentReachable ? 'Yes' : 'No'}
             />
-            <Meta label="Profile" value={evaluation.profileName ?? '—'} />
+            <Meta label="Profile" value={evaluation.profileName ?? '-'} />
             <Meta
               label="Scored revision"
               value={`v${evaluation.submissionVersion}`}
             />
-            <Meta label="Provider" value={evaluation.llmProvider ?? '—'} />
-            <Meta label="Model" value={evaluation.modelId ?? '—'} />
+            <Meta label="Provider" value={evaluation.llmProvider ?? '-'} />
+            <Meta label="Model" value={evaluation.modelId ?? '-'} />
           </dl>
 
           <p className="text-muted-foreground text-xs">
             Which dimensions count is decided by the round&apos;s evaluation
-            profile (D20) — AI quality applies only from the semi-finals onward.
+            profile (D20). AI quality applies only from the semi-finals onward.
             Every score is stored with the exact weights used.
           </p>
 
           {evaluation.overriddenBy ? (
             <p className="border-warning/40 bg-warning/10 rounded-md border px-3 py-2 text-xs">
-              Manually overridden. Reason: {evaluation.overrideReason ?? '—'}
+              Manually overridden. Reason: {evaluation.overrideReason ?? '-'}
             </p>
           ) : null}
-        </section>
+        </Card>
       ) : null}
 
       {history.length > 1 ? (
-        <section className="border-border space-y-2 rounded-md border p-4">
-          <h2 className="text-sm font-semibold tracking-wide uppercase">
-            Revision history
-          </h2>
+        <Card className="space-y-2 p-4">
+          <SectionTitle>Revision history</SectionTitle>
           <ul className="divide-border divide-y text-sm">
             {history.map((revision) => (
               <li key={revision.id} className="py-2">
@@ -163,12 +155,12 @@ export default async function SubmissionDetailPage({
                   </span>
                 </div>
                 <p className="text-muted-foreground truncate text-xs">
-                  {revision.repoUrl} → {revision.deploymentUrl}
+                  {revision.repoUrl} to {revision.deploymentUrl}
                 </p>
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       ) : null}
     </div>
   );
@@ -206,7 +198,7 @@ function Detail({
 
 function Score({ label, value }: { label: string; value: number }) {
   return (
-    <div className="border-border rounded-md border p-3">
+    <div className="border-border bg-muted/20 rounded-md border p-3">
       <p className="text-muted-foreground text-xs">{label}</p>
       <p className="text-lg font-semibold tabular-nums">{value.toFixed(2)}</p>
     </div>

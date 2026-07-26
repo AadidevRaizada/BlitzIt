@@ -2,6 +2,7 @@ import 'server-only';
 import { Prisma } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { ClaimedJob, EnqueueOptions, JobName, Queue } from './queue';
+import { retryPolicyFor } from './retry-policy';
 
 /**
  * Postgres-backed Queue implementation (D3). Jobs are claimed atomically with
@@ -55,7 +56,7 @@ export class PgQueue implements Queue {
         idempotencyKey: options.idempotencyKey,
         priority: options.priority ?? 0,
         availableAt: options.availableAt ?? new Date(),
-        maxAttempts: options.maxAttempts ?? 3,
+        maxAttempts: options.maxAttempts ?? retryPolicyFor(name).maxAttempts,
       },
       select: { id: true },
     });
@@ -92,10 +93,20 @@ export class PgQueue implements Queue {
     }));
   }
 
-  async complete(jobId: string): Promise<void> {
-    await db.evaluationJob.update({
-      where: { id: jobId },
-      data: { status: 'DONE', updatedAt: new Date() },
+  async complete(jobId: string, lockedBy?: string): Promise<void> {
+    await db.evaluationJob.updateMany({
+      where: {
+        id: jobId,
+        ...(lockedBy
+          ? { lockedBy, status: { in: ['CLAIMED', 'RUNNING'] } }
+          : {}),
+      },
+      data: {
+        status: 'DONE',
+        lockedBy: null,
+        claimedAt: null,
+        updatedAt: new Date(),
+      },
     });
   }
 
@@ -148,18 +159,30 @@ export class PgQueue implements Queue {
     });
   }
 
-  async fail(jobId: string, error: string, backoffMs: number): Promise<void> {
+  async fail(
+    jobId: string,
+    error: string,
+    backoffMs: number,
+    lockedBy?: string,
+  ): Promise<void> {
     const job = await db.evaluationJob.findUnique({
       where: { id: jobId },
-      select: { attempts: true, maxAttempts: true },
+      select: { attempts: true, maxAttempts: true, lockedBy: true },
     });
     if (!job) return;
+    if (lockedBy && job.lockedBy !== lockedBy) return;
 
     const exhausted = job.attempts >= job.maxAttempts;
-    await db.evaluationJob.update({
-      where: { id: jobId },
+    await db.evaluationJob.updateMany({
+      where: { id: jobId, ...(lockedBy ? { lockedBy } : {}) },
       data: exhausted
-        ? { status: 'FAILED', lastError: error, updatedAt: new Date() }
+        ? {
+            status: 'FAILED',
+            lastError: error,
+            lockedBy: null,
+            claimedAt: null,
+            updatedAt: new Date(),
+          }
         : {
             status: 'QUEUED',
             lastError: error,
@@ -168,6 +191,45 @@ export class PgQueue implements Queue {
             updatedAt: new Date(),
           },
     });
+  }
+
+  async cleanup(
+    options: {
+      completedOlderThanMs?: number;
+      failedOlderThanMs?: number;
+      staleClaimTimeoutMs?: number;
+    } = {},
+  ): Promise<{
+    completedDeleted: number;
+    failedDeleted: number;
+    staleRequeued: number;
+    staleFailed: number;
+  }> {
+    const stale = await this.reclaimStale(
+      options.staleClaimTimeoutMs ?? 15 * 60_000,
+    );
+    const completedCutoff = new Date(
+      Date.now() - (options.completedOlderThanMs ?? 24 * 60 * 60_000),
+    );
+    const failedCutoff = new Date(
+      Date.now() - (options.failedOlderThanMs ?? 30 * 24 * 60 * 60_000),
+    );
+
+    const [completedDeleted, failedDeleted] = await Promise.all([
+      db.evaluationJob.deleteMany({
+        where: { status: 'DONE', updatedAt: { lt: completedCutoff } },
+      }),
+      db.evaluationJob.deleteMany({
+        where: { status: 'FAILED', updatedAt: { lt: failedCutoff } },
+      }),
+    ]);
+
+    return {
+      completedDeleted: completedDeleted.count,
+      failedDeleted: failedDeleted.count,
+      staleRequeued: stale.requeued,
+      staleFailed: stale.failed,
+    };
   }
 }
 

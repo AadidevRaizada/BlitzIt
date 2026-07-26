@@ -7,6 +7,7 @@ import {
   createTournament,
   listRegistrations,
   removeRegistration,
+  recomputePrizePool,
   setTournamentArchived,
   startSuddenDeath,
   updateTournament,
@@ -24,6 +25,15 @@ import {
 import { recordAudit } from '@/server/modules/admin/audit';
 import { listAuditLog, listUsers } from '@/server/modules/admin/directory';
 import {
+  cancelRegistrationForAdmin,
+  getPaymentForAdmin,
+  listPaymentsForAdmin,
+  listWebhookEventsForAdmin,
+  markManualPaymentPaidForAdmin,
+  refundPaymentForAdmin,
+} from '@/server/modules/payment';
+import {
+  adminPaymentIdSchema,
   addHiddenTestFormSchema,
   archiveTournamentSchema,
   assignProblemSchema,
@@ -32,7 +42,9 @@ import {
   createTournamentFormSchema,
   hiddenTestIdSchema,
   listAuditSchema,
+  listPaymentsSchema,
   listUsersSchema,
+  paymentAdminMutationSchema,
   prizePoolFormSchema,
   problemIdSchema,
   removeRegistrationSchema,
@@ -277,12 +289,16 @@ export async function updatePrizePoolAdminAction(
         select: {
           basePrizePoolMinor: true,
           prizePerRegistrationMinor: true,
+          sponsorContributionMinor: true,
+          bonusContributionMinor: true,
           firstPrizeCapMinor: true,
         },
       });
       const after = {
         basePrizePoolMinor: parsed.data.basePrizePoolMinor,
         prizePerRegistrationMinor: parsed.data.prizePerRegistrationMinor,
+        sponsorContributionMinor: parsed.data.sponsorContributionMinor,
+        bonusContributionMinor: parsed.data.bonusContributionMinor,
         firstPrizeCapMinor: parsed.data.firstPrizeCapMinor,
       };
 
@@ -290,6 +306,7 @@ export async function updatePrizePoolAdminAction(
         where: { id: id.data.tournamentId },
         data: after,
       });
+      const prizePool = await recomputePrizePool(id.data.tournamentId, tx);
 
       await recordAudit(
         {
@@ -298,7 +315,7 @@ export async function updatePrizePoolAdminAction(
           entityType: 'Tournament',
           entityId: id.data.tournamentId,
           before,
-          after,
+          after: { ...after, prizePoolMinor: prizePool.prizePoolMinor },
         },
         tx,
       );
@@ -457,6 +474,131 @@ export async function removeRegistrationAction(
     return ok({ removed: true });
   } catch (error) {
     captureException(error, { where: 'removeRegistrationAction' });
+    return toErr(error);
+  }
+}
+
+// ───────────────────────── Payments ─────────────────────────
+
+export async function listPaymentsAction(
+  input: unknown = {},
+): Promise<Result<Awaited<ReturnType<typeof listPaymentsForAdmin>>>> {
+  try {
+    await requireAdminOrThrow();
+    const parsed = listPaymentsSchema.safeParse(input ?? {});
+    if (!parsed.success) return validationError(parsed.error.issues);
+    return ok(await listPaymentsForAdmin(parsed.data));
+  } catch (error) {
+    captureException(error, { where: 'listPaymentsAction' });
+    return toErr(error);
+  }
+}
+
+export async function getPaymentAction(
+  paymentId: string,
+): Promise<Result<Awaited<ReturnType<typeof getPaymentForAdmin>>>> {
+  try {
+    await requireAdminOrThrow();
+    const parsed = adminPaymentIdSchema.safeParse({ paymentId });
+    if (!parsed.success) return validationError(parsed.error.issues);
+    return ok(await getPaymentForAdmin(parsed.data.paymentId));
+  } catch (error) {
+    captureException(error, { where: 'getPaymentAction' });
+    return toErr(error);
+  }
+}
+
+export async function listWebhookEventsAction(): Promise<
+  Result<Awaited<ReturnType<typeof listWebhookEventsForAdmin>>>
+> {
+  try {
+    await requireAdminOrThrow();
+    return ok(await listWebhookEventsForAdmin());
+  } catch (error) {
+    captureException(error, { where: 'listWebhookEventsAction' });
+    return toErr(error);
+  }
+}
+
+export async function refundPaymentAction(
+  paymentId: string,
+  reason: string,
+): Promise<Result<{ id: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = paymentAdminMutationSchema.safeParse({ paymentId, reason });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const payment = await refundPaymentForAdmin(
+      parsed.data.paymentId,
+      admin,
+      parsed.data.reason,
+    );
+    revalidateAdmin(payment.tournamentId);
+    revalidatePath('/admin/payments');
+    revalidatePath(`/admin/payments/${payment.id}`);
+    return ok({ id: payment.id });
+  } catch (error) {
+    captureException(error, { where: 'refundPaymentAction' });
+    return toErr(error);
+  }
+}
+
+export async function markManualPaymentPaidAction(
+  paymentId: string,
+  reason: string,
+): Promise<Result<{ id: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = paymentAdminMutationSchema.safeParse({ paymentId, reason });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const result = await markManualPaymentPaidForAdmin(
+      parsed.data.paymentId,
+      admin,
+    );
+    await recordAudit({
+      actorId: admin.id,
+      action: 'payment.manualPaidAdmin',
+      entityType: 'Payment',
+      entityId: parsed.data.paymentId,
+      after: { reason: parsed.data.reason, applied: result.applied },
+    });
+    revalidateAdmin(result.payment.tournamentId);
+    revalidatePath('/admin/payments');
+    revalidatePath(`/admin/payments/${result.payment.id}`);
+    return ok({ id: result.payment.id });
+  } catch (error) {
+    captureException(error, { where: 'markManualPaymentPaidAction' });
+    return toErr(error);
+  }
+}
+
+export async function cancelRegistrationPaymentAdminAction(
+  tournamentId: string,
+  userId: string,
+  reason: string,
+): Promise<Result<{ cancelled: true }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = removeRegistrationSchema.safeParse({
+      tournamentId,
+      userId,
+      reason,
+    });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    await cancelRegistrationForAdmin(
+      parsed.data.tournamentId,
+      parsed.data.userId,
+      admin,
+      parsed.data.reason,
+    );
+    revalidateAdmin(parsed.data.tournamentId);
+    revalidatePath('/admin/payments');
+    return ok({ cancelled: true });
+  } catch (error) {
+    captureException(error, { where: 'cancelRegistrationPaymentAdminAction' });
     return toErr(error);
   }
 }

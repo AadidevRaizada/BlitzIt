@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/server/db';
 import { runnerHeartbeat, runnerStarted } from '@/server/jobs/runner';
+import { getQueueHealth } from '@/server/modules/tournament';
+import { isLlmConfigured } from '@/server/modules/evaluation';
+import { serverEnv } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,9 +31,11 @@ export async function GET() {
 
   const heartbeat = runnerHeartbeat();
   const runnerAgeMs = heartbeat === 0 ? null : Date.now() - heartbeat;
+  const queue = schemaOk ? await getQueueHealth() : null;
+  const env = serverEnv();
 
   const body = {
-    status: healthy ? 'ok' : 'degraded',
+    status: healthy && queue && queue.deadLettered === 0 ? 'ok' : 'degraded',
     time: new Date().toISOString(),
     checks: {
       db: dbOk,
@@ -38,6 +43,15 @@ export async function GET() {
       runner: {
         started: runnerStarted(),
         lastHeartbeatAgeMs: runnerAgeMs,
+      },
+      queue,
+      dependencies: {
+        llm: isLlmConfigured() ? 'configured' : 'degraded',
+        email: env.RESEND_API_KEY && env.EMAIL_FROM ? 'configured' : 'degraded',
+        paymentGateway:
+          env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET
+            ? 'configured'
+            : 'degraded-fake',
       },
     },
     latencyMs: Date.now() - startedAt,

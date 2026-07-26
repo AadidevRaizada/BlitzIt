@@ -7,15 +7,18 @@ import { computeCountdown } from '@/server/modules/tournament/timers.public';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
 import { Countdown } from '@/components/features/countdown';
 import { SubmissionForm } from '@/components/features/submission-form';
+import { Card } from '@/components/ui/card';
+import { PageHeader, SectionTitle } from '@/components/ui/page-header';
+import { EmptyState } from '@/components/ui/table';
 
 export const metadata = { title: 'Submit - The Circuit' };
 
 /**
- * Screen [9] — Problem + Submission (E4).
+ * Screen [9] - Problem + Submission (E4).
  *
  * Reads go through the modules, never through Prisma directly: the Tournament
  * module owns the reveal gate (`opensAt`) and the window, the Submission module
- * owns the entry. Hidden tests are never selected by either — they must not
+ * owns the entry. Hidden tests are never selected by either - they must not
  * leave the server even by accident.
  */
 export default async function SubmitPage({
@@ -43,44 +46,42 @@ export default async function SubmitPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-muted-foreground text-xs tracking-wide uppercase">
-            {round.tournamentName} · {round.stage}
-          </p>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {revealed ? (round.problem?.title ?? 'Problem') : 'Round locked'}
-          </h1>
-        </div>
-        {existing ? <SubmissionStatusBadge state={existing.state} /> : null}
-      </div>
+      <PageHeader
+        title={revealed ? (round.problem?.title ?? 'Problem') : 'Round locked'}
+        description={`${round.tournamentName} / ${round.stage}`}
+        actions={
+          existing ? <SubmissionStatusBadge state={existing.state} /> : null
+        }
+      />
 
-      <dl className="border-border grid grid-cols-2 gap-x-6 gap-y-2 rounded-md border p-4 text-sm sm:grid-cols-4">
-        <Meta label="Status" value={window.status} />
-        <Meta
-          label="Opens"
-          value={window.opensAt ? formatUtc(window.opensAt) : '—'}
-        />
-        <Meta
-          label="Deadline"
-          value={window.deadlineAt ? formatUtc(window.deadlineAt) : '—'}
-        />
-        <div>
-          <dt className="text-muted-foreground text-xs">
-            {countdown.label === 'OPENS' ? 'Opens in' : 'Time left'}
-          </dt>
-          <dd>
-            {/* Server-authoritative (E7.1): the browser is given the deadline
-                and the server's clock, and corrects its own against it. */}
-            <Countdown
-              targetAt={countdown.targetAt}
-              serverTime={serverTime}
-              phase={countdown.phase}
-              className="text-sm"
-            />
-          </dd>
-        </div>
-      </dl>
+      <Card className="p-4">
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+          <Meta label="Status" value={window.status} />
+          <Meta
+            label="Opens"
+            value={window.opensAt ? formatUtc(window.opensAt) : '-'}
+          />
+          <Meta
+            label="Deadline"
+            value={window.deadlineAt ? formatUtc(window.deadlineAt) : '-'}
+          />
+          <div>
+            <dt className="text-muted-foreground text-xs">
+              {countdown.label === 'OPENS' ? 'Opens in' : 'Time left'}
+            </dt>
+            <dd>
+              {/* Server-authoritative (E7.1): the browser is given the deadline
+                  and the server's clock, and corrects its own against it. */}
+              <Countdown
+                targetAt={countdown.targetAt}
+                serverTime={serverTime}
+                phase={countdown.phase}
+                className="text-sm"
+              />
+            </dd>
+          </div>
+        </dl>
+      </Card>
 
       {!registered ? (
         <p
@@ -93,32 +94,27 @@ export default async function SubmitPage({
 
       {revealed && round.problem ? (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold tracking-wide uppercase">
-            Problem
-          </h2>
-          <div className="border-border rounded-md border p-4">
+          <SectionTitle>Problem</SectionTitle>
+          <Card className="p-4">
             <p className="text-muted-foreground mb-2 text-xs">
               Category: {round.problem.category}
             </p>
             <pre className="text-sm whitespace-pre-wrap">
               {round.problem.statementMarkdown}
             </pre>
-          </div>
+          </Card>
         </section>
       ) : (
-        <div className="border-border rounded-md border border-dashed p-8 text-center">
-          <p className="font-medium">The problem has not been revealed yet</p>
-          <p className="text-muted-foreground mt-1 text-sm">
-            It becomes visible to every competitor at the same moment the round
-            opens.
-          </p>
-        </div>
+        <EmptyState
+          title="The problem has not been revealed yet"
+          hint="It becomes visible to every competitor at the same moment the round opens."
+        />
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-wide uppercase">
+        <SectionTitle>
           {existing ? 'Your entry' : 'Submit your entry'}
-        </h2>
+        </SectionTitle>
         <SubmissionForm
           roundId={roundId}
           existing={
@@ -139,7 +135,7 @@ export default async function SubmitPage({
               href={`/submissions/${existing.id}`}
               className="text-primary hover:underline"
             >
-              View evaluation status →
+              View evaluation status
             </Link>
           </p>
         ) : null}

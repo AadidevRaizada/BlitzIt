@@ -145,6 +145,8 @@ export const updateTournamentFormSchema = createTournamentFormSchema
 export const prizePoolFormSchema = z.object({
   basePrizePoolMinor: optionalNonNegativeInt,
   prizePerRegistrationMinor: optionalNonNegativeInt,
+  sponsorContributionMinor: optionalNonNegativeInt,
+  bonusContributionMinor: optionalNonNegativeInt,
   firstPrizeCapMinor: optionalNonNegativeInt,
 });
 
@@ -336,6 +338,32 @@ export const startSuddenDeathSchema = z.object({
 export const removeRegistrationSchema = z.object({
   tournamentId: z.string().uuid('Invalid tournament'),
   userId: z.string().uuid('Invalid competitor'),
+  reason: z.string().trim().min(3, 'A reason is required').max(500),
+});
+
+export const adminPaymentIdSchema = z.object({
+  paymentId: z.string().uuid('Invalid payment'),
+});
+
+export const listPaymentsSchema = z.object({
+  tournamentId: z
+    .preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.string().uuid('Invalid tournament').optional(),
+    )
+    .optional(),
+  status: z
+    .preprocess(
+      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      z.enum(['CREATED', 'PENDING', 'PAID', 'FAILED', 'REFUNDED']).optional(),
+    )
+    .optional(),
+  user: optionalText(120),
+  take: z.coerce.number().int().positive().max(200).optional(),
+});
+
+export const paymentAdminMutationSchema = z.object({
+  paymentId: z.string().uuid('Invalid payment'),
   reason: z.string().trim().min(3, 'A reason is required').max(500),
 });
 

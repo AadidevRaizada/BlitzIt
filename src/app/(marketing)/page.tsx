@@ -344,7 +344,7 @@ function Ticker({
         snapshot.name,
         statusLabel(snapshot.status),
         `${snapshot.participantCount} competitors`,
-        '₹0 prize pool while entries are free',
+        `${formatMinor(snapshot.prizePool.prizePoolMinor)} prize pool`,
         snapshot.currentRound
           ? `${snapshot.currentRound.matchesDecided}/${snapshot.currentRound.matchesTotal} matches decided`
           : 'Bracket pending',
@@ -687,7 +687,7 @@ function getHeroStats(snapshot: LiveSnapshot | null): HeroStat[] {
     },
     {
       label: 'Prize Pool',
-      value: '₹0',
+      value: formatMinor(snapshot.prizePool.prizePoolMinor),
     },
     {
       label: 'Current Stage',

@@ -20,6 +20,11 @@ import { describeJob, type JobLifecycleState } from '@/server/jobs/status';
 import { toLifecycleState, type LifecycleState } from './lifecycle';
 import { allowedTransitions, type TournamentTransition } from './lifecycle';
 import { isBracketSize } from './config';
+import {
+  getPrizePoolDisplay,
+  recomputePrizePool,
+  type PrizePoolDisplay,
+} from './prize-pool';
 
 /**
  * Operator-facing reads and operations for the Tournament module (E5).
@@ -50,6 +55,11 @@ export interface TournamentSummary {
   minRegistrations: number | null;
   maxRegistrations: number | null;
   passPriceMinor: number;
+  basePrizePoolMinor: number;
+  prizePerRegistrationMinor: number;
+  sponsorContributionMinor: number;
+  bonusContributionMinor: number;
+  firstPrizeCapMinor: number;
   /** Per-tournament round durations (D7). Null = deployment defaults. */
   roundDurations: unknown;
   /** Stage -> evaluation-profile overrides (D20). Null = built-in defaults. */
@@ -62,6 +72,7 @@ export interface TournamentSummary {
    */
   bracketGeneratedAt: Date | null;
   participantCount: number;
+  prizePool: PrizePoolDisplay;
   registrations: number;
   submissions: number;
   /** Submissions that have reached a score. */
@@ -99,6 +110,7 @@ function safeLifecycleState(tournament: Tournament): LifecycleState | null {
 function summarise(
   tournament: Tournament,
   counts: {
+    prizePool: PrizePoolDisplay;
     registrations: number;
     submissions: number;
     evaluated: number;
@@ -132,6 +144,11 @@ function summarise(
     minRegistrations: tournament.minRegistrations,
     maxRegistrations: tournament.maxRegistrations,
     passPriceMinor: tournament.passPriceMinor,
+    basePrizePoolMinor: tournament.basePrizePoolMinor,
+    prizePerRegistrationMinor: tournament.prizePerRegistrationMinor,
+    sponsorContributionMinor: tournament.sponsorContributionMinor,
+    bonusContributionMinor: tournament.bonusContributionMinor,
+    firstPrizeCapMinor: tournament.firstPrizeCapMinor,
     roundDurations: tournament.roundDurations,
     evaluationProfiles: tournament.evaluationProfiles,
     bracketGeneratedAt: tournament.bracketGeneratedAt,
@@ -152,6 +169,7 @@ function summarise(
 
 async function countsFor(tournamentId: string, client: DbClient) {
   const [
+    prizePool,
     registrations,
     submissions,
     evaluated,
@@ -161,6 +179,7 @@ async function countsFor(tournamentId: string, client: DbClient) {
     matches,
     matchesDecided,
   ] = await Promise.all([
+    getPrizePoolDisplay(tournamentId, client),
     client.registration.count({
       where: { tournamentId, status: 'ACTIVE' },
     }),
@@ -179,6 +198,7 @@ async function countsFor(tournamentId: string, client: DbClient) {
   ]);
 
   return {
+    prizePool,
     registrations,
     submissions,
     evaluated,
@@ -379,6 +399,7 @@ export async function removeRegistration(
       where: { id: tournamentId, participantCount: { gt: 0 } },
       data: { participantCount: { decrement: 1 } },
     });
+    await recomputePrizePool(tournamentId, tx);
 
     await recordAudit(
       {

@@ -40,6 +40,12 @@ import {
 } from '../src/server/modules/submission';
 import { listAuditLog, listUsers } from '../src/server/modules/admin/directory';
 import {
+  cancelRegistrationForAdmin,
+  listPaymentsForAdmin,
+  markManualPaymentPaidForAdmin,
+  refundPaymentForAdmin,
+} from '../src/server/modules/payment';
+import {
   archiveTournamentSchema,
   configureTournamentFormSchema,
   createProblemFormSchema,
@@ -97,6 +103,9 @@ async function checkRejects(
 const TAG = `e5-admin-${Date.now()}`;
 
 async function cleanup() {
+  await db.webhookEvent.deleteMany({
+    where: { payment: { tournament: { slug: { contains: TAG } } } },
+  });
   await db.evaluationJob.deleteMany({
     where: { idempotencyKey: { contains: TAG } },
   });
@@ -116,6 +125,9 @@ async function cleanup() {
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.registration.deleteMany({
+    where: { tournament: { slug: { contains: TAG } } },
+  });
+  await db.payment.deleteMany({
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.round.deleteMany({
@@ -292,6 +304,112 @@ async function main() {
       userId: competitor.id,
       reason: '',
     }).success,
+  );
+
+  // ---- Payment administration ----
+  const manualUser = await makeUser('manual-payment');
+  const manualPayment = await db.payment.create({
+    data: {
+      userId: manualUser.id,
+      tournamentId: tournament.id,
+      provider: 'MANUAL',
+      providerOrderId: `${TAG}-manual-order`,
+      amountMinor: 10000,
+      currency: 'INR',
+      status: 'PENDING',
+    },
+  });
+  const manualPaid = await markManualPaymentPaidForAdmin(
+    manualPayment.id,
+    admin,
+  );
+  const manualRegistration = await db.registration.findUnique({
+    where: {
+      userId_tournamentId: {
+        userId: manualUser.id,
+        tournamentId: tournament.id,
+      },
+    },
+  });
+  check(
+    'admin can mark manual payment paid through payment module',
+    manualPaid.payment.status === 'PAID' &&
+      manualRegistration?.status === 'ACTIVE' &&
+      manualRegistration.paymentId === manualPayment.id,
+  );
+
+  const refunded = await refundPaymentForAdmin(
+    manualPayment.id,
+    admin,
+    'verify admin refund',
+    {
+      gateway: {
+        async createOrder() {
+          throw new Error('not used');
+        },
+        async fetchPayment() {
+          throw new Error('not used');
+        },
+        async refund(input) {
+          return {
+            id: `${TAG}-refund`,
+            paymentId: input.paymentId,
+            amount: input.amountMinor,
+            currency: 'INR',
+            status: 'processed',
+          };
+        },
+      },
+    },
+  );
+  const refundedRegistration = await db.registration.findUniqueOrThrow({
+    where: {
+      userId_tournamentId: {
+        userId: manualUser.id,
+        tournamentId: tournament.id,
+      },
+    },
+  });
+  check(
+    'admin refund marks payment and registration refunded',
+    refunded.status === 'REFUNDED' &&
+      refundedRegistration.status === 'REFUNDED',
+  );
+
+  const cancelUser = await makeUser('cancel-payment');
+  await registerCompetitor(tournament.id, cancelUser.id, {
+    actorId: cancelUser.id,
+  });
+  await cancelRegistrationForAdmin(
+    tournament.id,
+    cancelUser.id,
+    admin,
+    'verify admin cancellation',
+  );
+  check(
+    'payment admin cancellation releases registration slot',
+    (await listRegistrations(tournament.id, { status: 'REVOKED' })).some(
+      (registration) => registration.userId === cancelUser.id,
+    ),
+  );
+  check(
+    'admin payments list shows manual payment',
+    (await listPaymentsForAdmin({ tournamentId: tournament.id })).some(
+      (payment) => payment.id === manualPayment.id,
+    ),
+  );
+  check(
+    'payment admin actions are audited',
+    (await db.auditLog.count({
+      where: {
+        entityType: { in: ['Payment', 'Registration'] },
+        OR: [
+          { action: 'payment.paid' },
+          { action: 'payment.refunded' },
+          { action: 'tournament.removeRegistration' },
+        ],
+      },
+    })) >= 3,
   );
 
   // ---- Problem / challenge management ----
@@ -592,6 +710,7 @@ async function main() {
   for (const label of [
     'Dashboard',
     'Tournaments',
+    'Payments',
     'Challenges',
     'Submissions',
     'Evaluations',
@@ -605,6 +724,8 @@ async function main() {
   const guardedFiles = [
     'src/app/(admin)/admin/page.tsx',
     'src/app/(admin)/admin/tournaments/page.tsx',
+    'src/app/(admin)/admin/payments/page.tsx',
+    'src/app/(admin)/admin/payments/[paymentId]/page.tsx',
     'src/app/(admin)/admin/challenges/page.tsx',
     'src/app/(admin)/admin/submissions/page.tsx',
     'src/app/(admin)/admin/evaluations/page.tsx',

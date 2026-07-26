@@ -2,6 +2,11 @@ import './load-env';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client';
 import { queue } from '../src/server/jobs/pg-queue';
+import {
+  assertRateLimit,
+  checkRateLimit,
+  resetRateLimiterForTests,
+} from '../src/server/ops/rate-limit';
 
 /**
  * Milestone 0 smoke test for the Postgres-backed job substrate (D3).
@@ -28,12 +33,17 @@ interface ClaimRow {
   attempts: number;
 }
 
-async function claim(limit: number, lockedBy: string): Promise<ClaimRow[]> {
+async function claim(
+  limit: number,
+  lockedBy: string,
+  runId: string,
+): Promise<ClaimRow[]> {
   return db.$queryRawUnsafe<ClaimRow[]>(
     `
     WITH claimed AS (
       SELECT "id" FROM "EvaluationJob"
       WHERE "status" = 'QUEUED' AND "availableAt" <= now()
+        AND "idempotencyKey" LIKE $3
       ORDER BY "priority" DESC, "createdAt" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT $1
@@ -46,6 +56,7 @@ async function claim(limit: number, lockedBy: string): Promise<ClaimRow[]> {
   `,
     limit,
     lockedBy,
+    `${runId}:%`,
   );
 }
 
@@ -90,8 +101,8 @@ async function main() {
 
   // 2 + 3. concurrent claimers must not overlap
   const [c1, c2] = await Promise.all([
-    claim(3, 'runner-1'),
-    claim(3, 'runner-2'),
+    claim(3, 'runner-1', runId),
+    claim(3, 'runner-2', runId),
   ]);
   const ids1 = new Set(c1.map((r) => r.id));
   const overlap = c2.filter((r) => ids1.has(r.id));
@@ -134,7 +145,7 @@ async function main() {
   );
 
   // a job scheduled in the future must not be claimable now
-  const futureClaim = await claim(10, 'runner-3');
+  const futureClaim = await claim(10, 'runner-3', runId);
   check(
     'backoff job is not claimable before availableAt',
     !futureClaim.some((r) => r.id === second.id),
@@ -146,7 +157,7 @@ async function main() {
   await db.evaluationJob.create({
     data: { name: 'noop', payload: {}, idempotencyKey: staleKey },
   });
-  await claim(10, 'runner-that-dies');
+  await claim(10, 'runner-that-dies', runId);
   const staleBefore = await db.evaluationJob.findUnique({
     where: { idempotencyKey: staleKey },
   });
@@ -168,7 +179,7 @@ async function main() {
   );
   check(
     'requeued job is immediately claimable again',
-    (await claim(10, 'runner-4')).some((r) => r.id === staleAfter?.id),
+    (await claim(10, 'runner-4', runId)).some((r) => r.id === staleAfter?.id),
   );
 
   // Exhausted attempts must dead-letter instead of looping forever.
@@ -199,7 +210,7 @@ async function main() {
   await db.evaluationJob.create({
     data: { name: 'noop', payload: {}, idempotencyKey: beatKey },
   });
-  await claim(10, 'runner-alive');
+  await claim(10, 'runner-alive', runId);
   await db.evaluationJob.update({
     where: { idempotencyKey: beatKey },
     data: { claimedAt: new Date(Date.now() - 60_000) }, // looks abandoned
@@ -228,7 +239,7 @@ async function main() {
   await db.evaluationJob.create({
     data: { name: 'noop', payload: {}, idempotencyKey: stolenKey },
   });
-  await claim(10, 'runner-owner');
+  await claim(10, 'runner-owner', runId);
   const stolenRow = await db.evaluationJob.findUnique({
     where: { idempotencyKey: stolenKey },
   });
@@ -250,7 +261,7 @@ async function main() {
   await db.evaluationJob.create({
     data: { name: 'noop', payload: {}, idempotencyKey: liveKey },
   });
-  await claim(10, 'runner-healthy');
+  await claim(10, 'runner-healthy', runId);
   await queue.reclaimStale(300_000);
   const live = await db.evaluationJob.findUnique({
     where: { idempotencyKey: liveKey },
@@ -258,6 +269,72 @@ async function main() {
   check(
     'in-flight job within the timeout is left alone',
     live?.status === 'CLAIMED',
+  );
+
+  const cleanupDoneKey = `${runId}:cleanup-done`;
+  const cleanupDeadKey = `${runId}:cleanup-dead`;
+  await db.evaluationJob.createMany({
+    data: [
+      {
+        name: 'noop',
+        payload: {},
+        idempotencyKey: cleanupDoneKey,
+        status: 'DONE',
+        updatedAt: new Date(Date.now() - 120_000),
+      },
+      {
+        name: 'noop',
+        payload: {},
+        idempotencyKey: cleanupDeadKey,
+        status: 'FAILED',
+        attempts: 3,
+        maxAttempts: 3,
+        updatedAt: new Date(Date.now() - 120_000),
+      },
+    ],
+  });
+  const cleanup = await queue.cleanup({
+    completedOlderThanMs: 1_000,
+    failedOlderThanMs: 1_000,
+    staleClaimTimeoutMs: 10_000,
+  });
+  check(
+    'cleanup removes old completed jobs',
+    cleanup.completedDeleted >= 1 &&
+      (await db.evaluationJob.findUnique({
+        where: { idempotencyKey: cleanupDoneKey },
+      })) === null,
+  );
+  check(
+    'cleanup removes retained dead-letter jobs after cutoff',
+    cleanup.failedDeleted >= 1 &&
+      (await db.evaluationJob.findUnique({
+        where: { idempotencyKey: cleanupDeadKey },
+      })) === null,
+  );
+
+  resetRateLimiterForTests();
+  let limited = false;
+  for (let i = 0; i < 31; i++) {
+    try {
+      assertRateLimit('auth', `${runId}:ip`);
+    } catch {
+      limited = true;
+    }
+  }
+  check('rate limiter enforces abuse-prone auth limit', limited);
+
+  resetRateLimiterForTests();
+  let webhookAllowed = true;
+  for (let i = 0; i < 310; i++) {
+    webhookAllowed &&= checkRateLimit(
+      'webhook-observe',
+      `${runId}:hook`,
+    ).allowed;
+  }
+  check(
+    'webhook limiter is observe-only and never drops events',
+    webhookAllowed,
   );
 
   await db.evaluationJob.deleteMany({

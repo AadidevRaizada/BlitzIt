@@ -10,6 +10,11 @@ import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
 import { evaluationProfileConfigSchema } from './evaluation-profiles';
+import {
+  getPrizePoolDisplay,
+  recomputePrizePool,
+  type PrizePoolDisplay,
+} from './prize-pool';
 import type {
   ConfigureTournamentInput,
   CreateTournamentInput,
@@ -152,6 +157,8 @@ export async function updateTournament(
       },
       tx,
     );
+
+    await recomputePrizePool(tournamentId, tx);
 
     return after;
   });
@@ -363,6 +370,7 @@ export interface PublicTournamentCard {
   thirdPlaceEnabled: boolean;
   passPriceMinor: number;
   prizePoolMinor: number;
+  prizePool: PrizePoolDisplay;
   currency: string;
   registrationOpensAt: Date | null;
   registrationClosesAt: Date | null;
@@ -487,6 +495,7 @@ export async function listPublicTournaments(
   for (const tournament of tournaments) {
     const bucket = publicTournamentBucket(tournament.status);
     if (!bucket) continue;
+    const prizePool = await getPrizePoolDisplay(tournament.id, client);
 
     grouped[bucket].push({
       id: tournament.id,
@@ -499,7 +508,8 @@ export async function listPublicTournaments(
       maxRegistrations: tournament.maxRegistrations,
       thirdPlaceEnabled: tournament.thirdPlaceEnabled,
       passPriceMinor: tournament.passPriceMinor,
-      prizePoolMinor: tournament.prizePoolMinor,
+      prizePoolMinor: prizePool.prizePoolMinor,
+      prizePool,
       currency: tournament.currency,
       registrationOpensAt: tournament.registrationOpensAt,
       registrationClosesAt: tournament.registrationClosesAt,

@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
 import { getEditableProfile } from '@/server/modules/auth/profile';
+import { Card } from '@/components/ui/card';
+import { PageHeader } from '@/components/ui/page-header';
 import { ProfileForm } from './profile-form';
 
 export const metadata = { title: 'Settings - The Circuit' };
@@ -13,12 +15,10 @@ export default async function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Profile settings</h1>
-        <p className="text-muted-foreground text-sm">
-          This information appears on your public profile.
-        </p>
-      </div>
+      <PageHeader
+        title="Profile settings"
+        description="This information appears on your public profile."
+      />
 
       <ProfileForm
         initial={{
@@ -31,6 +31,20 @@ export default async function SettingsPage() {
           websiteUrl: profile.profile?.websiteUrl ?? '',
         }}
       />
+
+      <Card className="space-y-3 p-4">
+        <h2 className="font-semibold">Data export</h2>
+        <p className="text-muted-foreground text-sm">
+          Download your profile, registrations, submissions, payments and
+          notifications as JSON.
+        </p>
+        <a
+          href="/api/me/export"
+          className="text-secondary inline-flex text-sm font-medium underline"
+        >
+          Download my data
+        </a>
+      </Card>
     </div>
   );
 }

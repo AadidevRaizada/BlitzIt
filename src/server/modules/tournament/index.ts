@@ -77,13 +77,26 @@ export {
 // ---- Registration ----
 export {
   registerCompetitor,
+  registerCompetitorInTransaction,
   withdrawRegistration,
   countActiveRegistrations,
   isRegistered,
   assertRegistered,
   reconcileParticipantCount,
   type RegistrationResult,
+  type RegisterCompetitorOptions,
 } from './registration';
+
+// ---- Prize pool (E9.2) ----
+export {
+  countPaidEntries,
+  derivePrizePoolBreakdown,
+  getPrizePoolDisplay,
+  recomputePrizePool,
+  type PrizeAllocation,
+  type PrizePoolBreakdown,
+  type PrizePoolDisplay,
+} from './prize-pool';
 
 // ---- Rounds & submission windows ----
 export {

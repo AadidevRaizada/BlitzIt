@@ -15,6 +15,15 @@ config({ path: ['.env.local', '.env'] });
 const DATABASE_URL =
   process.env.DATABASE_URL ??
   'postgresql://DATABASE_URL:is-not-set@localhost:1/unset';
+const SHADOW_DATABASE_URL =
+  process.env.SHADOW_DATABASE_URL ?? shadowDatabaseUrl(DATABASE_URL);
+
+function shadowDatabaseUrl(databaseUrl: string): string {
+  const url = new URL(databaseUrl);
+  const database = url.pathname.replace(/^\//, '') || 'shadow';
+  url.pathname = `/${database}_shadow`;
+  return url.toString();
+}
 
 // Prisma 7: connection config lives here, NOT in schema.prisma's datasource block.
 export default defineConfig({
@@ -24,5 +33,6 @@ export default defineConfig({
   },
   datasource: {
     url: DATABASE_URL,
+    shadowDatabaseUrl: SHADOW_DATABASE_URL,
   },
 });

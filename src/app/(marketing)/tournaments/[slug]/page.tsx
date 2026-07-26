@@ -10,7 +10,9 @@ import {
 import { DEFAULT_WEIGHTS } from '@/server/modules/evaluation/types';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { Countdown } from '@/components/features/countdown';
 import { RegisterControl } from '../register-control';
+import { formatMinor } from '@/server/modules/notification';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +44,8 @@ export default async function TournamentPage({
     tournament.categories.length > 0
       ? tournament.categories.map(formatStage).join(', ')
       : 'REST API';
+  const serverTime = new Date().toISOString();
+  const expectedDuration = estimatedDuration(tournament);
 
   return (
     <main className="bg-background text-foreground min-h-screen">
@@ -61,7 +65,14 @@ export default async function TournamentPage({
           </div>
           <Card surface="broadcast" className="p-5">
             <dl className="grid gap-3 text-sm">
-              <Meta label="Prize pool" value="₹0 while entries are free" />
+              <Meta
+                label="Prize pool"
+                value={formatMinor(tournament.prizePool.prizePoolMinor)}
+              />
+              <Meta
+                label="Eligible entries"
+                value={String(tournament.prizePool.paidEntries)}
+              />
               <Meta
                 label="Starts"
                 value={
@@ -70,7 +81,40 @@ export default async function TournamentPage({
                     : 'Date TBA'
                 }
               />
-              <Meta label="Entry" value="Free beta" />
+              <Meta
+                label="Entry"
+                value={
+                  tournament.passPriceMinor > 0
+                    ? formatMinor(tournament.passPriceMinor)
+                    : 'Free'
+                }
+              />
+              <Meta
+                label="Competitors"
+                value={`${tournament.participantCount}${
+                  tournament.maxRegistrations
+                    ? ` / ${tournament.maxRegistrations}`
+                    : ''
+                }`}
+              />
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  Registration closes in
+                </dt>
+                <dd className="text-right font-medium">
+                  <Countdown
+                    targetAt={
+                      tournament.registrationClosesAt?.toISOString() ?? null
+                    }
+                    serverTime={serverTime}
+                    phase={
+                      tournament.status === 'REGISTRATION_OPEN'
+                        ? 'OPEN'
+                        : 'BEFORE_OPEN'
+                    }
+                  />
+                </dd>
+              </div>
             </dl>
           </Card>
         </div>
@@ -93,6 +137,7 @@ export default async function TournamentPage({
                 label="Third place"
                 value={tournament.thirdPlaceEnabled ? 'Enabled' : 'Disabled'}
               />
+              <Info label="Estimated duration" value={expectedDuration} />
             </div>
           </Section>
 
@@ -179,11 +224,15 @@ export default async function TournamentPage({
             <div className="grid gap-3">
               <Faq
                 q="Is entry paid today?"
-                a="No. This is the free beta flow. The payment step exists, but no charge is collected."
+                a={
+                  tournament.passPriceMinor > 0
+                    ? `Yes. Entry is ${formatMinor(tournament.passPriceMinor)}.`
+                    : 'No. This tournament uses the free registration path.'
+                }
               />
               <Faq
-                q="Why is the prize pool ₹0?"
-                a="The prize pool is a function of paid entries. While entries are free, there is no paid pool to display."
+                q="How is the prize pool calculated?"
+                a={`The stored pool is ${formatMinor(tournament.prizePool.prizePoolMinor)} from ${tournament.prizePool.paidEntries} eligible entries plus any configured floor, sponsor, or bonus contribution.`}
               />
               <Faq
                 q="Can I browse before signing in?"
@@ -205,6 +254,8 @@ export default async function TournamentPage({
                 status={tournament.status}
                 participantCount={tournament.participantCount}
                 maxRegistrations={tournament.maxRegistrations}
+                entryFeeMinor={tournament.passPriceMinor}
+                currency={tournament.currency}
                 userSignedIn={user !== null}
                 state={myState}
                 intent={intent}
@@ -222,6 +273,12 @@ export default async function TournamentPage({
                 <Ready ok={myState.readiness.avatarSet}>Avatar set</Ready>
                 <Ready ok={myState.readiness.profileLocationSet}>
                   Display name and city set
+                </Ready>
+                <Ready ok={myState.readiness.termsAccepted}>
+                  Terms accepted
+                </Ready>
+                <Ready ok={myState.readiness.paymentSettled}>
+                  Payment settled
                 </Ready>
                 <Ready ok={myState.readiness.registered}>Registered</Ready>
               </ul>
@@ -333,4 +390,16 @@ function formatDate(date: Date): string {
 
 function formatStage(value: string): string {
   return value.replace(/_/g, ' ');
+}
+
+function estimatedDuration(tournament: {
+  simulationOpensAt: Date | null;
+  liveStartsAt: Date | null;
+  completedAt: Date | null;
+}): string {
+  const start = tournament.simulationOpensAt;
+  const end = tournament.completedAt ?? tournament.liveStartsAt;
+  if (!start || !end || end <= start) return 'Schedule dependent';
+  const hours = Math.ceil((end.getTime() - start.getTime()) / 3_600_000);
+  return `${hours}h scheduled`;
 }

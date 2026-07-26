@@ -3,8 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { queue } from './pg-queue';
 import type { ClaimedJob } from './queue';
 import { processors } from './processors';
+import { backoffForAttempt } from './retry-policy';
 import { logger } from '@/lib/logger';
 import { captureException } from '@/lib/observability';
+import { AppError } from '@/lib/errors';
 
 /**
  * In-process Evaluation Runner (D3). Booted once from `instrumentation.ts`.
@@ -14,7 +16,6 @@ import { captureException } from '@/lib/observability';
  */
 
 const POLL_INTERVAL_MS = 2000;
-const BASE_BACKOFF_MS = 5000;
 
 /**
  * How long a job may sit CLAIMED before we assume its runner died and requeue
@@ -173,7 +174,12 @@ class Runner {
     try {
       const processor = processors[job.name];
       if (!processor) {
-        await queue.fail(job.id, `No processor for job "${job.name}"`, 0);
+        await queue.fail(
+          job.id,
+          `No processor for job "${job.name}"`,
+          0,
+          this.instanceId,
+        );
         logger.error(
           { jobId: job.id, name: job.name },
           'no processor registered',
@@ -183,12 +189,20 @@ class Runner {
 
       try {
         await processor(job);
-        await queue.complete(job.id);
+        await queue.complete(job.id, this.instanceId);
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown error';
-        const backoff = BASE_BACKOFF_MS * 2 ** Math.max(0, job.attempts - 1);
-        await queue.fail(job.id, message, backoff);
+        if (error instanceof AppError && error.code === 'NOT_FOUND') {
+          logger.warn(
+            { jobId: job.id, name: job.name, err: message },
+            'job target no longer exists; discarding',
+          );
+          await queue.complete(job.id, this.instanceId);
+          return;
+        }
+        const backoff = backoffForAttempt(job.name, job.attempts);
+        await queue.fail(job.id, message, backoff, this.instanceId);
         captureException(error, { where: 'runner.run', jobId: job.id });
       }
     } finally {

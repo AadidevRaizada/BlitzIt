@@ -5,6 +5,10 @@ import { requireUserOrThrow } from '@/server/modules/auth';
 import { db } from '@/server/db';
 import { recordAudit } from '@/server/modules/admin/audit';
 import {
+  acceptTerms,
+  assertCurrentTermsAccepted,
+} from '@/server/modules/compliance';
+import {
   notifyRegistrationConfirmed,
   registerCompetitor,
   withdrawRegistration,
@@ -37,6 +41,7 @@ export async function registerForTournamentAction(
         'You must accept the tournament rules to enter.',
       );
     }
+    await acceptTerms({ userId: user.id });
 
     const parsed = tournamentIdSchema.safeParse({ tournamentId });
     if (!parsed.success) {
@@ -49,6 +54,18 @@ export async function registerForTournamentAction(
       };
     }
 
+    const tournament = await db.tournament.findUnique({
+      where: { id: parsed.data.tournamentId },
+      select: { passPriceMinor: true },
+    });
+    if (tournament?.passPriceMinor && tournament.passPriceMinor > 0) {
+      return err(
+        'PAYMENT_REQUIRED',
+        'This tournament requires a paid pass before registration.',
+      );
+    }
+
+    await assertCurrentTermsAccepted(user.id);
     const result = await registerCompetitor(parsed.data.tournamentId, user.id, {
       actorId: user.id,
     });

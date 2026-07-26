@@ -1,10 +1,12 @@
 import 'server-only';
 import type { Registration } from '@/generated/prisma/client';
+import type { Prisma } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { resolveTournamentConfig } from './config';
+import { recomputePrizePool } from './prize-pool';
 
 /**
  * Registration (E3).
@@ -20,6 +22,12 @@ export interface RegistrationResult {
   participantCount: number;
 }
 
+export interface RegisterCompetitorOptions {
+  actorId?: string | null;
+  /** E9: paid-pass activation links the registration to the payment in the same transaction. */
+  paymentId?: string | null;
+}
+
 /**
  * Register a competitor.
  *
@@ -30,116 +38,138 @@ export interface RegistrationResult {
 export async function registerCompetitor(
   tournamentId: string,
   userId: string,
-  options: { actorId?: string | null } = {},
+  options: RegisterCompetitorOptions = {},
 ): Promise<RegistrationResult> {
-  return db.$transaction(async (tx) => {
-    const tournament = await tx.tournament.findUnique({
-      where: { id: tournamentId },
-      select: {
-        id: true,
-        status: true,
-        registrationOpensAt: true,
-        registrationClosesAt: true,
-        participantCount: true,
-        bracketSize: true,
-        thirdPlaceEnabled: true,
-        minRegistrations: true,
-        maxRegistrations: true,
-        roundDurations: true,
+  return db.$transaction((tx) =>
+    registerCompetitorInTransaction(tx, tournamentId, userId, options),
+  );
+}
+
+/**
+ * E9 payment activation path. Payment confirmation calls this with the same
+ * transaction handle that marks the payment paid, so a captured payment cannot
+ * unlock a registration unless the capacity claim commits too.
+ */
+export async function registerCompetitorInTransaction(
+  tx: Prisma.TransactionClient,
+  tournamentId: string,
+  userId: string,
+  options: RegisterCompetitorOptions = {},
+): Promise<RegistrationResult> {
+  const tournament = await tx.tournament.findUnique({
+    where: { id: tournamentId },
+    select: {
+      id: true,
+      status: true,
+      registrationOpensAt: true,
+      registrationClosesAt: true,
+      participantCount: true,
+      bracketSize: true,
+      thirdPlaceEnabled: true,
+      minRegistrations: true,
+      maxRegistrations: true,
+      roundDurations: true,
+    },
+  });
+  if (!tournament) {
+    throw new NotFoundError(`tournament ${tournamentId} not found`);
+  }
+  if (tournament.status !== 'REGISTRATION_OPEN') {
+    throw new ConflictError(
+      `registration is not open (tournament is ${tournament.status})`,
+    );
+  }
+
+  const now = new Date();
+  if (tournament.registrationOpensAt && now < tournament.registrationOpensAt) {
+    throw new ConflictError('registration has not opened yet');
+  }
+  if (
+    tournament.registrationClosesAt &&
+    now > tournament.registrationClosesAt
+  ) {
+    throw new ConflictError('registration has closed');
+  }
+
+  const existing = await tx.registration.findUnique({
+    where: { userId_tournamentId: { userId, tournamentId } },
+  });
+  if (existing?.status === 'ACTIVE') {
+    throw new ConflictError('already registered for this tournament');
+  }
+
+  const config = resolveTournamentConfig(tournament);
+
+  // CLAIM THE ENTRY FIRST, then the capacity slot.
+  //
+  // A new registration is protected by the unique (userId, tournamentId)
+  // index: a racing duplicate fails the insert and rolls back. Reactivating a
+  // withdrawn entry had no such protection — two concurrent re-registers
+  // could both read the same REVOKED row, both increment the counter, and
+  // both write it ACTIVE, so ONE competitor would consume TWO capacity slots.
+  // The conditional update makes exactly one of them the winner.
+  let registration;
+  if (existing) {
+    const reactivated = await tx.registration.updateMany({
+      where: { id: existing.id, status: { not: 'ACTIVE' } },
+      data: {
+        status: 'ACTIVE',
+        registeredAt: now,
+        ...(options.paymentId ? { paymentId: options.paymentId } : {}),
       },
     });
-    if (!tournament) {
-      throw new NotFoundError(`tournament ${tournamentId} not found`);
-    }
-    if (tournament.status !== 'REGISTRATION_OPEN') {
-      throw new ConflictError(
-        `registration is not open (tournament is ${tournament.status})`,
-      );
-    }
-
-    const now = new Date();
-    if (
-      tournament.registrationOpensAt &&
-      now < tournament.registrationOpensAt
-    ) {
-      throw new ConflictError('registration has not opened yet');
-    }
-    if (
-      tournament.registrationClosesAt &&
-      now > tournament.registrationClosesAt
-    ) {
-      throw new ConflictError('registration has closed');
-    }
-
-    const existing = await tx.registration.findUnique({
-      where: { userId_tournamentId: { userId, tournamentId } },
-    });
-    if (existing?.status === 'ACTIVE') {
+    if (reactivated.count === 0) {
+      // Someone else reactivated it between our read and our write.
       throw new ConflictError('already registered for this tournament');
     }
-
-    const config = resolveTournamentConfig(tournament);
-
-    // CLAIM THE ENTRY FIRST, then the capacity slot.
-    //
-    // A new registration is protected by the unique (userId, tournamentId)
-    // index: a racing duplicate fails the insert and rolls back. Reactivating a
-    // withdrawn entry had no such protection — two concurrent re-registers
-    // could both read the same REVOKED row, both increment the counter, and
-    // both write it ACTIVE, so ONE competitor would consume TWO capacity slots.
-    // The conditional update makes exactly one of them the winner.
-    let registration;
-    if (existing) {
-      const reactivated = await tx.registration.updateMany({
-        where: { id: existing.id, status: { not: 'ACTIVE' } },
-        data: { status: 'ACTIVE', registeredAt: now },
-      });
-      if (reactivated.count === 0) {
-        // Someone else reactivated it between our read and our write.
-        throw new ConflictError('already registered for this tournament');
-      }
-      registration = await tx.registration.findUniqueOrThrow({
-        where: { id: existing.id },
-      });
-    } else {
-      registration = await tx.registration.create({
-        data: { userId, tournamentId, status: 'ACTIVE' },
-      });
-    }
-
-    const claimed = await tx.tournament.updateMany({
-      where: {
-        id: tournamentId,
-        status: 'REGISTRATION_OPEN',
-        participantCount: { lt: config.maxRegistrations },
-      },
-      data: { participantCount: { increment: 1 } },
+    registration = await tx.registration.findUniqueOrThrow({
+      where: { id: existing.id },
     });
-    if (claimed.count === 0) {
-      // Rolls the entry claim back with the rest of the transaction.
-      throw new ConflictError(
-        `tournament is full (${config.maxRegistrations} registrations)`,
-      );
-    }
-
-    const after = await tx.tournament.findUniqueOrThrow({
-      where: { id: tournamentId },
-      select: { participantCount: true },
-    });
-
-    await recordAudit(
-      {
-        actorId: options.actorId ?? userId,
-        action: 'tournament.register',
-        entityType: 'Registration',
-        entityId: registration.id,
-        after: { userId, tournamentId, status: 'ACTIVE' },
+  } else {
+    registration = await tx.registration.create({
+      data: {
+        userId,
+        tournamentId,
+        status: 'ACTIVE',
+        ...(options.paymentId ? { paymentId: options.paymentId } : {}),
       },
-      tx,
-    );
+    });
+  }
 
-    return { registration, participantCount: after.participantCount };
+  const claimed = await tx.tournament.updateMany({
+    where: {
+      id: tournamentId,
+      status: 'REGISTRATION_OPEN',
+      participantCount: { lt: config.maxRegistrations },
+    },
+    data: { participantCount: { increment: 1 } },
   });
+  if (claimed.count === 0) {
+    // Rolls the entry claim back with the rest of the transaction.
+    throw new ConflictError(
+      `tournament is full (${config.maxRegistrations} registrations)`,
+    );
+  }
+
+  const after = await tx.tournament.findUniqueOrThrow({
+    where: { id: tournamentId },
+    select: { participantCount: true },
+  });
+
+  await recordAudit(
+    {
+      actorId: options.actorId ?? userId,
+      action: 'tournament.register',
+      entityType: 'Registration',
+      entityId: registration.id,
+      after: { userId, tournamentId, status: 'ACTIVE' },
+    },
+    tx,
+  );
+
+  await recomputePrizePool(tournamentId, tx);
+
+  return { registration, participantCount: after.participantCount };
 }
 
 /**
@@ -189,6 +219,8 @@ export async function withdrawRegistration(
       where: { id: tournamentId },
       select: { participantCount: true },
     });
+
+    await recomputePrizePool(tournamentId, tx);
 
     await recordAudit(
       {
@@ -263,6 +295,7 @@ export async function reconcileParticipantCount(
       where: { id: tournamentId },
       data: { participantCount: actual },
     });
+    await recomputePrizePool(tournamentId, tx);
     return { before: tournament.participantCount, after: actual };
   });
 }

@@ -39,6 +39,12 @@ const workspaceLinks = [
   { href: '/settings', label: 'Settings' },
 ];
 
+const legalLinks = [
+  { href: '/terms', label: 'Terms' },
+  { href: '/privacy', label: 'Privacy' },
+  { href: '/refunds', label: 'Refunds' },
+];
+
 export function ProductNav({ user }: { user: ProductNavUser | null }) {
   const pathname = usePathname();
 
@@ -123,7 +129,7 @@ export function ProductFooter() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3 md:justify-end">
-          {primaryNavItems.map((item) => (
+          {[...primaryNavItems, ...legalLinks].map((item) => (
             <Link
               key={item.href}
               href={item.href}

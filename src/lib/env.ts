@@ -45,6 +45,10 @@ const serverSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalVar(),
 
   // Payments (Epic E4)
+  RAZORPAY_USE_FAKE: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
   RAZORPAY_KEY_ID: optionalVar(),
   RAZORPAY_KEY_SECRET: optionalVar(),
   RAZORPAY_WEBHOOK_SECRET: optionalVar(),
@@ -187,6 +191,11 @@ function loadServerEnv() {
       'BETTER_AUTH_SECRET is required in production (min 32 chars). ' +
         'Generate one with: openssl rand -base64 32',
     );
+  }
+  if (env.NODE_ENV === 'production') {
+    if (env.RAZORPAY_USE_FAKE) {
+      throw new Error('RAZORPAY_USE_FAKE must never be true in production');
+    }
   }
 
   return {

@@ -34,6 +34,8 @@
     "verify:bracket": "tsx --conditions=react-server scripts/verify-bracket.ts",
     "verify:tournament:e2e": "tsx --conditions=react-server scripts/verify-tournament-e2e.ts",
     "verify:submission": "tsx --conditions=react-server scripts/verify-submission.ts",
+    "verify:payments": "tsx --conditions=react-server scripts/verify-payments.ts",
+    "verify:prize-pool": "tsx --conditions=react-server scripts/verify-prize-pool.ts",
     "verify:sudden-death": "tsx --conditions=react-server scripts/verify-sudden-death.ts",
     "verify:live-arena": "tsx --conditions=react-server scripts/verify-live-arena.ts",
     "verify:spectator": "tsx --conditions=react-server scripts/verify-spectator.ts"

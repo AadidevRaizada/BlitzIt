@@ -5,12 +5,15 @@ import type {
   RoundStage,
   RoundStatus,
   SubmissionStatus,
+  PaymentStatus,
   TournamentStatus,
 } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
+import { CURRENT_TERMS_VERSION } from '@/server/modules/compliance';
 import { NotFoundError } from '@/lib/errors';
 import { listBracketRounds, type BracketRoundView } from './admin-ops';
+import { getPrizePoolDisplay, type PrizePoolDisplay } from './prize-pool';
 import { computeCountdown, type Countdown } from './timers.public';
 
 /**
@@ -144,6 +147,7 @@ export interface LiveSnapshot {
   currentStage: RoundStage | null;
   participantCount: number;
   prizePoolMinor: number;
+  prizePool: PrizePoolDisplay;
   currency: string;
   youtubeStreamUrl: string | null;
   registrationOpensAt: string | null;
@@ -276,8 +280,8 @@ export async function getLiveSnapshot(
     },
   });
 
-  const [leaderboard, bracket, decidedMatches, tiedMatches] = await Promise.all(
-    [
+  const [leaderboard, bracket, decidedMatches, tiedMatches, prizePool] =
+    await Promise.all([
       getLeaderboard(
         tournamentId,
         { take: options.leaderboardTake ?? LEADERBOARD_DEFAULT_TAKE },
@@ -298,8 +302,8 @@ export async function getLiveSnapshot(
           status: { not: 'DECIDED' },
         },
       }),
-    ],
-  );
+      getPrizePoolDisplay(tournamentId, client),
+    ]);
 
   const revealed = round?.opensAt != null && now >= round.opensAt;
   const currentRound: LiveRoundView | null = round
@@ -323,7 +327,8 @@ export async function getLiveSnapshot(
     status: tournament.status,
     currentStage: tournament.currentStage,
     participantCount: tournament.participantCount,
-    prizePoolMinor: tournament.prizePoolMinor,
+    prizePoolMinor: prizePool.prizePoolMinor,
+    prizePool,
     currency: tournament.currency,
     youtubeStreamUrl: tournament.youtubeStreamUrl,
     registrationOpensAt: tournament.registrationOpensAt?.toISOString() ?? null,
@@ -350,7 +355,18 @@ export interface MyTournamentState {
   tournamentId: string;
   isRegistered: boolean;
   registrationId: string | null;
+  registrationStatus: string | null;
   registeredAt: Date | null;
+  payment: {
+    id: string;
+    status: PaymentStatus;
+    amountMinor: number;
+    currency: string;
+    providerOrderId: string;
+    providerPaymentId: string | null;
+    failureReason: string | null;
+    paidAt: Date | null;
+  } | null;
   seed: number | null;
   placement: number | null;
   qualified: boolean;
@@ -379,7 +395,10 @@ export interface MyTournamentState {
     githubConnected: boolean;
     avatarSet: boolean;
     profileLocationSet: boolean;
+    profileComplete: boolean;
+    termsAccepted: boolean;
     registered: boolean;
+    paymentSettled: boolean;
   };
 }
 
@@ -395,73 +414,97 @@ export async function getMyTournamentState(
   tournamentId: string,
   client: DbClient = db,
 ): Promise<MyTournamentState> {
-  const [user, registration, ranking, round, match] = await Promise.all([
-    client.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: {
-        avatarUrl: true,
-        displayName: true,
-        city: true,
-        authUserId: true,
-      },
-    }),
-    client.registration.findUnique({
-      where: { userId_tournamentId: { userId, tournamentId } },
-      select: { id: true, status: true, registeredAt: true },
-    }),
-    client.ranking.findUnique({
-      where: { tournamentId_userId: { tournamentId, userId } },
-      select: {
-        seed: true,
-        placement: true,
-        qualified: true,
-        eliminatedAtStage: true,
-        simulationScore: true,
-      },
-    }),
-    client.round.findFirst({
-      where: {
-        tournamentId,
-        type: 'SIMULATION',
-        status: { in: ['OPEN', 'JUDGING', 'PENDING'] },
-      },
-      orderBy: [{ sequence: 'asc' }],
-      select: {
-        id: true,
-        stage: true,
-        status: true,
-        opensAt: true,
-        deadlineAt: true,
-        submissions: {
-          where: { userId },
-          select: { id: true, status: true },
-          take: 1,
+  const [user, registration, payment, ranking, round, match, termsAcceptance] =
+    await Promise.all([
+      client.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: {
+          avatarUrl: true,
+          displayName: true,
+          city: true,
+          authUserId: true,
         },
-      },
-    }),
-    client.match.findFirst({
-      where: {
-        tournamentId,
-        OR: [{ competitorAId: userId }, { competitorBId: userId }],
-        round: { status: { not: 'COMPLETED' } },
-      },
-      orderBy: [{ createdAt: 'desc' }, { bracketPosition: 'asc' }],
-      select: {
-        id: true,
-        status: true,
-        competitorAId: true,
-        competitorBId: true,
-        round: {
-          select: {
-            stage: true,
-            status: true,
-            opensAt: true,
-            deadlineAt: true,
+      }),
+      client.registration.findUnique({
+        where: { userId_tournamentId: { userId, tournamentId } },
+        select: { id: true, status: true, registeredAt: true },
+      }),
+      client.payment.findFirst({
+        where: { userId, tournamentId },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          status: true,
+          amountMinor: true,
+          currency: true,
+          providerOrderId: true,
+          providerPaymentId: true,
+          refundReason: true,
+          paidAt: true,
+        },
+      }),
+      client.ranking.findUnique({
+        where: { tournamentId_userId: { tournamentId, userId } },
+        select: {
+          seed: true,
+          placement: true,
+          qualified: true,
+          eliminatedAtStage: true,
+          simulationScore: true,
+        },
+      }),
+      client.round.findFirst({
+        where: {
+          tournamentId,
+          type: 'SIMULATION',
+          status: { in: ['OPEN', 'JUDGING', 'PENDING'] },
+        },
+        orderBy: [{ sequence: 'asc' }],
+        select: {
+          id: true,
+          stage: true,
+          status: true,
+          opensAt: true,
+          deadlineAt: true,
+          submissions: {
+            where: { userId },
+            select: { id: true, status: true },
+            take: 1,
           },
         },
-      },
-    }),
-  ]);
+      }),
+      client.match.findFirst({
+        where: {
+          tournamentId,
+          OR: [{ competitorAId: userId }, { competitorBId: userId }],
+          round: { status: { not: 'COMPLETED' } },
+        },
+        orderBy: [{ createdAt: 'desc' }, { bracketPosition: 'asc' }],
+        select: {
+          id: true,
+          status: true,
+          competitorAId: true,
+          competitorBId: true,
+          round: {
+            select: {
+              stage: true,
+              status: true,
+              opensAt: true,
+              deadlineAt: true,
+            },
+          },
+        },
+      }),
+      client.termsAcceptance.findUnique({
+        where: {
+          userId_version: {
+            userId,
+            version: CURRENT_TERMS_VERSION,
+          },
+        },
+        select: { id: true },
+      }),
+    ]);
 
   const opponentId =
     match?.competitorAId === userId
@@ -486,7 +529,23 @@ export async function getMyTournamentState(
     tournamentId,
     isRegistered,
     registrationId: isRegistered ? (registration?.id ?? null) : null,
+    registrationStatus: registration?.status ?? null,
     registeredAt: isRegistered ? (registration?.registeredAt ?? null) : null,
+    payment: payment
+      ? {
+          id: payment.id,
+          status: payment.status,
+          amountMinor: payment.amountMinor,
+          currency: payment.currency,
+          providerOrderId: payment.providerOrderId,
+          providerPaymentId: payment.providerPaymentId,
+          failureReason:
+            payment.status === 'FAILED'
+              ? (payment.refundReason ?? 'Payment failed')
+              : null,
+          paidAt: payment.paidAt,
+        }
+      : null,
     seed: ranking?.seed ?? null,
     placement: ranking?.placement ?? null,
     qualified: ranking?.qualified ?? false,
@@ -519,7 +578,13 @@ export async function getMyTournamentState(
       githubConnected: githubAccount !== null,
       avatarSet: Boolean(user.avatarUrl),
       profileLocationSet: Boolean(user.displayName && user.city),
+      profileComplete: Boolean(user.displayName && user.city && githubAccount),
+      termsAccepted: termsAcceptance !== null,
       registered: isRegistered,
+      paymentSettled:
+        payment?.status === 'PAID' ||
+        payment?.status === 'REFUNDED' ||
+        payment === null,
     },
   };
 }

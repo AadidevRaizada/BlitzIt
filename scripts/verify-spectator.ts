@@ -541,6 +541,7 @@ async function pipeline() {
     where: { id: tournament.id },
     data: {
       youtubeStreamUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      basePrizePoolMinor: 80000,
       prizePoolMinor: 80000,
     },
   });

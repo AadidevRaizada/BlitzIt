@@ -13,6 +13,7 @@ import {
   formatUtc,
 } from '@/components/ui/page-header';
 import { LifecycleControls } from '@/components/features/lifecycle-controls';
+import { formatMinor } from '@/server/modules/notification';
 
 /**
  * Overview tab — where the tournament is, and what the operator can do next.
@@ -81,6 +82,11 @@ export function OverviewTab({ summary }: { summary: TournamentSummary }) {
                 ? `${summary.bracketSize}-competitor draw`
                 : 'not sized yet'
             }
+          />
+          <StatCard
+            label="Prize pool"
+            value={formatMinor(summary.prizePool.prizePoolMinor)}
+            hint={`${summary.prizePool.paidEntries} eligible entries`}
           />
         </div>
       </section>

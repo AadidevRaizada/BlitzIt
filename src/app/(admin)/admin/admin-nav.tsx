@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   ClipboardList,
+  CreditCard,
   FileCode2,
   Gauge,
   ScanSearch,
@@ -35,6 +36,7 @@ interface NavItem {
 const ITEMS: readonly NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: Gauge, exact: true },
   { href: '/admin/tournaments', label: 'Tournaments', icon: Trophy },
+  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
   { href: '/admin/challenges', label: 'Challenges', icon: FileCode2 },
   { href: '/admin/submissions', label: 'Submissions', icon: ClipboardList },
   { href: '/admin/evaluations', label: 'Evaluations', icon: ScanSearch },

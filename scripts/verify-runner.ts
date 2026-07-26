@@ -3,6 +3,7 @@ import { queue } from '../src/server/jobs/pg-queue';
 import { processors } from '../src/server/jobs/processors';
 import { startRunner } from '../src/server/jobs/runner';
 import { db } from '../src/server/db';
+import { NotFoundError } from '../src/lib/errors';
 
 /**
  * Milestone 0 acceptance check (E0.5 DoD): prove the Postgres-backed job loop.
@@ -41,6 +42,9 @@ async function main() {
   processors.evaluate = async () => {
     throw new Error('intentional failure');
   };
+  processors.advanceBracket = async () => {
+    throw new NotFoundError('target row is gone');
+  };
 
   const goodKeys = [0, 1, 2].map((i) => `${runId}:ok${i}`);
   for (const key of goodKeys) {
@@ -51,6 +55,12 @@ async function main() {
     'evaluate',
     { key: badKey },
     { idempotencyKey: badKey, maxAttempts: 2 },
+  );
+  const goneKey = `${runId}:not-found`;
+  await queue.enqueue(
+    'advanceBracket',
+    { tournamentId: 'missing' },
+    { idempotencyKey: goneKey },
   );
 
   startRunner();
@@ -80,6 +90,21 @@ async function main() {
     bad?.status === 'QUEUED' || bad?.status === 'FAILED',
   );
   check('failing job incremented attempts', (bad?.attempts ?? 0) >= 1);
+
+  const goneDeadline = Date.now() + 30_000;
+  let gone = await db.evaluationJob.findUnique({
+    where: { idempotencyKey: goneKey },
+  });
+  while (Date.now() < goneDeadline && gone?.status !== 'DONE') {
+    await sleep(500);
+    gone = await db.evaluationJob.findUnique({
+      where: { idempotencyKey: goneKey },
+    });
+  }
+  check(
+    'NOT_FOUND job target is discarded without retry',
+    gone?.status === 'DONE',
+  );
 
   await db.evaluationJob.deleteMany({
     where: { idempotencyKey: { startsWith: runId } },

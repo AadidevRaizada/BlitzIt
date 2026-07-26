@@ -158,16 +158,31 @@ export function SettingsTab({ summary }: { summary: TournamentSummary }) {
                   name="basePrizePoolMinor"
                   label="Base pool"
                   type="number"
+                  defaultValue={summary.basePrizePoolMinor}
                 />
                 <TextField
                   name="prizePerRegistrationMinor"
                   label="Per registration"
                   type="number"
+                  defaultValue={summary.prizePerRegistrationMinor}
+                />
+                <TextField
+                  name="sponsorContributionMinor"
+                  label="Sponsor contribution"
+                  type="number"
+                  defaultValue={summary.sponsorContributionMinor}
+                />
+                <TextField
+                  name="bonusContributionMinor"
+                  label="Bonus contribution"
+                  type="number"
+                  defaultValue={summary.bonusContributionMinor}
                 />
                 <TextField
                   name="firstPrizeCapMinor"
                   label="First prize cap"
                   type="number"
+                  defaultValue={summary.firstPrizeCapMinor}
                 />
                 <div className="md:col-span-3">
                   <Button

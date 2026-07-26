@@ -20,6 +20,7 @@ import {
   submitSolutionSchema,
   roundIdSchema,
 } from '@/lib/validation/submission.schema';
+import { assertRateLimit } from '@/server/ops/rate-limit';
 import { ok, toErr, type Result } from '@/lib/errors';
 import { captureException } from '@/lib/observability';
 
@@ -52,6 +53,7 @@ export async function submitSolutionAction(
 > {
   try {
     const user = await requireUserOrThrow();
+    assertRateLimit('submission', user.id);
 
     const parsed = submitSolutionSchema.safeParse({
       roundId: formData.get('roundId'),
