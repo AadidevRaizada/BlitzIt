@@ -2,6 +2,13 @@
 
 ## Product vision
 
+> **BlitzIt is not trying to find the best programmer. BlitzIt is trying to discover who can
+> build the best software under realistic production constraints.** (D21 — the canonical
+> positioning; it supersedes weaker framings wherever they appear.)
+
+Speed is the *pressure*, not the metric. The clock exists to force the trade-offs real engineers
+make under deadline; what gets scored is whether the resulting software holds up.
+
 Blitz It is a **competitive, AI-native coding esport**. It inverts the hackathon premise:
 instead of rewarding 24–48h endurance, it rewards developers who can understand a problem,
 wield AI tools, make sound engineering calls, and **ship a working solution in ~15 minutes**
@@ -11,6 +18,10 @@ spectator-friendly, repeatable — not a weekend hackathon.
 ## Core philosophy
 
 > "Nobody cares how fast you type. They care how fast you can ship."
+
+...and, per D21, nobody cares how pretty it is either — they care whether it survives contact with
+real usage. A submission that is elegant but breaks under load loses to one that is plain and
+holds. The 60% Functional weighting (D2) is that belief expressed as arithmetic.
 
 Everything is allowed — any AI model, any IDE, docs, Stack Overflow, tutorials, copy-paste,
 public repos, MCP servers. **The only thing that matters is whether the submission works.**

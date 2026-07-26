@@ -2,6 +2,10 @@
 
 > These decisions are **final for V1** and supersede any earlier recommendation in this
 > `docs/` set. Every other document has been updated to reflect them. Date locked: 2026-07-24.
+>
+> **D21-D29 (locked 2026-07-26)** record the platform's canonical direction - what BlitzIt
+> measures, why AI stays in the closing rounds, where evaluation is heading, and the IP policy.
+> Several are *documented direction only*; each says so explicitly.
 
 ## D1 — Evaluation Engine: no code execution
 - We **never execute competitor code** on our infrastructure.
@@ -180,6 +184,163 @@ is decided per *stage*, by configuration.
 ## D19 — Anti-cheat scope for V1 (locked)
 - Included: immutable submissions, server timestamps, **deployment-URL reuse detection**,
   **commit-SHA pinning**, manual disqualification. **No plagiarism detection in V1.**
+
+---
+
+# Canonical direction (locked 2026-07-26)
+
+> D21-D29 set the platform's long-term direction. **D21, D22, D23 and D28 are in force now.**
+> **D24, D25, D26, D27 and D29 are documented direction, deliberately NOT implemented** - they
+> exist so future epics converge instead of improvising. Nothing in this block authorises
+> building anything today.
+
+## D21 - What BlitzIt actually measures (locked)
+
+**BlitzIt is not trying to find the best programmer. BlitzIt is trying to discover who can build
+the best software under realistic production constraints.**
+
+This is the primary positioning and supersedes weaker framings ("coding esport", "who ships
+fastest", "AI-native competition") wherever they appear. Speed is the *pressure*, not the
+metric - the metric is whether the resulting software holds up.
+
+Consequences that bind the architecture:
+
+- We grade the **running artefact**, not the person and not the process (already D1).
+- A submission that is elegant but breaks under real usage must lose to one that is plain and
+  survives. The 60% Functional weighting (D2) is an expression of this, not an accident.
+- Marketing, docs and UI copy describe the product in these terms.
+
+## D22 - AI evaluation stays in the closing rounds (locked, final)
+
+Restates and **locks** D20's stage policy. This is not revisited without a new decision.
+
+| Stage | AI evaluation |
+|---|---|
+| Qualifiers (SIMULATION) | disabled |
+| R64 / R32 / R16 / QF | disabled |
+| **SF / THIRD_PLACE / FINAL** | **enabled** |
+| SUDDEN_DEATH | disabled (functional-only, D14) |
+
+Final because of **cost** (the LLM pass is the only paid per-submission call; a 64-player bracket
+plus three qualifying rounds for every registrant would multiply it by more than 10x),
+**scalability** (model latency does not fit inside a short early-round timer for a whole field),
+and **reproducibility** (early rankings must be recomputable exactly).
+
+Early rounds remain **fully deterministic**. Organizers may still re-map stages per tournament via
+`Tournament.evaluationProfiles` (D20) - the *mechanism* stays configurable; the *default* is now
+locked.
+
+## D23 - What early rounds are for (locked)
+
+Early rounds ask **"can this software survive realistic usage?"** - not "is this architecture
+beautiful?".
+
+Deterministic dimensions the early rounds do and will measure:
+
+- Functional correctness
+- Performance
+- Security
+- **Business-rule correctness**
+- **Robustness**
+
+Repository architecture review - readability, structure, documentation, design judgement - is
+**exclusive to the AI rounds** (SF / THIRD_PLACE / FINAL). It is not approximated with heuristics
+in earlier rounds.
+
+> Business-rule correctness and robustness are named here as first-class targets. Today both are
+> expressed through hidden tests; D24 is how they grow.
+
+## D24 - Hidden tests to hidden environment profiles (future direction, NOT implemented)
+
+The long-term evaluation strategy is to evolve from **hidden tests** toward **hidden environment
+profiles**: instead of asserting responses, place the submission in a realistic environment and
+observe whether it holds.
+
+Profiles will express things like:
+
+| Dimension | Example |
+|---|---|
+| Data | variable datasets, large datasets, dataset versions |
+| Load | traffic patterns, concurrency, bursts |
+| Failure | partial downstream failures, fault injection, retry scenarios |
+| Limits | rate limiting, quota exhaustion |
+| Timing | slow dependencies, network variability, latency jitter |
+
+This subsumes hidden tests rather than replacing them - an assertion is the degenerate case of a
+profile with no adverse conditions.
+
+**Do not implement now.** `HiddenTest` remains the mechanism; `Problem.contractSpec` is the
+forward-compatible place a profile would eventually be described. See
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md).
+
+## D25 - Environment profiles must be deterministic (future direction, NOT implemented)
+
+Any environment profile must be **deterministic, reproducible, seeded, logged and replayable**. A
+competitor must always be able to audit a disputed evaluation, which is impossible against an
+environment nobody can reconstruct.
+
+Every future profile run must therefore persist, alongside the existing `probeEvidence`:
+
+- `seed`
+- traffic profile
+- fault schedule
+- dataset version
+- timing profile
+
+This is the same principle already applied to LLM scoring (pinned model, prompt hash, temperature
+recorded - D18/D20): **an evaluation that cannot be re-derived is not evidence.**
+
+## D26 - Environment fairness (future direction, NOT implemented)
+
+Random luck must never decide a tournament outcome. A future environment-based evaluation must use
+one of exactly two schemes:
+
+1. **Identical seeded environments** - every competitor in a round faces the byte-identical
+   environment; or
+2. **Multiple randomized seeded environments, averaged** - each competitor faces several seeded
+   environments and the *average* determines the score.
+
+A single unseeded or per-competitor-random environment is forbidden. Where a round is head-to-head
+(knockout), scheme 1 is the default.
+
+## D27 - "PM Moment" is measured in competitor time (future direction, NOT implemented)
+
+A future dynamic-requirement-change mechanic ("PM Moment" - the requirements shift mid-round, as
+they do in real work) is timed by **elapsed competitor time**, never wall-clock tournament time.
+
+A competitor who starts late, reconnects, or is granted a window adjustment must experience the
+change at the same point in *their* run as everyone else. Anchoring to tournament wall-clock would
+hand an advantage to whoever happened to start at the right moment.
+
+This implies a future per-competitor run clock, distinct from `Round.opensAt` / `deadlineAt`,
+which are round-level and server-authoritative (D8).
+
+## D28 - Intellectual property (locked)
+
+| Point | Policy |
+|---|---|
+| Ownership | **Competitors own their code.** Submitting never transfers ownership. |
+| Our licence | BlitzIt receives a **temporary evaluation licence** only - enough to fetch, read, probe and score the submission, for as long as evaluation and dispute resolution require. |
+| AI training | **No training on submitted code.** Submissions are never used as training or fine-tuning data, by us or by any provider we send them to. |
+| Showcasing | **No public showcasing without explicit permission.** Scores and placements are public; the code and its contents are not. |
+
+Architecturally binding: `repoTextSnapshot` stores **paths and metadata, not file contents**
+(already true), evidence is retained for dispute resolution rather than reuse, and any future LLM
+provider must be configured with zero-retention / no-training terms.
+
+## D29 - The long-term moat (locked as direction)
+
+BlitzIt's differentiator is expected to shift **from AI repository evaluation to
+production-environment simulation**.
+
+AI code review is increasingly commodity - every provider will offer it. What is hard to copy is a
+library of **realistic, deterministic, replayable production environments** plus the harness that
+runs them fairly.
+
+Therefore **challenge quality and evaluation-harness quality become the primary product
+investment**. Roadmap and hiring decisions should weight these above additional AI scoring
+features.
+
 
 ---
 

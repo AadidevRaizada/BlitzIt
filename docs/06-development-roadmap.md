@@ -95,3 +95,26 @@ it has tests (where logic exists), passes CI, and is deployable to Railway.
 - **Parallelizable:** M4 (payments) alongside M3; M8 (leaderboard/notifications/HoF) alongside
   M6/M7; M9 can start design-only early (legal is the long pole).
 - **Do not** ship real prize money until M9 legal sign-off **and** M10 rehearsal both pass.
+
+---
+
+## Post-V1 direction (documented, not scheduled)
+
+Recorded so later milestones converge on one design. Full rationale in
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md); decisions D21-D29.
+
+| Theme | Direction | Decision |
+|---|---|---|
+| **Positioning** | "Who can build the best software under realistic production constraints" — not "the best programmer". Speed is pressure, not metric. | D21 |
+| **AI scope** | Stays in SF / THIRD_PLACE / FINAL. **Locked and final** on cost, scalability and reproducibility. | D22 |
+| **Early rounds** | Deterministic only: functional, performance, security, business-rule correctness, robustness. | D23 |
+| **Evaluation engine** | Hidden tests -> **hidden environment profiles** (load, faults, latency, limits, scale). | D24 |
+| **Auditability** | Every profile run seeded, logged, replayable; evidence carries seed / traffic / faults / dataset / timing. | D25 |
+| **Fairness** | Identical seeded environments, or several averaged. Never a single unseeded one. | D26 |
+| **PM Moment** | Requirement changes timed by elapsed *competitor* time; needs a per-competitor run clock. | D27 |
+| **IP** | Competitors own their code; temporary evaluation licence; no training; no showcasing without permission. | D28 |
+| **Moat** | From AI repository evaluation to **production-environment simulation**. Challenge + harness quality become the primary investment. | D29 |
+
+**Sequencing note.** None of D24-D27 is scheduled. They are expected to follow the V1 season, once
+real tournaments have shown which failure modes actually separate competitors — building the
+environment library before that evidence exists would be guesswork.

@@ -16,6 +16,14 @@
 > This directory remains the source-of-truth blueprint; visual decisions live in
 > [`design-system.md`](./design-system.md).
 
+## What BlitzIt measures (D21)
+
+> **BlitzIt is not trying to find the best programmer. BlitzIt is trying to discover who can build
+> the best software under realistic production constraints.**
+
+Speed is the pressure, not the metric. Where evaluation goes from here is recorded in
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md) (D21-D29).
+
 ## The single most important decision
 
 **We do not execute competitors' code — at all.** Competitors submit a **public GitHub repo**
@@ -67,6 +75,7 @@ means a fresh deploy would not reproduce your schema.
 | **16** | **[Sprint Plan](./16-sprint-plan.md)** | Sequenced sprints |
 | **17** | **[Tournament Lifecycle & Bracket Engine](./17-tournament-lifecycle.md)** | E3 as built: state machine, seeding, bracket, advancement |
 | **18** | **[Submission Pipeline](./18-submission-pipeline.md)** | E4 as built: submission lifecycle, validation, queue handoff, job states |
+| **20** | **[Evaluation Strategy Roadmap](./20-evaluation-strategy-roadmap.md)** | **Future work.** Hidden environment profiles, determinism, fairness, PM Moment, IP, the moat (D21-D29) |
 | — | **[Design System](./design-system.md)** | Brand, tokens, typography, components, motion |
 | — | [OAuth Setup](./oauth-setup.md) | GitHub/Google OAuth app setup for local dev |
 | — | [Coding Standards](./coding-standards.md) | Conventions, boundaries, security |

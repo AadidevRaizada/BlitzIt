@@ -322,6 +322,11 @@ export type ConfigureTournamentFormInput = z.infer<
   typeof configureTournamentFormSchema
 >;
 
+export const startSuddenDeathSchema = z.object({
+  matchId: z.string().uuid('Invalid match'),
+  problemId: z.string().uuid('Invalid problem'),
+});
+
 export const removeRegistrationSchema = z.object({
   tournamentId: z.string().uuid('Invalid tournament'),
   userId: z.string().uuid('Invalid competitor'),

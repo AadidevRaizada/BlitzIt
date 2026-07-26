@@ -6,8 +6,13 @@ import { NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { resolveTournamentConfig } from './config';
 import { knockoutStages, toLifecycleState } from './lifecycle';
-import { advanceStage, getRoundCompletion } from './advancement';
+import {
+  advanceStage,
+  getRoundCompletion,
+  resolveSuddenDeathMatches,
+} from './advancement';
 import { closeRound, completeRound, openRound } from './rounds';
+import { completeSettledSuddenDeathRounds } from './sudden-death';
 import { applyTransition, type TransitionResult } from './state';
 import { isBracketSize } from './config';
 
@@ -32,6 +37,8 @@ export interface ProgressResult {
   matchesDecided: number;
   /** Matches stuck on an unresolved tie (D5.6 — needs sudden death). */
   matchesTied: number;
+  /** Sudden-death challenges decided during this pass (E6). */
+  suddenDeathResolved: number;
   /** Simulation rounds sealed during this pass. */
   simulationRoundsClosed: number;
   /** Simulation rounds opened during this pass. */
@@ -124,6 +131,7 @@ export async function progressTournament(
     startedAtStage: tournament.currentStage,
     matchesDecided: 0,
     matchesTied: 0,
+    suddenDeathResolved: 0,
     simulationRoundsClosed: 0,
     simulationRoundsOpened: 0,
     transitions: [],
@@ -189,6 +197,34 @@ export async function progressTournament(
         'submission window expired; round sealed for judging',
       );
     }
+
+    // Seal an expired SUDDEN_DEATH window too, then decide those matches first:
+    // a sudden-death result unsticks a match in the CURRENT round, so resolving
+    // it before the stage pass lets the round complete in the same call rather
+    // than needing a second one.
+    const suddenDeathRounds = await db.round.findMany({
+      where: { tournamentId, stage: 'SUDDEN_DEATH', status: 'OPEN' },
+      select: { id: true, deadlineAt: true },
+    });
+    for (const sdRound of suddenDeathRounds) {
+      if (sdRound.deadlineAt !== null && sdRound.deadlineAt < new Date()) {
+        await closeRound(db, sdRound.id);
+      }
+    }
+
+    const suddenDeathDecisions = await db.$transaction(
+      (tx) => resolveSuddenDeathMatches(tx, tournamentId, config),
+      { timeout: 60_000, maxWait: 15_000 },
+    );
+    result.suddenDeathResolved += suddenDeathDecisions.filter(
+      (decision) => decision.changed && decision.outcome.kind !== 'TIE',
+    ).length;
+
+    // Close out any sudden-death round that is fully decided. No lifecycle
+    // transition does this — COMPLETE finishes the FINAL round only — so
+    // without it a tournament could reach COMPLETED with a sudden-death round
+    // still OPEN and nothing left running to tidy it.
+    await completeSettledSuddenDeathRounds(db, tournamentId);
 
     // Decide the whole round atomically: a half-advanced round would leave
     // winners sitting in slots whose round never completed.

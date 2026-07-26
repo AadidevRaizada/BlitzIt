@@ -130,6 +130,7 @@ export {
   decideMatch,
   rankByWinRule,
   TIE_BREAK_CHAIN,
+  SUDDEN_DEATH_CHAIN,
   type CompetitorResult,
   type MatchOutcome,
   type WinRuleOptions,
@@ -140,10 +141,21 @@ export {
   advanceStage,
   resolveDeterminedMatches,
   getRoundCompletion,
+  resolveSuddenDeathMatches,
   assignFinalPlacements,
   type MatchDecision,
   type RoundCompletion,
 } from './advancement';
+
+// ---- Sudden death (D5.6 / D14, E6) ----
+export {
+  startSuddenDeath,
+  listDeadlockedMatches,
+  applySuddenDeathResult,
+  completeSettledSuddenDeathRounds,
+  listSuddenDeathRounds,
+  type StartSuddenDeathResult,
+} from './sudden-death';
 
 export {
   progressTournament,

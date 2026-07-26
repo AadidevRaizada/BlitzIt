@@ -3,6 +3,11 @@
 A weekly, live, knockout tournament for builders. Competitors ship a working product against a
 timer; an evaluation engine scores it; a bracket runs to a champion on stream.
 
+> **BlitzIt is not trying to find the best programmer. BlitzIt is trying to discover who can build
+> the best software under realistic production constraints.** Speed is the pressure, not the
+> metric — see [D21](./docs/DECISIONS.md) and the
+> [evaluation strategy roadmap](./docs/20-evaluation-strategy-roadmap.md).
+
 The defining constraint: **we never execute competitors' code.** Each submission is a public
 GitHub repo plus a live deployment the competitor hosts themselves. The engine probes the running
 deployment as a black box and reads the repository as text. No sandbox, no containers, no
@@ -17,6 +22,8 @@ cloning-to-build. See [`docs/DECISIONS.md`](./docs/DECISIONS.md) (D1).
 | **E2** | Evaluation Engine | ✅ complete |
 | **E3** | Tournament lifecycle, seeding & bracket engine | ✅ complete |
 | **E4** | Submission system & evaluation pipeline | ✅ complete |
+| **E5** | Admin platform & tournament management | ✅ complete |
+| **E6** | Sudden death & bracket UI | ✅ complete |
 | **E5** | Admin platform & tournament management UI | complete |
 | E6 | Future epic | not started |
 
@@ -63,6 +70,7 @@ a resolved profile. Neither knows about payments, and neither knows about users 
 Deep dives:
 [tournament lifecycle & bracket engine](./docs/17-tournament-lifecycle.md) ·
 [submission pipeline](./docs/18-submission-pipeline.md) ·
+[evaluation strategy roadmap](./docs/20-evaluation-strategy-roadmap.md) ·
 [module breakdown](./docs/04-module-breakdown.md) ·
 [API specification](./docs/11-api-specification.md) ·
 [database design](./docs/02-database-design.md)
@@ -95,6 +103,8 @@ real network probes.
 | `npm run verify:bracket` | Bracket topology at 8/16/32/64, byes, seeding, the D5 win rule |
 | `npm run verify:tournament:e2e` | A tournament from DRAFT to COMPLETED, incl. restart recovery |
 | `npm run verify:submission` | Submission state machine, validation, job lifecycle, full pipeline |
+| `npm run verify:admin` | Admin platform: CRUD, lifecycle, registrations, permissions |
+| `npm run verify:sudden-death` | D14 sudden death: win rule, guards, resolution, bracket DoD |
 | `npm run verify:admin` | Admin platform workflows, guards, audited tournament management |
 | `npm run verify:llm` | LLM provider wiring (needs a configured key) |
 

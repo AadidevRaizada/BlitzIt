@@ -123,6 +123,12 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
   stage → profile mapping lives in the **Tournament** module
   (`modules/tournament/evaluation-profiles.ts`); see module 4. Keeping this split is what lets
   organizers re-scope AI without touching scoring code.
+- **Future direction (D24/D25/D29 — NOT implemented):** hidden tests evolve into **hidden
+  environment profiles** (load, faults, latency, limits, scale), which must be deterministic,
+  seeded and replayable. `Problem.contractSpec`, the `EvaluationStrategy` interface and
+  `Evaluation.probeEvidence` are the forward-compatible seams. D1 still holds absolutely — a
+  profile shapes the *traffic and conditions we send*, never code we execute. See
+  [`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md).
 - **Scalability:** concurrency-capped in-process today; the `Queue` interface + `EvaluationJob`
   table let us extract a dedicated worker + BullMQ later without touching call sites. Per-
   tournament pinned model for reproducibility; retry with backoff via `availableAt`.

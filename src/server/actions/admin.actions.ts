@@ -8,6 +8,7 @@ import {
   listRegistrations,
   removeRegistration,
   setTournamentArchived,
+  startSuddenDeath,
   updateTournament,
   updateTournamentSchedule,
 } from '@/server/modules/tournament';
@@ -36,6 +37,7 @@ import {
   problemIdSchema,
   removeRegistrationSchema,
   scheduleFormSchema,
+  startSuddenDeathSchema,
   updateProblemFormSchema,
   updateTournamentFormSchema,
 } from '@/lib/validation/admin.schema';
@@ -375,6 +377,42 @@ export async function archiveTournamentAction(
     return ok({ archived: updated.archivedAt !== null });
   } catch (error) {
     captureException(error, { where: 'archiveTournamentAction' });
+    return toErr(error);
+  }
+}
+
+// ───────────────────────── Sudden death (D5.6 / D14) ─────────────────────────
+
+/**
+ * Open a sudden-death challenge for a match the D5 tie-breaks could not
+ * separate. The module owns every rule — that the match is genuinely deadlocked,
+ * that the problem is published and is NOT the one the tied round used (D14
+ * calls for a new challenge), and that all ties at a stage share one round.
+ */
+export async function startSuddenDeathAction(
+  matchId: string,
+  problemId: string,
+  tournamentId: string,
+): Promise<Result<{ suddenDeathMatchId: string; roundId: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = startSuddenDeathSchema.safeParse({ matchId, problemId });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const result = await startSuddenDeath(
+      parsed.data.matchId,
+      parsed.data.problemId,
+      admin,
+    );
+
+    revalidateAdmin(tournamentId);
+    revalidatePath(`/bracket/${tournamentId}`);
+    return ok({
+      suddenDeathMatchId: result.suddenDeathMatch.id,
+      roundId: result.round.id,
+    });
+  } catch (error) {
+    captureException(error, { where: 'startSuddenDeathAction' });
     return toErr(error);
   }
 }

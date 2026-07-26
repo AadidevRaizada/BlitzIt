@@ -1,8 +1,13 @@
 import Link from 'next/link';
 import {
   listBracketRounds,
+  listDeadlockedMatches,
   type TournamentSummary,
 } from '@/server/modules/tournament';
+import { listAssignableProblems } from '@/server/modules/problem';
+import { requireAdminOrThrow } from '@/server/modules/auth';
+import { BracketTree } from '@/components/features/bracket-tree';
+import { SuddenDeathControl } from './sudden-death-control';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, StatCard } from '@/components/ui/card';
 import { SectionTitle } from '@/components/ui/page-header';
@@ -17,7 +22,27 @@ import { buttonVariants } from '@/components/ui/button';
  * persisted match state and links to submissions/evaluations for inspection.
  */
 export async function BracketTab({ summary }: { summary: TournamentSummary }) {
-  const rounds = await listBracketRounds(summary.id);
+  const admin = await requireAdminOrThrow();
+  const [rounds, deadlocked, problems] = await Promise.all([
+    listBracketRounds(summary.id),
+    listDeadlockedMatches(summary.id),
+    listAssignableProblems(admin),
+  ]);
+
+  // Deadlocked matches carry competitor ids; the bracket read model already
+  // resolved every name, so reuse that rather than querying users again.
+  const nameById = new Map(
+    rounds
+      .flatMap((round) => round.matches)
+      .flatMap((match) => [
+        [match.competitorAId, match.competitorA] as const,
+        [match.competitorBId, match.competitorB] as const,
+      ])
+      .filter(
+        (entry): entry is readonly [string, string] =>
+          typeof entry[0] === 'string' && typeof entry[1] === 'string',
+      ),
+  );
 
   return (
     <div className="space-y-6">
@@ -30,6 +55,58 @@ export async function BracketTab({ summary }: { summary: TournamentSummary }) {
         />
         <StatCard label="Bracket size" value={summary.bracketSize ?? 'Auto'} />
       </div>
+
+      {deadlocked.length > 0 ? (
+        <section className="space-y-3">
+          <SectionTitle>
+            Deadlocked matches — sudden death required
+          </SectionTitle>
+          <Card>
+            <CardContent className="space-y-3 pt-4">
+              <p className="text-muted-foreground text-sm">
+                The win rule and every D5 tie-break failed to separate these
+                competitors. D14 calls for a <strong>new</strong> 10-minute
+                challenge decided on Functional score alone. All ties at a stage
+                share one sudden-death round, so they face the same challenge.
+              </p>
+              <ul className="divide-border divide-y">
+                {deadlocked.map((match) => (
+                  <li
+                    key={match.id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-2"
+                  >
+                    <div className="text-sm">
+                      <span className="font-medium">
+                        {match.round.stage.replace('_', ' ')} · #
+                        {match.bracketPosition + 1}
+                      </span>
+                      <span className="text-muted-foreground block text-xs">
+                        {nameById.get(match.competitorAId ?? '') ?? '—'} vs{' '}
+                        {nameById.get(match.competitorBId ?? '') ?? '—'}
+                      </span>
+                    </div>
+                    <SuddenDeathControl
+                      matchId={match.id}
+                      tournamentId={summary.id}
+                      problems={problems.map((problem) => ({
+                        id: problem.id,
+                        title: problem.title,
+                        category: problem.category,
+                      }))}
+                      excludeProblemId={match.round.problemId}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      ) : null}
+
+      <section className="space-y-3">
+        <SectionTitle>Bracket</SectionTitle>
+        <BracketTree rounds={rounds} />
+      </section>
 
       <section className="space-y-3">
         <SectionTitle>Rounds</SectionTitle>

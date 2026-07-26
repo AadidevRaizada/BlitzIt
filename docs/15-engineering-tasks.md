@@ -80,13 +80,15 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
   tree with byes.
 - **E6.2 (L)** ✅ *(in E3)* `advanceBracket`: win rule + tie-breaks (D5), atomic advancement,
   walkover, third place, completion.
-- **E6.3 (M)** ⏳ Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution.
-  *(E3 sets `Match.tieUnresolved` and holds the match — the hook exists, the resolution does not.)*
-- **E6.4 (M)** ⏳ Bracket UI [11] + admin bracket [21].
+- **E6.3 (M)** ✅ Sudden-death: `startSuddenDeath`, sudden-death round/match, resolution (D14).
+  One round per originating stage; admin picks a NEW published problem; the winner is written onto
+  the deadlocked match with `winReason = SUDDEN_DEATH` and normal advancement continues.
+- **E6.4 (M)** ✅ Bracket UI [11] (`/bracket/[tournamentId]`, own path highlighted) + admin bracket
+  [21] with the deadlock list and sudden-death controls. *Server-rendered; SSE lands with E7.*
 - **E6.5 (M)** ✅ *(in E3)* Unit tests: all bracket sizes, byes, every tie-break path.
   *(Sudden-death coverage lands with E6.3.)*
-- **DoD:** full bracket runs to a champion in fast-forward incl. forced tie → sudden-death.
-  *(Champion path proven in E3; the forced-tie path awaits E6.3.)*
+- **DoD:** ✅ full bracket runs to a champion in fast-forward incl. forced tie → sudden-death.
+  *(Proven end to end by `verify:sudden-death`.)*
 
 ## E7 — Live knockout arena (M7)
 - **E7.1 (L)** Server-authoritative timers; simultaneous reveal; per-match windows.
@@ -122,3 +124,30 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
 - Tests for: scoring blend, bracket/tie-breaks, payment idempotency, job claim/retry, timers.
 - Every mutation: zod + authz + idempotency + audit where privileged.
 - Accessibility + responsive + light/dark + IST display on every screen.
+
+---
+
+## Future work (not scheduled)
+
+**Documented direction only — do not implement without a scheduling decision.** Rationale in
+[`20-evaluation-strategy-roadmap.md`](./20-evaluation-strategy-roadmap.md).
+
+- **F1 — Hidden environment profiles (D24).** Extend hidden tests into environment profiles:
+  variable/large datasets, traffic patterns, concurrency, retries, partial downstream failures,
+  rate limiting, slow dependencies, network variability. Seams already in place:
+  `Problem.contractSpec`, the `EvaluationStrategy` interface, `Evaluation.probeEvidence`.
+  *Must not introduce code execution — D1 holds.*
+- **F2 — Profile determinism + evidence (D25).** Persist `seed`, traffic profile, fault schedule,
+  dataset version and timing profile per run. A run that cannot be replayed must not score.
+- **F3 — Fairness scheme (D26).** Identical seeded environments per round, or N seeded
+  environments averaged. Fix the seed set once per round, never per submission.
+- **F4 — PM Moment (D27).** Mid-round requirement change, timed by **elapsed competitor time**.
+  Requires a per-competitor run clock distinct from `Round.opensAt` / `deadlineAt`.
+- **F5 — Business-rule + robustness scoring (D23).** First-class deterministic dimensions for the
+  early rounds; today approximated by hidden tests, properly served by F1.
+
+### Naming hazard
+
+D20's `EvaluationProfile` (*which dimensions* are scored at a stage) and a D24 *environment
+profile* (*what conditions* the software faces) are different concepts. F1 must not reuse the
+`EvaluationProfile` name.
