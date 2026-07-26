@@ -1,499 +1,479 @@
 import Link from 'next/link';
-import {
-  ArrowRight,
-  CalendarDays,
-  CirclePlay,
-  ShieldCheck,
-  Swords,
-  Trophy,
-} from 'lucide-react';
+import { ArrowRight, CirclePlay, Radio, Trophy } from 'lucide-react';
 import { getCurrentUser } from '@/server/modules/auth';
 import { listHallOfFame } from '@/server/modules/hall-of-fame';
 import { formatMinor } from '@/server/modules/notification';
-import { getSpectatorSnapshot } from '@/server/modules/tournament';
-import type { LiveSnapshot } from '@/server/modules/tournament';
+import {
+  getSpectatorSnapshot,
+  listMyLiveMatches,
+  type LiveSnapshot,
+  type MyMatchSummary,
+} from '@/server/modules/tournament';
 import { BracketTree } from '@/components/features/bracket-tree';
 import { Countdown } from '@/components/features/countdown';
+import { HomeMotion } from '@/components/features/home-motion';
 import { LiveLeaderboard } from '@/components/features/live-leaderboard';
-import { LivePill } from '@/components/features/live-pill';
 import { LiveRefresh } from '@/components/features/live-refresh';
 import { StreamEmbed } from '@/components/features/stream-embed';
-import { Badge } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { DisplayHeading } from '@/components/ui/display-heading';
-import { Section } from '@/components/ui/section';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
-type FeaturedMatch = {
-  id: string;
-  stage: string;
-  position: number;
-  status: string;
-  competitorA: string | null;
-  competitorB: string | null;
-  seedA: number | null;
-  seedB: number | null;
-  winner: string | null;
+type HeroStat = {
+  label: string;
+  value: string;
+  count?: number;
+  tone?: 'default' | 'danger';
 };
 
 export default async function HomePage() {
   const [snapshot, hallOfFame, user] = await Promise.all([
     getSpectatorSnapshot({ leaderboardTake: 10 }),
-    listHallOfFame({ take: 3 }),
+    listHallOfFame({ take: 1 }),
     getCurrentUser(),
   ]);
 
+  const liveMatches = user
+    ? (await listMyLiveMatches(user.id)).filter(
+        (match) => match.matchStatus !== 'DECIDED',
+      )
+    : [];
+  const liveMatch = liveMatches[0] ?? null;
+  const champion = hallOfFame[0] ?? null;
   const live = snapshot?.status === 'LIVE';
   const registering = snapshot?.status === 'REGISTRATION_OPEN';
   const completed = snapshot?.status === 'COMPLETED';
+  const ctaHref = user ? '/dashboard' : '/login';
   const ctaLabel = registering
-    ? 'Enter The Circuit'
+    ? 'Enter Simulation'
     : user
       ? 'Open Dashboard'
       : 'Sign In';
-  const featuredMatches = getFeaturedMatches(snapshot);
+  const stats = getHeroStats(snapshot);
 
   return (
-    <main className="bg-surface-deep">
-      <section className="relative isolate overflow-hidden">
-        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_72%_18%,oklch(0.78_0.2_160_/_0.18),transparent_28%),radial-gradient(circle_at_16%_38%,oklch(0.62_0.21_289_/_0.24),transparent_34%),linear-gradient(135deg,oklch(0.065_0.015_289),oklch(0.025_0.01_289)_56%,oklch(0.05_0.018_160))]" />
-        <div className="mx-auto max-w-[1760px] px-3 py-3 sm:px-4 lg:px-5">
-          <TournamentSlate snapshot={snapshot} live={live} />
+    <HomeMotion>
+      <main className="bg-background text-foreground min-h-screen">
+        <Ticker snapshot={snapshot} live={live} />
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_400px]">
-            <div className="border-hairline bg-background/35 relative min-h-[620px] overflow-hidden border shadow-2xl">
-              <BroadcastVisual snapshot={snapshot} live={live} />
+        <div className="border-hairline flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:px-7">
+          <div className="font-pixel text-lg font-bold tracking-normal uppercase">
+            The Circuit
+          </div>
+          <StatusChip>{snapshot?.name ?? 'No tournament scheduled'}</StatusChip>
+          <StatusChip active>
+            {snapshot
+              ? snapshot.currentStage
+                ? formatStage(snapshot.currentStage)
+                : statusLabel(snapshot.status)
+              : 'Standby'}
+          </StatusChip>
+          <div className="min-w-0 flex-1" />
+          {snapshot ? (
+            <LiveRefresh
+              tournamentId={snapshot.tournamentId}
+              initialVersion={snapshot.version}
+            />
+          ) : null}
+          <Link
+            href={ctaHref}
+            className={cn(buttonVariants({ variant: 'broadcast', size: 'sm' }))}
+          >
+            {user ? 'Dashboard' : 'Sign In'}
+          </Link>
+        </div>
 
-              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.9),rgba(0,0,0,0.5)_44%,rgba(0,0,0,0.18)),linear-gradient(0deg,rgba(0,0,0,0.94),transparent_46%,rgba(0,0,0,0.52))]" />
+        {snapshot ? (
+          <>
+            <section className="border-hairline grid border-b xl:grid-cols-[minmax(0,1.62fr)_minmax(340px,0.85fr)]">
+              <div className="border-hairline relative min-h-[620px] overflow-hidden px-5 py-10 sm:px-10 xl:border-r">
+                <BroadcastBackdrop live={live} />
 
-              <div className="absolute inset-x-0 top-0 flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6">
-                <div className="flex flex-wrap items-center gap-3">
-                  <LivePill
-                    live={live}
-                    label={
-                      live
-                        ? 'Live'
-                        : completed
-                          ? 'Completed'
-                          : registering
-                            ? 'Registration Open'
-                            : 'Standby'
-                    }
-                  />
-                  <span className="bg-surface-deep/80 text-foreground border-hairline border px-3 py-1 text-xs font-extrabold tracking-[0.14em] uppercase">
-                    Sunday Finals
-                  </span>
-                </div>
-
-                {snapshot ? (
-                  <LiveRefresh
-                    tournamentId={snapshot.tournamentId}
-                    initialVersion={snapshot.version}
-                  />
-                ) : null}
-              </div>
-
-              <div className="absolute inset-x-0 bottom-0 p-4 sm:p-7 lg:p-9">
-                <div className="max-w-3xl">
-                  <p className="font-pixel text-secondary text-sm font-bold uppercase">
-                    The Circuit live tournament platform
+                <div className="relative flex flex-wrap items-start justify-between gap-5">
+                  <p className="text-secondary font-mono text-xs font-semibold tracking-[0.22em] uppercase">
+                    The Circuit . AI-native coding esport
                   </p>
-                  <h1 className="font-pixel mt-4 max-w-3xl text-[clamp(2.5rem,5.6vw,5.25rem)] leading-[0.9] font-bold tracking-normal text-balance uppercase">
-                    Build. Qualify. Win live.
-                  </h1>
-                  <p className="text-muted-foreground mt-5 max-w-2xl text-base leading-7 sm:text-lg">
-                    Weekly builder tournaments with sealed challenges,
-                    simulation-based seeding, live knockout rounds and a public
-                    champion ceremony.
-                  </p>
-
-                  <div className="mt-7 flex flex-wrap items-center gap-3">
-                    <Link
-                      href={user ? '/dashboard' : '/login'}
+                  <div className="border-hairline bg-background/70 flex items-center gap-2 border px-3 py-2">
+                    <span
                       className={cn(
-                        buttonVariants({
-                          variant: 'broadcast',
-                          size: 'broadcast',
-                        }),
+                        'size-2 rounded-full',
+                        live ? 'home-live-dot bg-destructive' : 'bg-muted',
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        'font-mono text-[0.68rem] font-bold tracking-[0.16em] uppercase',
+                        live ? 'text-destructive' : 'text-muted-foreground',
                       )}
                     >
-                      {ctaLabel}
-                      <ArrowRight className="size-4" aria-hidden />
-                    </Link>
-                    <Link
-                      href="/leaderboard"
-                      className={cn(
-                        buttonVariants({ variant: 'secondary', size: 'lg' }),
-                        'border-hairline bg-surface-raised/85 hover:bg-surface-elevated',
-                      )}
-                    >
-                      Rankings
-                    </Link>
+                      {live ? 'Live' : completed ? 'Completed' : 'Standby'}
+                    </span>
                   </div>
                 </div>
 
-                <div className="mt-8 grid max-w-5xl gap-3 sm:grid-cols-3">
-                  <HeroMetric
-                    label="Competitors"
-                    value={snapshot ? String(snapshot.participantCount) : '--'}
-                  />
-                  <HeroMetric
-                    label="Prize Pool"
-                    value={
-                      snapshot
-                        ? formatMinor(
-                            snapshot.prizePoolMinor,
-                            snapshot.currency,
-                          )
-                        : '--'
-                    }
-                  />
-                  <HeroMetric
-                    label="Current Stage"
-                    value={
-                      snapshot?.currentRound
-                        ? formatStage(snapshot.currentRound.stage)
-                        : statusLabel(snapshot?.status)
-                    }
+                <div className="font-pixel relative mt-8 text-[clamp(3rem,8vw,5.8rem)] leading-[0.9] font-bold tracking-normal text-balance uppercase">
+                  <div className="home-hero-line">Build.</div>
+                  <div className="home-hero-line">Qualify.</div>
+                  <div className="home-hero-line text-secondary">Win Live.</div>
+                </div>
+
+                <p className="home-rise text-muted-foreground relative mt-6 max-w-2xl text-base leading-7 text-pretty sm:text-lg">
+                  Fifteen minutes. One shot. Sealed challenges drop
+                  simultaneously, the automated judge grades shipped work, and
+                  the survivors fight it out live.
+                </p>
+
+                <div className="home-rise relative mt-7 flex flex-wrap gap-3">
+                  <Link
+                    href={ctaHref}
+                    className={cn(
+                      buttonVariants({
+                        variant: 'broadcast',
+                        size: 'broadcast',
+                      }),
+                    )}
+                  >
+                    {ctaLabel}
+                    <ArrowRight className="size-4" aria-hidden />
+                  </Link>
+                  <Link
+                    href={snapshot.youtubeStreamUrl ? '#broadcast' : '/rules'}
+                    className={cn(
+                      buttonVariants({ variant: 'secondary', size: 'lg' }),
+                      'border-hairline bg-surface-raised/85 hover:bg-surface-elevated',
+                    )}
+                  >
+                    {snapshot.youtubeStreamUrl ? 'Watch Live' : 'Read Rules'}
+                  </Link>
+                </div>
+
+                <div className="home-rise border-hairline bg-hairline relative mt-10 grid border sm:grid-cols-2 lg:grid-cols-4">
+                  {stats.map((stat) => (
+                    <HeroStatCard key={stat.label} stat={stat} />
+                  ))}
+                </div>
+              </div>
+
+              <aside className="bg-background">
+                <MatchCenter snapshot={snapshot} live={live} />
+              </aside>
+            </section>
+
+            <section
+              id="broadcast"
+              className="border-hairline grid border-b xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]"
+            >
+              <div className="border-hairline p-5 sm:p-7 xl:border-r">
+                <div className="mb-4 flex items-baseline justify-between gap-4">
+                  <h2 className="font-pixel text-2xl font-bold uppercase">
+                    Broadcast
+                  </h2>
+                  <span className="text-destructive font-mono text-xs font-semibold tracking-[0.14em] uppercase">
+                    {live ? 'Live' : 'Stream'}
+                  </span>
+                </div>
+                <div className="border-hairline bg-surface-raised relative overflow-hidden border">
+                  <div className="home-sweep pointer-events-none absolute inset-y-0 left-0 z-10 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.881_0.205_158.31_/_0.08),transparent)]" />
+                  <StreamEmbed
+                    url={snapshot.youtubeStreamUrl}
+                    title="The Circuit livestream"
                   />
                 </div>
               </div>
-            </div>
 
-            <MatchCenter
-              snapshot={snapshot}
-              featuredMatches={featuredMatches}
-              live={live}
-            />
-          </div>
-        </div>
-      </section>
+              <div className="p-5 sm:p-7">
+                <div className="mb-4 flex items-baseline justify-between gap-4">
+                  <h2 className="font-pixel text-2xl font-bold uppercase">
+                    Live Standings
+                  </h2>
+                  <Link
+                    href="/leaderboard"
+                    className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    All Rankings
+                  </Link>
+                </div>
+                <Card surface="broadcast" className="p-4">
+                  <LiveLeaderboard
+                    entries={snapshot.leaderboard}
+                    highlightUserId={user?.id ?? null}
+                    compact
+                    broadcast
+                  />
+                </Card>
+              </div>
+            </section>
 
-      {snapshot ? (
-        <>
-          <Section className="bg-background py-10 sm:py-12">
-            <div className="grid gap-6 lg:grid-cols-[0.7fr_1.3fr]">
-              <div>
-                <Badge tone={live ? 'live' : 'brand'}>
-                  {statusLabel(snapshot.status)}
-                </Badge>
-                <DisplayHeading size="compact" className="mt-4">
-                  {snapshot.currentRound
-                    ? formatStage(snapshot.currentRound.stage)
-                    : snapshot.name}
-                </DisplayHeading>
-                <p className="text-muted-foreground mt-4 max-w-md text-sm leading-6">
-                  {snapshot.currentRound?.revealed
-                    ? (snapshot.currentRound.problemTitle ??
-                      'Challenge revealed')
-                    : 'Challenge details stay sealed until the round opens.'}
+            {snapshot.bracket.some((round) => round.matches.length > 0) ? (
+              <section className="border-hairline border-b p-5 sm:p-7">
+                <div className="mb-5 flex flex-wrap items-baseline justify-between gap-4">
+                  <h2 className="font-pixel text-2xl font-bold uppercase">
+                    Sunday Bracket
+                  </h2>
+                  <Link
+                    href={`/bracket/${snapshot.tournamentId}`}
+                    className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    Open Bracket
+                  </Link>
+                </div>
+                <Card surface="broadcast" className="p-4">
+                  <BracketTree
+                    rounds={snapshot.bracket}
+                    highlightUserId={user?.id ?? null}
+                  />
+                </Card>
+                <p className="text-muted-foreground mt-3 font-mono text-xs">
+                  Bracket data is public-safe; unrevealed problem titles remain
+                  hidden.
                 </p>
-              </div>
-              <Card surface="broadcast" className="p-4">
-                <LiveLeaderboard
-                  entries={snapshot.leaderboard}
-                  highlightUserId={user?.id ?? null}
-                  compact
-                />
-              </Card>
-            </div>
-          </Section>
+              </section>
+            ) : null}
+          </>
+        ) : (
+          <NoTournament />
+        )}
 
-          {snapshot.bracket.some((round) => round.matches.length > 0) ? (
-            <Section bleed className="bg-surface-deep">
-              <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-                <DisplayHeading>The Bracket</DisplayHeading>
-                <Link
-                  href={`/bracket/${snapshot.tournamentId}`}
-                  className="text-primary hover:text-secondary focus-visible:ring-ring rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
-                >
-                  Full bracket
-                </Link>
-              </div>
-              <Card surface="broadcast" className="p-4">
-                <BracketTree
-                  rounds={snapshot.bracket}
-                  highlightUserId={user?.id ?? null}
-                />
-              </Card>
-            </Section>
-          ) : null}
-        </>
-      ) : (
-        <Section className="bg-background">
-          <Card surface="broadcast" className="p-8 text-center">
-            <DisplayHeading size="compact" className="mx-auto">
-              No tournament is scheduled yet.
-            </DisplayHeading>
-            <p className="text-muted-foreground mx-auto mt-3 max-w-xl text-sm">
-              Sign in now and return when registration opens for the next weekly
-              bracket.
-            </p>
-          </Card>
-        </Section>
-      )}
+        <section className="border-hairline grid border-b lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="border-hairline p-5 sm:p-7 lg:border-r">
+            <h2 className="font-pixel text-2xl font-bold uppercase">
+              League Format
+            </h2>
+            <ol className="mt-5 grid gap-3 md:grid-cols-2">
+              <Step
+                title="Register"
+                body="Entry opens before the tournament. The live page uses only registered participant counts."
+              />
+              <Step
+                title="Qualify"
+                body="Simulation scores seed the bracket after the sealed qualifying window closes."
+              />
+              <Step
+                title="Knockout"
+                body="Head-to-head rounds reveal to both competitors at the same instant."
+              />
+              <Step
+                title="Record"
+                body="Completed tournaments publish placements and champions to the Hall of Fame."
+              />
+            </ol>
+          </div>
 
-      <Section className="bg-surface-raised">
-        <div className="mb-8 flex items-end justify-between gap-4">
-          <DisplayHeading>League Format</DisplayHeading>
-        </div>
-        <ol className="grid gap-3 md:grid-cols-4">
-          <Step
-            n="01"
-            title="Register"
-            body="Entry opens through the week. The prize pool grows with the field."
-          />
-          <Step
-            n="02"
-            title="Qualify"
-            body="Timed simulation scores determine the initial tournament seed."
-          />
-          <Step
-            n="03"
-            title="Knockout"
-            body="Head-to-head challenges reveal to both competitors at the same instant."
-          />
-          <Step
-            n="04"
-            title="Final"
-            body="The last matches crown the champion and publish the permanent record."
-          />
-        </ol>
-      </Section>
-
-      <Section className="bg-background">
-        <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-          <DisplayHeading>Champions</DisplayHeading>
-          <Link
-            href="/hall-of-fame"
-            className="text-primary hover:text-secondary focus-visible:ring-ring rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
-          >
-            Hall of Fame
-          </Link>
-        </div>
-        {hallOfFame.length > 0 ? (
-          <ul className="grid gap-4 md:grid-cols-3">
-            {hallOfFame.map((entry) => (
-              <li key={entry.tournamentId}>
-                <Card surface="broadcast" className="min-h-56 p-5">
-                  <Trophy className="text-secondary size-7" aria-hidden />
-                  <p className="text-muted-foreground mt-8 text-sm">
-                    {entry.tournamentName}
+          <div className="p-5 sm:p-7">
+            <h2 className="font-pixel text-2xl font-bold uppercase">
+              Reigning Champion
+            </h2>
+            {champion ? (
+              <div className="mt-5 grid gap-5 sm:grid-cols-[auto_1fr]">
+                <div className="home-drift border-hairline bg-secondary text-secondary-foreground flex size-20 items-center justify-center border">
+                  <Trophy className="size-9" aria-hidden />
+                </div>
+                <div>
+                  <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.14em] uppercase">
+                    {champion.tournamentName}
                   </p>
-                  <h3 className="mt-2 text-2xl font-extrabold tracking-normal">
-                    {entry.champion ? (
+                  <h3 className="mt-2 text-3xl font-extrabold tracking-normal">
+                    {champion.champion ? (
                       <Link
-                        href={`/u/${entry.champion.username}`}
-                        className="hover:text-primary focus-visible:ring-ring rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                        href={`/u/${champion.champion.username}`}
+                        className="hover:text-secondary rounded-md focus-visible:ring-2 focus-visible:outline-none"
                       >
-                        {entry.champion.displayName ?? entry.champion.username}
+                        {champion.champion.displayName ??
+                          champion.champion.username}
                       </Link>
                     ) : (
                       'Unclaimed'
                     )}
                   </h3>
-                  <p className="text-muted-foreground mt-3 text-sm tabular-nums">
-                    {entry.participantCount} competitors,{' '}
-                    {formatMinor(entry.prizePoolMinor)}
+                  <p className="text-muted-foreground mt-3 font-mono text-sm">
+                    {champion.participantCount} competitors .{' '}
+                    {formatMinor(champion.prizePoolMinor)}
                   </p>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Card surface="broadcast" className="p-6">
-            <ShieldCheck className="text-secondary size-6" aria-hidden />
-            <p className="mt-3 font-semibold">No champions recorded yet.</p>
-          </Card>
-        )}
-      </Section>
-    </main>
+                  <Link
+                    href="/hall-of-fame"
+                    className="text-secondary mt-5 inline-flex rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+                  >
+                    Hall of Fame
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <Card surface="broadcast" className="mt-5 p-5">
+                <p className="font-semibold">No champion recorded yet.</p>
+                <p className="text-muted-foreground mt-2 text-sm">
+                  The first completed public tournament will appear here.
+                </p>
+              </Card>
+            )}
+          </div>
+        </section>
+
+        <footer className="flex flex-wrap items-center gap-4 px-5 py-7 sm:px-7">
+          <p className="text-muted-foreground font-mono text-xs tracking-[0.12em] uppercase">
+            The Circuit {snapshot ? `. ${snapshot.name}` : ''} . all times IST
+          </p>
+          <div className="min-w-0 flex-1" />
+          <FooterLink href="/rules">Rules</FooterLink>
+          <FooterLink href="/hall-of-fame">Hall of Fame</FooterLink>
+          <FooterLink href="/leaderboard">Leaderboard</FooterLink>
+        </footer>
+
+        {liveMatch ? <MatchDock match={liveMatch} /> : null}
+      </main>
+    </HomeMotion>
   );
 }
 
-function TournamentSlate({
+function Ticker({
   snapshot,
   live,
 }: {
   snapshot: LiveSnapshot | null;
   live: boolean;
 }) {
-  const cards = [
-    {
-      label: live ? 'Live' : 'Featured',
-      title: snapshot?.name ?? 'The Circuit Open',
-      meta: statusLabel(snapshot?.status),
-      accent: true,
-    },
-    {
-      label: 'Qualifier',
-      title: 'Simulation Seeds',
-      meta: snapshot?.countdown
-        ? countdownLabel(snapshot.countdown.of)
-        : 'On schedule',
-      accent: false,
-    },
-    {
-      label: 'Bracket',
-      title: snapshot?.currentRound
-        ? formatStage(snapshot.currentRound.stage)
-        : 'Knockout',
-      meta: snapshot?.currentRound
-        ? `${snapshot.currentRound.matchesDecided}/${snapshot.currentRound.matchesTotal} decided`
-        : 'Awaiting seeds',
-      accent: false,
-    },
-    {
-      label: 'Finals',
-      title: 'Champion Ceremony',
-      meta: snapshot?.status === 'COMPLETED' ? 'Published' : 'Sunday IST',
-      accent: false,
-    },
-  ];
+  const facts = snapshot
+    ? [
+        snapshot.name,
+        statusLabel(snapshot.status),
+        `${snapshot.participantCount} competitors`,
+        formatMinor(snapshot.prizePoolMinor, snapshot.currency),
+        snapshot.currentRound
+          ? `${snapshot.currentRound.matchesDecided}/${snapshot.currentRound.matchesTotal} matches decided`
+          : 'Bracket pending',
+        snapshot.tiedMatches > 0
+          ? `${snapshot.tiedMatches} tied matches need deciders`
+          : null,
+      ].filter((fact): fact is string => Boolean(fact))
+    : ['No public tournament scheduled'];
+  const run = facts.join(' . ');
 
   return (
-    <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      {cards.map((card) => (
-        <article
-          key={`${card.label}-${card.title}`}
-          className={cn(
-            'border-hairline bg-surface-raised min-h-20 overflow-hidden border px-4 py-3',
-            card.accent && 'border-primary bg-surface-elevated',
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="font-pixel text-secondary text-xs font-bold uppercase">
-                {card.label}
-              </p>
-              <h2 className="font-pixel mt-2 truncate text-xl font-bold uppercase">
-                {card.title}
-              </h2>
-            </div>
-            <span
-              className={cn(
-                'font-pixel shrink-0 px-2 py-1 text-xs font-bold uppercase',
-                card.accent
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-primary text-primary-foreground',
-              )}
-            >
-              {card.meta}
-            </span>
-          </div>
-          {card.accent && snapshot?.countdown ? (
-            <Countdown
-              targetAt={snapshot.countdown.targetAt}
-              serverTime={snapshot.serverTime}
-              phase={snapshot.countdown.phase}
-              className="mt-2 [&>span:last-child]:text-xl [&>span:last-child]:font-bold"
-            />
-          ) : null}
-        </article>
-      ))}
+    <div className="border-hairline bg-surface-deep sticky top-0 z-40 flex h-9 border-b">
+      <div
+        className={cn(
+          'flex items-center gap-2 px-4 font-mono text-[0.68rem] font-bold tracking-[0.18em] uppercase',
+          live
+            ? 'bg-destructive text-black'
+            : 'bg-secondary text-secondary-foreground',
+        )}
+      >
+        <span className="home-live-dot size-1.5 rounded-full bg-black" />
+        {live ? 'Live' : 'Circuit'}
+      </div>
+      <div className="flex min-w-0 flex-1 items-center overflow-hidden">
+        <div className="home-ticker-track flex w-[200%] whitespace-nowrap">
+          <p className="text-muted-foreground pr-8 font-mono text-[0.68rem] font-medium tracking-[0.08em] uppercase">
+            {run} . {run} . {run}
+          </p>
+          <p
+            className="text-muted-foreground pr-8 font-mono text-[0.68rem] font-medium tracking-[0.08em] uppercase"
+            aria-hidden
+          >
+            {run} . {run} . {run}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
 
-function BroadcastVisual({
-  snapshot,
-  live,
-}: {
-  snapshot: LiveSnapshot | null;
-  live: boolean;
-}) {
-  if (snapshot?.youtubeStreamUrl && live) {
-    return (
-      <div className="absolute inset-0 scale-105 [&>div]:[aspect-ratio:auto] [&>div]:h-full [&>div]:w-full [&>div]:rounded-none [&>div]:border-0">
-        <StreamEmbed url={snapshot.youtubeStreamUrl} title="The Circuit live" />
-      </div>
-    );
-  }
-
+function BroadcastBackdrop({ live }: { live: boolean }) {
   return (
-    <div className="absolute inset-0 overflow-hidden bg-black">
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px),radial-gradient(circle_at_68%_24%,rgba(0,255,163,0.26),transparent_28%),radial-gradient(circle_at_28%_52%,rgba(127,90,240,0.34),transparent_34%),linear-gradient(135deg,#050509,#100f1c_52%,#030604)] bg-[size:44px_44px,44px_44px,auto,auto,auto]" />
-      <div className="bg-secondary/12 absolute inset-x-0 top-[30%] h-32 -skew-y-6 blur-3xl motion-safe:animate-pulse" />
-      <div className="border-secondary/20 absolute top-[18%] right-[8%] size-[34rem] rounded-full border" />
-      <div className="absolute top-[22%] right-[12%] hidden items-center gap-3 md:flex">
-        <span className="bg-secondary text-secondary-foreground flex size-14 items-center justify-center rounded-full shadow-[var(--glow-live)]">
-          <CirclePlay className="size-8" aria-hidden />
-        </span>
-        <div>
-          <p className="font-pixel text-sm font-bold uppercase">
-            Broadcast Standby
-          </p>
-          <p className="text-muted-foreground text-sm">
-            Stream connects when live.
-          </p>
+    <div className="pointer-events-none absolute inset-0">
+      <div className="absolute inset-0 bg-[linear-gradient(#141810_1px,transparent_1px),linear-gradient(90deg,#141810_1px,transparent_1px)] bg-[size:46px_46px]" />
+      <div className="absolute -top-32 -left-36 size-[38rem] rounded-full bg-[radial-gradient(circle,oklch(0.881_0.205_158.31_/_0.09),transparent_62%)]" />
+      <div className="home-scanline absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,transparent,oklch(0.881_0.205_158.31_/_0.5),transparent)]" />
+      {live ? (
+        <div className="absolute top-[18%] right-[10%] hidden items-center gap-3 md:flex">
+          <span className="border-secondary text-secondary relative flex size-14 items-center justify-center rounded-full border">
+            <CirclePlay className="size-8" aria-hidden />
+            <span className="home-pulse-ring border-secondary absolute inset-0 rounded-full border" />
+          </span>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
 
 function MatchCenter({
   snapshot,
-  featuredMatches,
   live,
 }: {
-  snapshot: LiveSnapshot | null;
-  featuredMatches: FeaturedMatch[];
+  snapshot: LiveSnapshot;
   live: boolean;
 }) {
-  return (
-    <aside className="border-hairline bg-background text-foreground flex min-h-[560px] flex-col border xl:min-h-[680px]">
-      <div className="border-hairline flex items-center justify-between border-b p-4">
-        <div>
-          <p className="text-muted-foreground text-xs font-black tracking-[0.14em] uppercase">
-            Match Center
-          </p>
-          <h2 className="font-pixel mt-1 text-2xl font-bold uppercase">
-            {live ? 'Now Live' : 'Upcoming'}
-          </h2>
-        </div>
-        <CalendarDays className="text-primary size-6" aria-hidden />
-      </div>
+  const round = snapshot.currentRound;
 
-      <div className="border-hairline border-b p-4">
-        <p className="font-pixel text-muted-foreground text-xs font-bold uppercase">
-          Countdown
-        </p>
-        <Countdown
-          targetAt={snapshot?.countdown?.targetAt ?? null}
-          serverTime={snapshot?.serverTime ?? new Date().toISOString()}
-          phase={snapshot?.countdown?.phase}
-          className="mt-2 [&>span:last-child]:text-4xl [&>span:last-child]:font-black"
-        />
-        <p className="text-muted-foreground mt-2 text-xs">
-          {snapshot?.countdown
+  return (
+    <div className="flex min-h-[560px] flex-col">
+      <div className="border-hairline border-b p-5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+              Match Center
+            </p>
+            <h2 className="font-pixel mt-1 text-3xl font-bold uppercase">
+              {live ? 'Now Live' : 'Next Up'}
+            </h2>
+          </div>
+          <Radio className="text-secondary size-6" aria-hidden />
+        </div>
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          <Countdown
+            targetAt={snapshot.countdown?.targetAt ?? null}
+            serverTime={snapshot.serverTime}
+            phase={snapshot.countdown?.phase}
+            className="border-hairline bg-surface-raised col-span-3 justify-center border px-3 py-4 text-center [&>span:last-child]:text-4xl [&>span:last-child]:font-black"
+          />
+        </div>
+        <p className="text-muted-foreground mt-3 font-mono text-xs">
+          {snapshot.countdown
             ? countdownLabel(snapshot.countdown.of)
             : 'No active countdown'}
         </p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {featuredMatches.length > 0 ? (
-          <ol className="space-y-3">
-            {featuredMatches.map((match) => (
-              <MatchCard key={match.id} match={match} />
-            ))}
-          </ol>
-        ) : (
-          <div className="border-hairline bg-surface-raised border p-4">
-            <Swords className="text-secondary size-6" aria-hidden />
-            <p className="mt-3 font-bold">No matches published yet.</p>
-            <p className="text-muted-foreground mt-2 text-sm">
-              The bracket appears after simulation scores are seeded.
-            </p>
-          </div>
-        )}
+      <div className="border-hairline border-b p-5">
+        <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+          Current Round
+        </p>
+        <h3 className="font-pixel mt-2 text-2xl font-bold uppercase">
+          {round ? formatStage(round.stage) : statusLabel(snapshot.status)}
+        </h3>
+        <p className="text-muted-foreground mt-3 text-sm leading-6">
+          {round?.revealed
+            ? (round.problemTitle ?? 'Challenge revealed')
+            : 'Challenge details stay sealed until the round opens.'}
+        </p>
       </div>
 
-      <div className="border-hairline border-t p-4">
+      <div className="flex-1 p-5">
+        <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
+          Public Facts
+        </p>
+        <dl className="mt-4 grid gap-2">
+          <Fact label="Tournament" value={snapshot.name} />
+          <Fact label="Status" value={statusLabel(snapshot.status)} />
+          <Fact
+            label="Matches"
+            value={
+              round
+                ? `${round.matchesDecided}/${round.matchesTotal} decided`
+                : 'Not generated'
+            }
+          />
+          <Fact
+            label="Tied matches"
+            value={
+              snapshot.tiedMatches > 0 ? String(snapshot.tiedMatches) : '0'
+            }
+          />
+        </dl>
+      </div>
+
+      <div className="border-hairline border-t p-5">
         <Link
           href="/leaderboard"
           className={cn(
@@ -501,115 +481,179 @@ function MatchCenter({
             'w-full',
           )}
         >
-          Open Rankings
+          Open Match Center
         </Link>
       </div>
-    </aside>
-  );
-}
-
-function MatchCard({ match }: { match: FeaturedMatch }) {
-  return (
-    <li className="border-hairline bg-surface-raised border p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="font-pixel bg-primary text-primary-foreground px-2 py-1 text-xs font-bold uppercase">
-          {formatStage(match.stage)}
-        </span>
-        <span className="font-pixel bg-surface-deep text-muted-foreground px-2 py-1 text-xs font-bold uppercase">
-          Match {match.position + 1}
-        </span>
-      </div>
-      <CompetitorLine
-        name={match.competitorA}
-        seed={match.seedA}
-        winner={match.winner === match.competitorA}
-      />
-      <CompetitorLine
-        name={match.competitorB}
-        seed={match.seedB}
-        winner={match.winner === match.competitorB}
-      />
-      <p className="text-muted-foreground mt-3 text-xs font-bold tracking-[0.12em] uppercase">
-        {match.status}
-      </p>
-    </li>
-  );
-}
-
-function CompetitorLine({
-  name,
-  seed,
-  winner,
-}: {
-  name: string | null;
-  seed: number | null;
-  winner: boolean;
-}) {
-  return (
-    <p
-      className={cn(
-        'font-pixel flex items-center justify-between gap-3 py-1 text-lg font-bold tracking-normal uppercase',
-        !name && 'text-muted-foreground',
-        winner && 'text-secondary',
-      )}
-    >
-      <span className="min-w-0 truncate">{name ?? 'Awaiting winner'}</span>
-      <span className="text-muted-foreground shrink-0 text-xs tabular-nums">
-        {seed != null ? `#${seed}` : '-'}
-      </span>
-    </p>
-  );
-}
-
-function HeroMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border-hairline bg-surface-deep/80 border px-4 py-3">
-      <p className="font-pixel text-muted-foreground text-xs font-bold uppercase">
-        {label}
-      </p>
-      <p className="font-pixel mt-2 truncate text-2xl font-bold tracking-normal uppercase tabular-nums">
-        {value}
-      </p>
     </div>
   );
 }
 
-function Step({ n, title, body }: { n: string; title: string; body: string }) {
+function HeroStatCard({ stat }: { stat: HeroStat }) {
   return (
-    <li className="border-hairline bg-surface-deep min-h-44 border p-5">
-      <span className="text-secondary text-3xl font-extrabold tabular-nums">
-        {n}
-      </span>
-      <p className="mt-6 font-semibold">{title}</p>
+    <div className="bg-background p-4">
+      <p className="text-muted-foreground font-mono text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
+        {stat.label}
+      </p>
+      <p
+        className={cn(
+          'mt-2 truncate font-mono text-3xl font-bold tracking-normal tabular-nums',
+          stat.tone === 'danger' && 'text-destructive',
+        )}
+      >
+        {stat.count != null ? (
+          <span className="home-count" data-count={stat.count}>
+            {stat.value}
+          </span>
+        ) : (
+          stat.value
+        )}
+      </p>
+      <div className="bg-hairline mt-3 h-0.5 overflow-hidden">
+        <div
+          className={cn(
+            'home-sweep h-0.5 w-2/5',
+            stat.tone === 'danger' ? 'bg-destructive' : 'bg-secondary',
+          )}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-hairline flex items-center justify-between gap-3 border-b py-2">
+      <dt className="text-muted-foreground font-mono text-xs">{label}</dt>
+      <dd className="text-right text-sm font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function StatusChip({
+  children,
+  active = false,
+}: {
+  children: React.ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        'border px-2.5 py-1 font-mono text-[0.68rem] font-semibold tracking-[0.12em] uppercase',
+        active
+          ? 'border-secondary/35 bg-secondary/10 text-secondary'
+          : 'border-hairline text-muted-foreground',
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Step({ title, body }: { title: string; body: string }) {
+  return (
+    <li className="border-hairline bg-surface-raised border p-5">
+      <p className="font-semibold">{title}</p>
       <p className="text-muted-foreground mt-2 text-sm leading-6">{body}</p>
     </li>
   );
 }
 
-function getFeaturedMatches(snapshot: LiveSnapshot | null): FeaturedMatch[] {
+function NoTournament() {
+  return (
+    <section className="border-hairline border-b p-5 sm:p-7">
+      <Card surface="broadcast" className="p-8 text-center">
+        <h1 className="font-pixel text-4xl font-bold uppercase">
+          No tournament is scheduled yet.
+        </h1>
+        <p className="text-muted-foreground mx-auto mt-3 max-w-xl text-sm">
+          Sign in now and return when registration opens for the next weekly
+          bracket.
+        </p>
+      </Card>
+    </section>
+  );
+}
+
+function MatchDock({ match }: { match: MyMatchSummary }) {
+  return (
+    <div className="sticky bottom-0 z-30 px-3 pb-4 sm:px-5">
+      <div className="border-hairline bg-background/95 mx-auto flex max-w-5xl flex-wrap items-center gap-3 rounded-full border px-4 py-3 shadow-lg backdrop-blur">
+        <div className="flex items-center gap-2">
+          <span className="home-live-dot bg-destructive size-2 rounded-full" />
+          <span className="text-destructive font-mono text-xs font-bold tracking-[0.16em] uppercase">
+            {match.state.replace(/_/g, ' ')}
+          </span>
+        </div>
+        <div className="bg-hairline h-5 w-px" />
+        <p className="text-sm font-semibold">
+          {formatStage(match.stage)}
+          {match.opponentUsername ? ` vs ${match.opponentUsername}` : ''}
+        </p>
+        <Countdown
+          targetAt={match.countdown.targetAt}
+          serverTime={new Date().toISOString()}
+          phase={match.countdown.phase}
+          className="text-secondary font-mono [&>span:last-child]:text-sm"
+        />
+        <div className="min-w-5 flex-1" />
+        <Link
+          href={`/arena/knockout/${match.matchId}`}
+          className={cn(buttonVariants({ variant: 'broadcast', size: 'sm' }))}
+        >
+          Open Arena
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function FooterLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className="text-muted-foreground hover:text-secondary rounded-md font-mono text-xs tracking-[0.12em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {children}
+    </Link>
+  );
+}
+
+function getHeroStats(snapshot: LiveSnapshot | null): HeroStat[] {
   if (!snapshot) return [];
 
-  const current = snapshot.currentStage;
-  const rounds = [
-    ...snapshot.bracket.filter((round) => round.stage === current),
-    ...snapshot.bracket.filter((round) => round.stage !== current),
-  ];
+  const round = snapshot.currentRound;
+  const matchesValue = round
+    ? `${round.matchesDecided}/${round.matchesTotal}`
+    : '0/0';
 
-  return rounds
-    .flatMap((round) =>
-      round.matches.map((match) => ({
-        id: match.id,
-        stage: round.stage,
-        position: match.bracketPosition,
-        status: match.status,
-        competitorA: match.competitorA,
-        competitorB: match.competitorB,
-        seedA: match.seedA,
-        seedB: match.seedB,
-        winner: match.winner,
-      })),
-    )
-    .slice(0, 6);
+  return [
+    {
+      label: 'Competitors',
+      value: String(snapshot.participantCount),
+      count: snapshot.participantCount,
+    },
+    {
+      label: 'Prize Pool',
+      value: formatMinor(snapshot.prizePoolMinor, snapshot.currency),
+    },
+    {
+      label: 'Current Stage',
+      value: round ? formatStage(round.stage) : statusLabel(snapshot.status),
+    },
+    {
+      label: 'Matches Decided',
+      value: matchesValue,
+      count: round?.matchesDecided ?? 0,
+      tone: round && round.matchesTotal > 0 ? 'default' : 'danger',
+    },
+  ];
 }
 
 function countdownLabel(of: string): string {

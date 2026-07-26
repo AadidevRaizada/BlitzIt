@@ -4,3 +4,4 @@ src/generated
 pnpm-lock.yaml
 package-lock.json
 *.md
+docs/design/*.html

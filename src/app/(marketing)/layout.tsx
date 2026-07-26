@@ -56,10 +56,10 @@ export default async function MarketingLayout({
         </div>
       </header>
 
-      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-28 flex-col border-r lg:flex">
+      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-[92px] flex-col border-r lg:flex">
         <Link
           href="/"
-          className="border-hairline focus-visible:ring-ring flex h-24 items-center justify-center border-b px-3 focus-visible:ring-2 focus-visible:outline-none"
+          className="border-hairline focus-visible:ring-ring flex h-20 items-center justify-center border-b px-3 focus-visible:ring-2 focus-visible:outline-none"
           aria-label="The Circuit home"
         >
           <span className="bg-secondary text-secondary-foreground flex size-12 items-center justify-center rounded-md shadow-[var(--glow-live)]">
@@ -75,7 +75,7 @@ export default async function MarketingLayout({
               <Link
                 key={`${item.href}-${item.label}`}
                 href={item.href}
-                className="font-pixel text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-20 flex-col items-center justify-center gap-2 px-2 text-center text-xs font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+                className="font-pixel text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
               >
                 <Icon className="size-6" aria-hidden />
                 <span>{item.label}</span>
@@ -86,17 +86,17 @@ export default async function MarketingLayout({
 
         <Link
           href={user ? '/dashboard' : '/login'}
-          className="font-pixel border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-20 flex-col items-center justify-center gap-2 border-t px-2 text-center text-xs font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+          className="font-pixel border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 border-t px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
         >
           <UserRound className="size-6" aria-hidden />
           <span>{user ? 'Dashboard' : 'Login'}</span>
         </Link>
       </aside>
 
-      <div className="lg:pl-28">{children}</div>
+      <div className="lg:pl-[92px]">{children}</div>
 
       <footer className="border-hairline bg-surface-deep border-t">
-        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-32">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-[116px]">
           <div>
             <div className="flex items-center gap-2 font-extrabold">
               <Trophy className="text-secondary size-5" aria-hidden />

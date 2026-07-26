@@ -15,6 +15,30 @@
 - Added a broadcast header band to `/arena/knockout/[matchId]` and broadcast wrapping on
   `/bracket/[tournamentId]`.
 
+## Claude Design landing integration
+
+- Integrated the `docs/design/Home.dc.html` landing direction into `/` with the dark rail,
+  live ticker, countdown-led hero, match center, broadcast panel, standings, bracket and champion
+  sections.
+- Added `animejs` v4 and moved the mock motion into the `HomeMotion` client wrapper. The page
+  remains server-rendered; the client wrapper only animates existing DOM.
+- Added the signed-in competitor match dock from `listMyLiveMatches(user.id)`, filtered to actual
+  undecided live matches. It is hidden for signed-out visitors and users without a live match.
+- Replaced the mock `SHIPS / MIN` tile with real `matchesDecided / matchesTotal` data from
+  `snapshot.currentRound`.
+
+## Claude Design panels cut
+
+- Removed `JUDGE QUEUE` from the ticker because queue health is operator data from
+  `getQueueHealth()`, not public landing-page data.
+- Removed the event feed because there is no public event feed read model. It was replaced with
+  static public facts already present in `LiveSnapshot`.
+- Removed rank deltas from standings because rank history is not stored.
+- Removed `SEATS LEFT` because `maxRegistrations` is not exposed in `LiveSnapshot`.
+- Removed the week schedule strip because `registrationOpensAt`, `registrationClosesAt`,
+  `simulationOpensAt`, `simulationClosesAt` and `liveStartsAt` are not exposed in
+  `LiveSnapshot`, and `src/server/**` changes are out of scope for this pass.
+
 ## Guardrails kept
 
 - No `src/server/**` files were changed.
@@ -41,4 +65,5 @@ Measured from shipped token values:
 ## Deferred
 
 - Ditto reference capture was skipped because no `DITTO_API_KEY` was present.
-- No server reads were requested or added.
+- A public schedule read would be needed to render the Claude Design five-step week strip honestly.
+  It was not added because `src/server/**` is off limits for this task.
