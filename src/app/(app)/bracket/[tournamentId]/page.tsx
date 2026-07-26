@@ -7,7 +7,7 @@ import {
 } from '@/server/modules/tournament';
 import { AppError } from '@/lib/errors';
 import { PageHeader } from '@/components/ui/page-header';
-import { StatCard } from '@/components/ui/card';
+import { Card, StatCard } from '@/components/ui/card';
 import { TournamentStatusBadge } from '@/components/features/tournament-status-badge';
 import { BracketTree } from '@/components/features/bracket-tree';
 import { LiveRefresh } from '@/components/features/live-refresh';
@@ -59,7 +59,10 @@ export default async function BracketPage({
     .filter((match) => match.tieUnresolved).length;
 
   return (
-    <div className="space-y-6">
+    <div
+      data-surface="broadcast"
+      className="bg-surface-deep text-foreground border-hairline space-y-6 rounded-xl border p-4"
+    >
       <PageHeader
         title={summary.name}
         description={
@@ -100,7 +103,9 @@ export default async function BracketPage({
         />
       </div>
 
-      <BracketTree rounds={rounds} highlightUserId={user?.id ?? null} />
+      <Card surface="broadcast" className="p-4">
+        <BracketTree rounds={rounds} highlightUserId={user?.id ?? null} />
+      </Card>
     </div>
   );
 }

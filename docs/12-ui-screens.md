@@ -25,17 +25,17 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 - **States:** pre-registration (countdown to open), registration open (CTA prominent), live
   (stream + bracket dominate), between-tournaments (last champion + next start).
 
-### 2. Rules / How it works — `/rules`  [RSC]
+### 2. Rules / How it works - `/rules`  [RSC] - **redesign**
 - Static explainer of philosophy, allowed tools, challenge types, and scoring: 60/15/10/15, with
   a clear statement that **AI evaluation applies only from the semifinals onward** — qualifiers
   through the quarterfinals are scored on deterministic measurements only (D20). Competitors
   must be able to see which dimensions decide their current round.
 
-### 3. Hall of Fame — `/hall-of-fame`  [RSC] — **E8 ✅**
-- Past champions, runner-ups, notable performances; links to profiles.
+### 3. Hall of Fame — `/hall-of-fame`  [RSC] — **E8 ✅** - **redesign**
+- Podium-led permanent record. Champion is visually dominant, runner-up and third place sit as supporting podium cards; links to profiles and brackets.
 
-### 4. Public Profile — `/u/[username]`  [RSC] — **E8 ✅** *(badges + placements; never scores or code, D28)*
-- Stats, tournament history, placements, badges, city.
+### 4. Public Profile — `/u/[username]`  [RSC] — **E8 ✅** *(badges + placements; never scores or code, D28)* - **redesign**
+- Dark public profile with badge count and badge chips as the visual anchor; public placements and profile links only. Uses `publicOnly` badges and public placements.
 
 ### 5. Login — `/login`  [C]
 - GitHub + Google buttons (Better Auth). Post-login redirect to dashboard/intended route.
@@ -85,16 +85,17 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
   window closes.
 - **States:** NOT_STARTED, WAITING (scheduled, sealed), LIVE, JUDGING (evaluation outlasting the
   timer — normal, not an error), TIED (awaiting a D14 decider), SUDDEN_DEATH, WON, LOST.
-- Reached from the dashboard's "your matches" panel — a competitor never needs a match id.
+- Reached from the dashboard's "your matches" panel - a competitor never needs a match id.
+- Redesign note: the top head-to-head band uses broadcast tokens and a larger countdown. Everything below remains dense application UI.
 
 ### 11. Bracket — `/bracket/[tournamentId]`  [C/SSE] — **E6 ✅ · live in E7**
 - Visual knockout tree for 8/16/32/64, live match statuses, my path highlighted, click match →
   detail. Reused as an embed on the landing page.
-- **As built.** Server-rendered tree (E6) kept current by `LiveRefresh` (E7). The landing-page
-  embed is E8.
+- **As built.** Server-rendered tree (E6) kept current by `LiveRefresh` (E7). The landing-page embed is E8.
+- Redesign note: the page is wrapped in broadcast tokens, while `revealProblems: false` remains on the server read.
 
-### 12. Leaderboard — `/leaderboard`  [C/SSE] — **E8 ✅** *(server-rendered + LiveRefresh)*
-- Rankings by score / city / seed; my row pinned; filters. Reused (top N) on landing.
+### 12. Leaderboard — `/leaderboard`  [C/SSE] — **E8 ✅** *(server-rendered + LiveRefresh)* - **redesign**
+- Broadcast standings table with large rank column, sticky header, city/seed metadata, URL-backed filters, and the viewer's row pinned when signed in. Reused top-N on landing.
 
 ### 13. My Results / History — `/results`  [RSC] — **E8 ✅**
 - Past tournaments, placements, evaluation breakdowns (my own submissions' scores + evidence).
@@ -148,3 +149,5 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 - **Global states:** auth loading, role-forbidden (403), not-found (404), error boundary, offline/
   SSE-reconnecting indicator, empty states for every list. Theme-aware (light/dark), responsive,
   IST display of all times.
+
+

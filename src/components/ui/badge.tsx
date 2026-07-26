@@ -21,6 +21,7 @@ export const badgeVariants = cva(
         danger: 'bg-destructive/15 text-destructive',
         solidDanger: 'bg-destructive text-destructive-foreground',
         outline: 'border-border text-foreground border',
+        live: 'bg-success text-success-foreground shadow-[var(--glow-live)] before:size-1.5 before:rounded-full before:bg-success-foreground before:content-[""] motion-safe:before:animate-pulse',
       },
     },
     defaultVariants: { tone: 'neutral' },

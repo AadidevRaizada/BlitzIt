@@ -7,14 +7,22 @@ import { cn } from '@/lib/utils';
 export function Card({
   className,
   interactive = false,
+  surface = 'default',
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & { interactive?: boolean }) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  interactive?: boolean;
+  surface?: 'default' | 'broadcast';
+}) {
   return (
     <div
       className={cn(
-        'bg-card text-card-foreground border-border rounded-lg border',
+        surface === 'broadcast'
+          ? 'bg-surface-raised text-card-foreground border-hairline rounded-lg border'
+          : 'bg-card text-card-foreground border-border rounded-lg border',
         interactive &&
-          'focus-within:ring-ring transition-shadow focus-within:ring-2 hover:shadow-sm',
+          (surface === 'broadcast'
+            ? 'focus-within:ring-ring hover:bg-surface-elevated transition-[background-color,transform] duration-200 focus-within:ring-2 motion-safe:hover:-translate-y-0.5'
+            : 'focus-within:ring-ring transition-shadow focus-within:ring-2 hover:shadow-sm'),
         className,
       )}
       {...props}

@@ -140,10 +140,15 @@ Do **not** restyle `(admin)`. It is an operator tool and was signed off in E5.
    before/after notes, anything deferred.
 4. Run all 14 suites + all four gates. Report the matrix.
 
-## 4. Reference notes (fill in during Phase 0)
+## 4. Reference notes
 
-*(Codex: replace this section with concrete measurements — type scale in px/rem, section padding,
-grid gutters, card ratios, easing curves and durations.)*
+Ditto was skipped because `DITTO_API_KEY` was absent from `.env.local`, `.env`, and `.env.example` at implementation time. The redesign uses the plan's structural direction directly:
+
+- Type scale: hero display capped at `clamp(3.4rem, 9vw, 6rem)`; section display capped at `clamp(2.2rem, 5vw, 4.8rem)`, preserving the <=6rem ceiling.
+- Section rhythm: broadcast bands use 56-80px vertical padding, with tighter 32-40px live strips.
+- Gutters: page content is constrained to `max-w-6xl` with 16px mobile and 24px tablet/desktop gutters.
+- Cards: broadcast cards keep 8px radius, 1px hairline borders, and surface-lightness hover changes instead of large soft shadows.
+- Motion: live pulse uses `motion-safe` and the global `prefers-reduced-motion` rule disables animation duration.
 
 ## 5. Definition of done
 
@@ -155,3 +160,4 @@ grid gutters, card ratios, easing curves and durations.)*
 - [ ] Keyboard navigable end to end; `prefers-reduced-motion` honoured
 - [ ] `(app)` and `(admin)` still switch light/dark correctly
 - [ ] Design system doc no longer contradicts the shipped UI
+

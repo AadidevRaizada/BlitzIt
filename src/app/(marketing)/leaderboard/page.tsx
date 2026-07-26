@@ -2,16 +2,19 @@ import Link from 'next/link';
 import { getCurrentUser } from '@/server/modules/auth';
 import {
   getLeaderboard,
+  getLiveSnapshot,
   getSpectatorTournamentId,
   getTournamentSummary,
   type LeaderboardOrder,
 } from '@/server/modules/tournament';
-import { PageHeader } from '@/components/ui/page-header';
 import { LiveLeaderboard } from '@/components/features/live-leaderboard';
 import { LiveRefresh } from '@/components/features/live-refresh';
-import { getLiveSnapshot } from '@/server/modules/tournament';
+import { Card } from '@/components/ui/card';
+import { DisplayHeading } from '@/components/ui/display-heading';
+import { Section } from '@/components/ui/section';
+import { cn } from '@/lib/utils';
 
-export const metadata = { title: 'Leaderboard — Blitz It' };
+export const metadata = { title: 'Leaderboard - Blitz It' };
 export const dynamic = 'force-dynamic';
 
 const ORDERS: ReadonlyArray<{ value: LeaderboardOrder; label: string }> = [
@@ -26,16 +29,6 @@ function parseOrder(value: string | undefined): LeaderboardOrder {
     : 'score';
 }
 
-/**
- * Screen [12] — the public leaderboard (E8.2).
- *
- * Public: standings are already visible on the landing page and in the live
- * snapshot, so requiring a session here would only hide them from the people
- * the spectator experience exists for.
- *
- * Sorting is a URL parameter, not client state — a particular view stays
- * linkable and shareable, and the page needs no JavaScript to change it.
- */
 export default async function LeaderboardPage({
   searchParams,
 }: {
@@ -51,11 +44,13 @@ export default async function LeaderboardPage({
 
   if (!tournamentId) {
     return (
-      <main className="mx-auto max-w-4xl space-y-6 px-4 py-10 sm:px-6">
-        <PageHeader
-          title="Leaderboard"
-          description="No tournament has run yet."
-        />
+      <main>
+        <Section>
+          <DisplayHeading as="h1">Leaderboard</DisplayHeading>
+          <p className="text-muted-foreground mt-4">
+            No tournament has run yet.
+          </p>
+        </Section>
       </main>
     );
   }
@@ -67,55 +62,67 @@ export default async function LeaderboardPage({
   ]);
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-4 py-10 sm:px-6">
-      <PageHeader
-        title="Leaderboard"
-        description={
-          <span className="flex flex-wrap items-center gap-2">
-            <span>{summary.name}</span>
+    <main>
+      <Section className="bg-surface-deep">
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <p className="text-secondary text-sm font-bold">
+              Current standings
+            </p>
+            <DisplayHeading as="h1" className="mt-3">
+              Leaderboard
+            </DisplayHeading>
+            <p className="text-muted-foreground mt-4 max-w-2xl text-lg">
+              {summary.name}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
             <LiveRefresh
               tournamentId={tournamentId}
               initialVersion={snapshot.version}
             />
-          </span>
-        }
-        actions={
-          <Link
-            href={`/bracket/${tournamentId}`}
-            className="text-primary text-sm hover:underline"
-          >
-            Bracket →
-          </Link>
-        }
-      />
-
-      <nav aria-label="Sort standings" className="flex flex-wrap gap-2">
-        {ORDERS.map((option) => {
-          const active = option.value === order;
-          return (
             <Link
-              key={option.value}
-              href={`/leaderboard?by=${option.value}`}
-              aria-current={active ? 'page' : undefined}
-              className={
-                active
-                  ? 'bg-primary text-primary-foreground focus-visible:ring-ring rounded-md px-3 py-1.5 text-sm font-medium focus-visible:ring-2 focus-visible:outline-none'
-                  : 'border-border hover:bg-muted focus-visible:ring-ring rounded-md border px-3 py-1.5 text-sm focus-visible:ring-2 focus-visible:outline-none'
-              }
+              href={`/bracket/${tournamentId}`}
+              className="text-primary hover:text-secondary focus-visible:ring-ring rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
             >
-              {option.label}
+              Bracket
             </Link>
-          );
-        })}
-      </nav>
+          </div>
+        </div>
+      </Section>
 
-      <div className="border-border bg-card rounded-lg border px-4">
-        <LiveLeaderboard
-          entries={entries}
-          highlightUserId={user?.id ?? null}
-          showCity={order === 'city' || order === 'score'}
-        />
-      </div>
+      <Section className="bg-background">
+        <nav aria-label="Sort standings" className="mb-6 flex flex-wrap gap-2">
+          {ORDERS.map((option) => {
+            const active = option.value === order;
+            return (
+              <Link
+                key={option.value}
+                href={`/leaderboard?by=${option.value}`}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'focus-visible:ring-ring rounded-md px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none',
+                  active
+                    ? 'bg-secondary text-secondary-foreground'
+                    : 'border-hairline bg-surface-raised hover:bg-surface-elevated border',
+                )}
+              >
+                {option.label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <Card surface="broadcast" className="max-h-[70vh] overflow-auto px-4">
+          <LiveLeaderboard
+            entries={entries}
+            highlightUserId={user?.id ?? null}
+            showCity={order === 'city' || order === 'score'}
+            broadcast
+            pinHighlighted
+          />
+        </Card>
+      </Section>
     </main>
   );
 }

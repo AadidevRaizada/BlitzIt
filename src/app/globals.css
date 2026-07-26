@@ -110,6 +110,46 @@
   --elevation-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
 }
 
+[data-surface='broadcast'] {
+  color-scheme: dark;
+
+  --background: oklch(0.095 0.018 289.47);
+  --foreground: oklch(0.965 0.01 289.47);
+  --card: oklch(0.145 0.026 289.47);
+  --card-foreground: oklch(0.965 0.01 289.47);
+  --popover: oklch(0.17 0.03 289.47);
+  --popover-foreground: oklch(0.965 0.01 289.47);
+
+  --surface-deep: oklch(0.075 0.018 289.47);
+  --surface-raised: oklch(0.135 0.026 289.47);
+  --surface-elevated: oklch(0.19 0.035 289.47);
+  --hairline: oklch(1 0 0 / 0.16);
+  --glow-primary: 0 0 28px oklch(0.7 0.18 289.47 / 0.34);
+  --glow-live: 0 0 24px oklch(0.881 0.205 158.31 / 0.38);
+
+  --primary: oklch(0.7 0.18 289.47);
+  --primary-foreground: oklch(0.095 0.018 289.47);
+  --secondary: var(--brand-secondary);
+  --secondary-foreground: oklch(0 0 0);
+  --muted: oklch(0.22 0.026 289.47);
+  --muted-foreground: oklch(0.76 0.025 289.47);
+  --accent: oklch(0.26 0.055 289.47);
+  --accent-foreground: oklch(0.97 0.01 289.47);
+  --success: var(--brand-secondary);
+  --success-foreground: oklch(0 0 0);
+  --destructive: oklch(0.67 0.22 24);
+  --destructive-foreground: oklch(0.98 0.01 24);
+  --warning: oklch(0.82 0.17 84);
+  --warning-foreground: oklch(0.08 0.02 84);
+  --border: var(--hairline);
+  --input: oklch(1 0 0 / 0.2);
+  --ring: oklch(0.881 0.205 158.31);
+  --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.45);
+  --elevation-sm: 0 4px 8px -6px oklch(0 0 0 / 0.65);
+  --elevation-md: 0 12px 24px -18px oklch(0 0 0 / 0.8);
+  --elevation-lg: 0 24px 48px -32px oklch(0 0 0 / 0.9);
+}
+
 /* Bridge tokens to Tailwind utilities (bg-primary, text-muted-foreground, …). */
 @theme inline {
   --color-background: var(--background);
@@ -137,6 +177,10 @@
   --color-ring: var(--ring);
   --color-brand-primary: var(--brand-primary);
   --color-brand-secondary: var(--brand-secondary);
+  --color-surface-deep: var(--surface-deep);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-hairline: var(--hairline);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;

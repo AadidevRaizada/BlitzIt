@@ -8,27 +8,29 @@
 
 ## 1. Design philosophy
 
-**Blitz It should feel like a premium software company, not a gaming website.**
+**Blitz It now has two visual registers.**
 
 The single most important rule in this document:
 
-> **Marketing ≠ Dashboard.**
-> The homepage creates *emotion*. The application maximizes *productivity*.
+> **Marketing != Dashboard.**
+> The public marketing surface feels like a live broadcast. The application maximizes *productivity*.
 
 | | Marketing (`(marketing)`) | Application (`(app)`, `(admin)`) |
 |---|---|---|
-| Goal | Memorable, Awwwards-quality first impression | Speed, clarity, density, keyboard flow |
-| References | Linear, Stripe, Vercel, Raycast, Framer, Arc, GitHub | Linear, Raycast, GitHub, Stripe Dashboard, Vercel |
-| Motion | Storytelling — scroll reveals, hero interaction | Functional only — state feedback, ≤150ms |
-| Density | Generous whitespace, large type | Dense but readable, compact controls |
-| Colour | Accent used expressively | Accent reserved for action + state |
+| Goal | Make the event feel live within one second | Speed, clarity, density, keyboard flow |
+| References | Broadcast/esports event sites led by countdowns, standings, brackets and live state | Linear, Raycast, GitHub, Stripe Dashboard, Vercel |
+| Motion | Expressive but content-first; every loop/reveal has a reduced-motion path | Functional only: state feedback, <=150ms |
+| Density | Banded, high-contrast, spectator-friendly | Dense but readable, compact controls |
+| Colour | Dark broadcast scope with Blitz It purple and live green accents | Accent reserved for action + state |
 
-**Brand personality:** Premium · Modern · Competitive · Technical · Fast · Confident · Minimal · Developer-first.
+Marketing is dark-first through `data-surface="broadcast"` on the `(marketing)` layout. It must not force `.dark`, because the authenticated app and admin theme switch remain independent. Broadcast tokens are additive: `--surface-deep`, `--surface-raised`, `--surface-elevated`, `--hairline`, `--glow-primary`, and `--glow-live`.
 
-**Explicitly avoid:** unnecessary gradients · excessive glassmorphism · floating UI everywhere ·
-loud colours · "gaming" aesthetics · animation for the sake of animation.
+The app and admin registers remain dense productivity tools. Admin was signed off in E5 and should not be restyled as part of marketing work.
 
-Motion supports storytelling — it never distracts from it.
+**Brand personality:** Competitive, technical, fast, broadcast-ready, measured, confident.
+
+**Explicitly avoid:** copying third-party event assets, logos, photography, copy or licensed fonts; weakening reveal/authorization gates for visual effects; converting server pages to client components for animation; decorative glassmorphism; animation for the sake of animation.
+
 
 ---
 
@@ -51,6 +53,10 @@ Measured WCAG contrast (see the token table before changing anything):
 | `#00FFA3` + white text | 1.33 | ❌ **never do this** |
 | `#7F5AF0` on dark bg | 4.36 | ⚠️ UI/large only |
 | Dark-mode primary `#9E87FF` on dark bg | **6.94** | ✅ AA text |
+| Broadcast foreground on `--background` | **18.64** | AA text |
+| Broadcast muted foreground on `--background` | **9.57** | AA text |
+| Broadcast primary `oklch(0.70 0.18 289.47)` on `--background` | **7.22** | AA text |
+| `#00FFA3` on broadcast black | **15.58** | AA text |
 
 **Two hard rules:**
 1. `--secondary-accent` **always** pairs with a black foreground.

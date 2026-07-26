@@ -31,11 +31,14 @@ export const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         danger: 'bg-destructive text-destructive-foreground hover:opacity-90',
         success: 'bg-success text-success-foreground hover:opacity-90',
+        broadcast:
+          'bg-primary text-primary-foreground shadow-[var(--glow-primary)] border border-primary/40 text-xs font-extrabold tracking-[0.14em] uppercase hover:bg-secondary hover:text-secondary-foreground hover:shadow-[var(--glow-live)]',
       },
       size: {
         sm: 'h-7 px-2 text-xs',
         md: 'h-9 px-4 text-sm',
         lg: 'h-11 px-6 text-base',
+        broadcast: 'min-h-12 px-6 py-3 text-xs',
         icon: 'size-9',
         'icon-sm': 'size-7',
       },
