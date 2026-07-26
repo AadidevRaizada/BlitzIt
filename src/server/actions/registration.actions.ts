@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { requireUserOrThrow } from '@/server/modules/auth';
 import {
+  notifyRegistrationConfirmed,
   registerCompetitor,
   withdrawRegistration,
 } from '@/server/modules/tournament';
@@ -41,6 +42,17 @@ export async function registerForTournamentAction(
     const result = await registerCompetitor(parsed.data.tournamentId, user.id, {
       actorId: user.id,
     });
+
+    // After the registration transaction commits, never inside it (E8.3): an
+    // email job enqueued in a transaction that rolls back would point at a
+    // notification row that never existed. Non-fatal — a competitor who is
+    // registered but did not get the email is registered, and telling them the
+    // registration failed would be a lie.
+    try {
+      await notifyRegistrationConfirmed(parsed.data.tournamentId, user.id);
+    } catch (error) {
+      captureException(error, { where: 'registerForTournamentAction.notify' });
+    }
 
     revalidatePath('/dashboard');
     return ok({

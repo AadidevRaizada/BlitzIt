@@ -15,7 +15,7 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 
 ## Public / Spectator (route group `(marketing)`)
 
-### 1. Landing / Spectator Home — `/`  ⭐ the spectator experience (D10)
+### 1. Landing / Spectator Home — `/`  ⭐ the spectator experience (D10) — **E8 ✅**
 - **Purpose:** make a first-time visitor instantly feel a live event is happening.
 - **Sections:** hero + tagline; **live participant count** + **live prize pool** [C/SSE];
   **embedded YouTube** livestream; **live leaderboard** (top N) [C/SSE]; **live bracket**
@@ -31,10 +31,10 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
   through the quarterfinals are scored on deterministic measurements only (D20). Competitors
   must be able to see which dimensions decide their current round.
 
-### 3. Hall of Fame — `/hall-of-fame`  [RSC]
+### 3. Hall of Fame — `/hall-of-fame`  [RSC] — **E8 ✅**
 - Past champions, runner-ups, notable performances; links to profiles.
 
-### 4. Public Profile — `/u/[username]`  [RSC]
+### 4. Public Profile — `/u/[username]`  [RSC] — **E8 ✅** *(badges + placements; never scores or code, D28)*
 - Stats, tournament history, placements, badges, city.
 
 ### 5. Login — `/login`  [C]
@@ -93,13 +93,13 @@ Legend: **[RSC]** server component · **[C]** client island · **SSE** live-upda
 - **As built.** Server-rendered tree (E6) kept current by `LiveRefresh` (E7). The landing-page
   embed is E8.
 
-### 12. Leaderboard — `/leaderboard`  [C/SSE]
+### 12. Leaderboard — `/leaderboard`  [C/SSE] — **E8 ✅** *(server-rendered + LiveRefresh)*
 - Rankings by score / city / seed; my row pinned; filters. Reused (top N) on landing.
 
-### 13. My Results / History — `/results`  [RSC]
+### 13. My Results / History — `/results`  [RSC] — **E8 ✅**
 - Past tournaments, placements, evaluation breakdowns (my own submissions' scores + evidence).
 
-### 14. Notifications — `/notifications`  [RSC + C]
+### 14. Notifications — `/notifications`  [RSC + C] — **E8 ✅**
 - In-app notification list; read state. (Email via Resend is separate.)
 
 ### 15. Settings/Profile edit — `/settings`  [C]

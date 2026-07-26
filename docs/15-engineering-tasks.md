@@ -108,11 +108,19 @@ S/M/L. "DoD" = definition of done (tests + CI green + deployable).
   `verify:live-arena` on top of `verify:tournament:e2e` and `verify:sudden-death`.
 
 ## E8 — Spectator landing, leaderboard, notifications, HoF (M8)
-- **E8.1 (L)** Landing [1] (D10): stream embed, live leaderboard, bracket, current match, participant count, prize pool, countdown — all SSE.
-- **E8.2 (M)** Leaderboard [12] (score/city/seed); Results/History [13].
-- **E8.3 (M)** Notifications: `SEND_EMAIL` job + Resend + React Email templates; in-app [14]; dedupe.
-- **E8.4 (M)** Hall of Fame [3] + badges/`UserBadge`.
-- **DoD:** public homepage feels like a live event; notifications fire idempotently.
+- **E8.1 (L)** ✅ Landing [1] (D10): stream embed, live leaderboard, bracket, current round,
+  participant count, prize pool, countdown — all off the E7 `LiveSnapshot`, kept current by
+  `LiveRefresh`. `getSpectatorTournamentId` answers "what is happening right now?" so the page
+  needs no id in its URL.
+- **E8.2 (M)** ✅ Leaderboard [12] (score/seed/city, sorted by URL parameter so a view stays
+  linkable); Results/History [13] with every score and a link to its evidence.
+- **E8.3 (M)** ✅ Notifications: `sendEmail` job + Resend behind a `Mailer` interface + templates;
+  in-app [14]; dedupe by a `@unique` key derived from what happened. *Templates are a string
+  builder, not React Email — see the deviation in `CHANGELOG_EPIC_E8.md`.*
+- **E8.4 (M)** ✅ Hall of Fame [3] + badges/`UserBadge`, published automatically and idempotently
+  when a tournament completes.
+- **DoD:** ✅ public homepage renders a live event end to end; notifications fire idempotently —
+  `verify:spectator` proves a repeated sweep raises nothing.
 
 ## E9 — Payouts & lightweight compliance (M9)
 - **E9.1 (M)** Prize computation from dynamic pool + distribution.

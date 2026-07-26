@@ -117,6 +117,20 @@ async function cleanup() {
     where: { problem: { slug: { contains: TAG } } },
   });
   await db.problem.deleteMany({ where: { slug: { contains: TAG } } });
+  // E8 added notifications, badges and a Hall of Fame entry to anything that
+  // runs a tournament. They reference `User`, so a suite that deletes its users
+  // without clearing them first fails on a foreign key — and a `sendEmail` job
+  // whose notification is gone would be claimed by an unrelated suite.
+  await db.$executeRaw`DELETE FROM "EvaluationJob" WHERE "name" = 'sendEmail' AND ("payload"->>'notificationId') IN (SELECT "id" FROM "Notification" WHERE "userId" IN (SELECT "id" FROM "User" WHERE "email" LIKE ${'%' + EMAIL_DOMAIN}))`;
+  await db.notification.deleteMany({
+    where: { user: { email: { contains: EMAIL_DOMAIN } } },
+  });
+  await db.userBadge.deleteMany({
+    where: { user: { email: { contains: EMAIL_DOMAIN } } },
+  });
+  await db.hallOfFame.deleteMany({
+    where: { tournament: { slug: { contains: TAG } } },
+  });
   await db.user.deleteMany({ where: { email: { contains: EMAIL_DOMAIN } } });
 }
 

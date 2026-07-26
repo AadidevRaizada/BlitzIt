@@ -333,6 +333,219 @@ export async function getLiveSnapshot(
   };
 }
 
+export interface MyResultSubmission {
+  submissionId: string;
+  stage: RoundStage;
+  problemTitle: string | null;
+  overallScore: number | null;
+  functionalScore: number | null;
+  testsPassed: number | null;
+  testsTotal: number | null;
+  profileName: string | null;
+  submittedAt: Date;
+}
+
+export interface MyTournamentResult {
+  tournamentId: string;
+  tournamentName: string;
+  tournamentSlug: string;
+  status: TournamentStatus;
+  seed: number | null;
+  placement: number | null;
+  qualified: boolean;
+  eliminatedAtStage: RoundStage | null;
+  simulationScore: number;
+  submissions: MyResultSubmission[];
+}
+
+/**
+ * One competitor's own history — screen [13] (E8.2).
+ *
+ * Their entries and their scores, with the evidence one click away. This is
+ * scoped to `userId` in every query rather than filtered after the fact: a
+ * results page that fetched broadly and narrowed in the view is one refactor
+ * away from leaking somebody else's submission.
+ */
+export async function listMyResults(
+  userId: string,
+  options: { take?: number } = {},
+  client: DbClient = db,
+): Promise<MyTournamentResult[]> {
+  const registrations = await client.registration.findMany({
+    where: { userId },
+    orderBy: { registeredAt: 'desc' },
+    take: options.take ?? 25,
+    select: {
+      tournamentId: true,
+      tournament: {
+        select: { id: true, name: true, slug: true, status: true },
+      },
+    },
+  });
+  if (registrations.length === 0) return [];
+
+  const tournamentIds = registrations.map((row) => row.tournamentId);
+
+  const [rankings, submissions] = await Promise.all([
+    client.ranking.findMany({
+      where: { userId, tournamentId: { in: tournamentIds } },
+    }),
+    client.submission.findMany({
+      where: { userId, tournamentId: { in: tournamentIds } },
+      orderBy: { submittedAt: 'asc' },
+      select: {
+        id: true,
+        tournamentId: true,
+        submittedAt: true,
+        round: { select: { stage: true } },
+        problem: { select: { title: true } },
+        evaluation: {
+          select: {
+            overallScore: true,
+            functionalScore: true,
+            testsPassed: true,
+            testsTotal: true,
+            profileName: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  const rankingByTournament = new Map(
+    rankings.map((ranking) => [ranking.tournamentId, ranking]),
+  );
+  const submissionsByTournament = new Map<string, MyResultSubmission[]>();
+  for (const submission of submissions) {
+    const list = submissionsByTournament.get(submission.tournamentId) ?? [];
+    list.push({
+      submissionId: submission.id,
+      stage: submission.round.stage,
+      problemTitle: submission.problem?.title ?? null,
+      overallScore: submission.evaluation?.overallScore ?? null,
+      functionalScore: submission.evaluation?.functionalScore ?? null,
+      testsPassed: submission.evaluation?.testsPassed ?? null,
+      testsTotal: submission.evaluation?.testsTotal ?? null,
+      profileName: submission.evaluation?.profileName ?? null,
+      submittedAt: submission.submittedAt,
+    });
+    submissionsByTournament.set(submission.tournamentId, list);
+  }
+
+  return registrations.map((registration) => {
+    const ranking = rankingByTournament.get(registration.tournamentId);
+    return {
+      tournamentId: registration.tournament.id,
+      tournamentName: registration.tournament.name,
+      tournamentSlug: registration.tournament.slug,
+      status: registration.tournament.status,
+      seed: ranking?.seed ?? null,
+      placement: ranking?.placement ?? null,
+      qualified: ranking?.qualified ?? false,
+      eliminatedAtStage: ranking?.eliminatedAtStage ?? null,
+      simulationScore: ranking?.simulationScore ?? 0,
+      submissions: submissionsByTournament.get(registration.tournamentId) ?? [],
+    };
+  });
+}
+
+export interface PublicPlacement {
+  tournamentId: string;
+  tournamentName: string;
+  placement: number | null;
+  seed: number | null;
+  eliminatedAtStage: RoundStage | null;
+}
+
+/**
+ * A competitor's placements, as anyone may see them — screen [4] (E8.4).
+ *
+ * Deliberately narrower than `listMyResults`: placements and seeds are public
+ * (D10 puts them on the leaderboard), scores and submissions are not. This
+ * returns no submission, no evidence and no score, so a public page physically
+ * cannot render one.
+ *
+ * Unlisted tournaments are excluded — a rehearsal must not surface through a
+ * participant's profile.
+ */
+export async function listPublicPlacements(
+  userId: string,
+  options: { take?: number } = {},
+  client: DbClient = db,
+): Promise<PublicPlacement[]> {
+  const rankings = await client.ranking.findMany({
+    where: {
+      userId,
+      tournament: { visibility: 'PUBLIC', archivedAt: null },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: options.take ?? 25,
+    select: {
+      placement: true,
+      seed: true,
+      eliminatedAtStage: true,
+      tournament: { select: { id: true, name: true } },
+    },
+  });
+
+  return rankings.map((ranking) => ({
+    tournamentId: ranking.tournament.id,
+    tournamentName: ranking.tournament.name,
+    placement: ranking.placement,
+    seed: ranking.seed,
+    eliminatedAtStage: ranking.eliminatedAtStage,
+  }));
+}
+
+/**
+ * Which tournament the public surfaces should be showing (E8.1).
+ *
+ * The landing page has no id in its URL, so something has to answer "what is
+ * happening right now?". The order below is what a visitor cares about, most
+ * urgent first: a live event beats one taking registrations, which beats one
+ * that has been announced, which beats the last one that finished.
+ *
+ * Unlisted and archived tournaments never qualify — a rehearsal must not become
+ * the homepage.
+ */
+const SPECTATOR_STATUS_PRIORITY: readonly TournamentStatus[] = [
+  'LIVE',
+  'BRACKET_GENERATED',
+  'SEEDING',
+  'SIMULATION',
+  'REGISTRATION_CLOSED',
+  'REGISTRATION_OPEN',
+  'PUBLISHED',
+  'COMPLETED',
+];
+
+export async function getSpectatorTournamentId(
+  client: DbClient = db,
+): Promise<string | null> {
+  for (const status of SPECTATOR_STATUS_PRIORITY) {
+    const tournament = await client.tournament.findFirst({
+      where: { status, visibility: 'PUBLIC', archivedAt: null },
+      // Within a status, the most recently started one. `createdAt` rather than
+      // a schedule field because the schedule is optional and a tournament with
+      // no dates set must still be findable.
+      orderBy: [{ liveStartsAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true },
+    });
+    if (tournament) return tournament.id;
+  }
+  return null;
+}
+
+/** The live snapshot for whatever the public surfaces should be showing. */
+export async function getSpectatorSnapshot(
+  options: LiveSnapshotOptions = {},
+  client: DbClient = db,
+): Promise<LiveSnapshot | null> {
+  const tournamentId = await getSpectatorTournamentId(client);
+  if (!tournamentId) return null;
+  return getLiveSnapshot(tournamentId, options, client);
+}
+
 /**
  * A stable fingerprint of a snapshot's *content*.
  *

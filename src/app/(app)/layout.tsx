@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/server/modules/auth';
 import { isAdmin } from '@/server/modules/auth';
+import { countUnreadNotifications } from '@/server/modules/notification';
 import { SignOutButton } from '@/components/features/sign-out-button';
 
 /**
@@ -13,6 +14,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
+  const unread = await countUnreadNotifications(user.id);
 
   return (
     <div className="min-h-screen">
@@ -26,6 +28,22 @@ export default async function AppLayout({
           </Link>
           <Link href="/submissions" className="hover:underline">
             Submissions
+          </Link>
+          <Link href="/results" className="hover:underline">
+            Results
+          </Link>
+          {/* The unread count is read here rather than inside the link so the
+              whole header stays one server render (E8.3). */}
+          <Link
+            href="/notifications"
+            className="inline-flex items-center gap-1.5 hover:underline"
+          >
+            Notifications
+            {unread > 0 ? (
+              <span className="bg-primary text-primary-foreground inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] leading-none font-semibold tabular-nums">
+                {unread > 99 ? '99+' : unread}
+              </span>
+            ) : null}
           </Link>
           <Link href={`/u/${user.username}`} className="hover:underline">
             Profile

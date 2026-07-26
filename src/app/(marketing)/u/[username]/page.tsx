@@ -1,5 +1,11 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getProfileByUsername } from '@/server/modules/auth/profile';
+import { listUserBadges } from '@/server/modules/hall-of-fame';
+import { listPublicPlacements } from '@/server/modules/tournament';
+import { Badge } from '@/components/ui/badge';
+
+export const dynamic = 'force-dynamic';
 
 /** Public profile page. Readable signed-out — no session required. */
 export async function generateMetadata({
@@ -21,6 +27,13 @@ export default async function ProfilePage({
   if (!user) notFound();
 
   const profile = user.profile;
+  // `publicOnly` on both: this page is readable by anyone, and a badge carries
+  // the name of the tournament that awarded it. A rehearsal runs UNLISTED and
+  // must not be announced here.
+  const [badges, placements] = await Promise.all([
+    listUserBadges(user.id, { publicOnly: true }),
+    listPublicPlacements(user.id),
+  ]);
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-8">
@@ -51,6 +64,56 @@ export default async function ProfilePage({
           value={user.createdAt.toISOString().slice(0, 10)}
         />
       </dl>
+
+      {/* E8.4 — badges and placements. Public because placements are public
+          (D10); the code behind them is not, and never appears here (D28). */}
+      {badges.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold tracking-wide uppercase">
+            Badges
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {badges.map((badge) => (
+              <li key={`${badge.slug}-${badge.tournamentId ?? 'global'}`}>
+                <Badge tone={badge.slug === 'champion' ? 'success' : 'brand'}>
+                  {badge.name}
+                  {badge.tournamentName ? ` · ${badge.tournamentName}` : ''}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {placements.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold tracking-wide uppercase">
+            Tournament history
+          </h2>
+          <ul className="space-y-1.5 text-sm">
+            {placements.map((entry) => (
+              <li
+                key={entry.tournamentId}
+                className="border-border/60 flex flex-wrap items-baseline justify-between gap-2 border-b pb-1.5 last:border-0"
+              >
+                <Link
+                  href={`/bracket/${entry.tournamentId}`}
+                  className="hover:text-primary hover:underline"
+                >
+                  {entry.tournamentName}
+                </Link>
+                <span className="text-muted-foreground tabular-nums">
+                  {entry.placement
+                    ? `#${entry.placement}`
+                    : entry.eliminatedAtStage
+                      ? `out · ${entry.eliminatedAtStage.replace(/_/g, ' ')}`
+                      : 'entered'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </main>
   );
 }

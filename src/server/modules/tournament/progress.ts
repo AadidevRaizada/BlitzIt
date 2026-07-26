@@ -14,6 +14,8 @@ import {
 import { closeRound, completeRound, openRound } from './rounds';
 import { completeSettledSuddenDeathRounds } from './sudden-death';
 import { applyTransition, type TransitionResult } from './state';
+import { syncTournamentNotifications } from './notifications';
+import { publishHallOfFame } from '@/server/modules/hall-of-fame';
 import { isBracketSize } from './config';
 
 /**
@@ -45,6 +47,8 @@ export interface ProgressResult {
   simulationRoundsOpened: number;
   /** Lifecycle transitions this pass triggered, in order. */
   transitions: TransitionResult[];
+  /** Notifications raised by this pass (E8.3). Zero on a replay. */
+  notificationsRaised: number;
   /** True when the tournament reached COMPLETED during this pass. */
   completed: boolean;
 }
@@ -134,6 +138,7 @@ export async function progressTournament(
     suddenDeathResolved: 0,
     simulationRoundsClosed: 0,
     simulationRoundsOpened: 0,
+    notificationsRaised: 0,
     transitions: [],
     completed: tournament.status === 'COMPLETED',
   };
@@ -294,6 +299,47 @@ export async function progressTournament(
       result.completed = true;
       break;
     }
+  }
+
+  // Notifications are derived from the state this pass left behind (E8.3), not
+  // raised at each decision point — so anything that reaches a state by another
+  // path (a replayed job, a forced transition, a restart resuming mid-round)
+  // still notifies. Idempotent by dedupe key, and outside every transaction
+  // above because it enqueues email jobs.
+  //
+  // Deliberately non-fatal: a notification failure must never make a completed
+  // round look like a failed advancement. The bracket has already moved and
+  // that is what matters; the next pass re-derives anything missed.
+  // A finished tournament becomes a permanent record (E8.4). Published here
+  // rather than left to an operator so the Hall of Fame is never one forgotten
+  // click behind reality; idempotent and re-runnable, so a correction after the
+  // fact still propagates. Before the notifications, so TOURNAMENT_COMPLETE
+  // goes out to a world where the champion is already published.
+  if (result.completed) {
+    try {
+      await publishHallOfFame(tournamentId);
+    } catch (error) {
+      logger.error(
+        {
+          tournamentId,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'hall of fame publication failed; the tournament is still COMPLETED',
+      );
+    }
+  }
+
+  try {
+    const notified = await syncTournamentNotifications(tournamentId);
+    result.notificationsRaised = notified.raised;
+  } catch (error) {
+    logger.error(
+      {
+        tournamentId,
+        err: error instanceof Error ? error.message : String(error),
+      },
+      'notification sync failed after progression; the bracket is unaffected',
+    );
   }
 
   return result;
