@@ -67,6 +67,27 @@ choose the single HTTP port detected for the BlitzIt web service. Do **not** use
 Postgres ports (`5432`, `5434`) and do not set `PORT=3000` just to satisfy the
 domain form.
 
+### Copy-paste starter block
+
+Replace `YOUR-DOMAIN` after you generate a Railway domain or attach a custom
+one. The `Postgres` service name must match your Railway canvas exactly.
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+NEXT_PUBLIC_APP_URL=https://YOUR-DOMAIN
+BETTER_AUTH_URL=https://YOUR-DOMAIN
+NODE_ENV=production
+```
+
+With a Railway-generated domain `blitzit-production.up.railway.app`:
+
+```
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+NEXT_PUBLIC_APP_URL=https://blitzit-production.up.railway.app
+BETTER_AUTH_URL=https://blitzit-production.up.railway.app
+NODE_ENV=production
+```
+
 Reference the database with Railway's variable reference syntax rather than
 pasting a URL, so it stays in sync:
 
@@ -96,7 +117,7 @@ This is a Railway configuration issue, not an app build issue.
 
 | Var | Notes |
 |---|---|
-| `DATABASE_URL` | Reference the Postgres service |
+| `DATABASE_URL` | Reference the Postgres service — never `localhost:5434` |
 | `NODE_ENV` | `production` exactly, or leave it unset and let Railway/Next set production behavior. Never use `Production`, `prod`, `preview`, or `staging` |
 | `BETTER_AUTH_SECRET` | **min 32 chars**; `openssl rand -base64 32`. Boot throws in production if missing |
 | `BETTER_AUTH_URL` | `https://YOUR-DOMAIN` |
@@ -113,7 +134,9 @@ Error occurred prerendering page "/500"
 fix `NODE_ENV` first. That error can appear while Next is prerendering its
 built-in error page under an inconsistent environment. The app router root
 layout owns `<html>`; this repo should not import `Html`, `Main`, or
-`NextScript` from `next/document`.
+`NextScript` from `next/document`. Do not waste time on the `<Html>` or `/500`
+message — fix the `NODE_ENV` value above it, then redeploy. The same log line
+warns you what is wrong.
 
 ### Required for paid tournaments
 
