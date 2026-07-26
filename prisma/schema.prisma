@@ -125,6 +125,9 @@ enum SubmissionStatus {
 enum JobType {
   EVALUATE
   REEVALUATE
+  /// E8 — deliver one notification over email. The queue is the only path from
+  /// a notification intent to an actual send.
+  SEND_EMAIL
 }
 
 enum JobStatus {
@@ -166,6 +169,10 @@ enum NotificationType {
   ELIMINATED
   PAYOUT_SENT
   PRIZE_POOL_UPDATE
+  /// E8 — raised when a competitor wins a match and moves on.
+  ADVANCED
+  /// E8 — raised for every participant once a tournament finishes.
+  TOURNAMENT_COMPLETE
 }
 
 enum NotificationChannel {
@@ -696,12 +703,27 @@ model Notification {
   type      NotificationType
   channel   NotificationChannel @default(EMAIL)
   payload   Json?
+  /// The idempotency key for the whole notification pipeline (E8). Unique, so
+  /// raising the same intent twice — a replayed job, a cron overlap, an admin
+  /// who also clicked — collapses to one row and therefore one email. Built by
+  /// `notificationDedupeKey`, never by hand at a call site.
   dedupeKey String              @unique
   status    NotificationStatus  @default(PENDING)
   sentAt    DateTime?
+  /// Distinct from `status = READ`: the in-app list sorts and filters by WHEN
+  /// something was read, which a status enum cannot answer.
+  readAt    DateTime?
+  /// Mirrors the job table so a failed send can be explained without joining.
+  attempts  Int                 @default(0)
+  lastError String?
+  /// Which tournament raised it, for grouping in the in-app list. Deliberately
+  /// not a relation: a notification outlives the tournament it describes, and
+  /// a cascade delete would erase a competitor's history.
+  tournamentId String?
   createdAt DateTime            @default(now())
 
   @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 model Badge {
@@ -739,8 +761,16 @@ model HallOfFame {
   tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
   championId    String
   runnerUpId    String?
+  /// Recorded alongside the podium so a completed tournament reads from one
+  /// row. Null when the third-place play-off was disabled (D6).
+  thirdPlaceId  String?
   finalMatchId  String?
   highlightsUrl String?
+  /// Frozen at publication: the tournament's counters keep moving (archival,
+  /// recomputation), but the Hall of Fame is a historical record and must not
+  /// change after the fact.
+  participantCount Int     @default(0)
+  prizePoolMinor   Int     @default(0)
   publishedAt   DateTime   @default(now())
 }
 

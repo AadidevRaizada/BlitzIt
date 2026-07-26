@@ -25,7 +25,8 @@ cloning-to-build. See [`docs/DECISIONS.md`](./docs/DECISIONS.md) (D1).
 | **E5** | Admin platform & tournament management | ✅ complete |
 | **E6** | Sudden death & bracket UI | ✅ complete |
 | **E7** | Live knockout arena (timers, SSE, feature flag) | ✅ complete |
-| E8 | Spectator landing, leaderboard, notifications, HoF | not started |
+| **E8** | Spectator landing, leaderboard, notifications, Hall of Fame | ✅ complete |
+| E9 | Payouts & lightweight compliance | not started |
 
 Per-epic history lives in `CHANGELOG_EPIC_E*.md`. The architecture blueprint is
 [`docs/`](./docs/README.md), locked for V1 in [`DECISIONS.md`](./docs/DECISIONS.md).
@@ -106,6 +107,7 @@ real network probes.
 | `npm run verify:admin` | Admin platform: CRUD, lifecycle, registrations, permissions |
 | `npm run verify:sudden-death` | D14 sudden death: win rule, guards, resolution, bracket DoD |
 | `npm run verify:live-arena` | E7: server-authoritative timers, arena state, live snapshot, feature flag |
+| `npm run verify:spectator` | E8: landing snapshot, leaderboard, notifications + dedupe + delivery, badges, Hall of Fame |
 | `npm run verify:llm` | LLM provider wiring (needs a configured key) |
 
 ## Database workflow

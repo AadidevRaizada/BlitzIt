@@ -75,7 +75,7 @@ it has tests (where logic exists), passes CI, and is deployable to Railway.
   needing a message bus (D3 rules out Redis), with a polling fallback serving the identical
   payload; the flag has an env kill switch that outranks PostHog.
 
-### Milestone 8 — Spectator landing, leaderboard, notifications, Hall of Fame
+### Milestone 8 — Spectator landing, leaderboard, notifications, Hall of Fame ✅ *(E8, complete)*
 - **Landing = spectator experience (D10):** embedded YouTube, live leaderboard, live bracket,
   current match progression, live participant count, live prize pool, next-round countdown — via
   SSE. Resend notifications (idempotent); Hall of Fame + badges.

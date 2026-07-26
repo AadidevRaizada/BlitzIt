@@ -17,7 +17,11 @@ export type JobName =
   // the two long-running steps that must survive a restart.
   | 'tournamentTransition'
   | 'seedTournament'
-  | 'advanceBracket';
+  | 'advanceBracket'
+  // E8 — deliver one notification over email. The queue is the only path from
+  // a notification intent to a send, so no business module ever waits on a
+  // mail provider.
+  | 'sendEmail';
 
 export interface EnqueueOptions {
   /** Idempotency key — duplicate enqueues with the same key collapse to one job. */

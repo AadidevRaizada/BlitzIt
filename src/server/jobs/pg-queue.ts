@@ -21,6 +21,19 @@ interface ClaimRow {
   maxAttempts: number;
 }
 
+/**
+ * The persisted `JobType` for a job name.
+ *
+ * `name` is what the runner dispatches on; `type` is the coarse enum stored
+ * alongside it for reporting. Deriving it here rather than asking every call
+ * site keeps the two from disagreeing. Anything without an explicit mapping
+ * stays `EVALUATE`, which is the column's default and what every pre-E8 row
+ * already carries.
+ */
+const JOB_TYPE_BY_NAME: Partial<Record<JobName, 'EVALUATE' | 'SEND_EMAIL'>> = {
+  sendEmail: 'SEND_EMAIL',
+};
+
 export class PgQueue implements Queue {
   async enqueue(
     name: JobName,
@@ -36,6 +49,7 @@ export class PgQueue implements Queue {
       update: {},
       create: {
         name,
+        type: JOB_TYPE_BY_NAME[name] ?? 'EVALUATE',
         payload: payload as Prisma.InputJsonValue,
         submissionId,
         idempotencyKey: options.idempotencyKey,

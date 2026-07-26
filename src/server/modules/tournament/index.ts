@@ -195,9 +195,16 @@ export {
 // ---- Live / spectator read model (E7.3) ----
 export {
   getLiveSnapshot,
+  getSpectatorSnapshot,
+  getSpectatorTournamentId,
   getLeaderboard,
+  listMyResults,
+  listPublicPlacements,
   snapshotVersion,
   LEADERBOARD_DEFAULT_TAKE,
+  type MyTournamentResult,
+  type MyResultSubmission,
+  type PublicPlacement,
   type LiveSnapshot,
   type LiveSnapshotOptions,
   type LiveRoundView,
@@ -205,6 +212,13 @@ export {
   type LeaderboardOptions,
   type LeaderboardOrder,
 } from './live';
+
+// ---- Notification triggers (E8.3) ----
+export {
+  syncTournamentNotifications,
+  notifyRegistrationConfirmed,
+  type NotificationSyncResult,
+} from './notifications';
 
 export {
   progressTournament,

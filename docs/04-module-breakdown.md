@@ -172,14 +172,40 @@ Dependencies · Data ownership · APIs · Entities · Scalability**.
   module's tables would be a boundary in name only. It moves out if and when it grows a season
   standing of its own (E8/E9).
 
-## 10. Notifications
+## 10. Notifications — **E8 ✅**
 - **Responsibilities:** create notification intents, dedupe, deliver via Resend (email) and
   in-app, track state.
-- **Dependencies:** runner, Resend, React Email, Prisma.
+- **Dependencies:** runner, Resend, Prisma.
 - **Data ownership:** `Notification`.
-- **APIs:** internal `enqueueNotification`; in-app `getNotifications`.
+- **APIs:** `raiseNotifications` / `dispatchNotificationEmails`; in-app `listMyNotifications`.
 - **Entities:** `Notification`.
 - **Scalability:** all sends async + idempotent; batching later.
+
+**As built (E8.3).**
+- `Submission → Queue → Runner → Engine` has an exact twin here:
+  `event → raiseNotifications → Queue → sendEmail → Mailer`. No business module waits on a mail
+  provider, and nothing enqueues inside a transaction.
+- **Idempotency is a database property, not a check.** `dedupeKey` is `@unique` and derived from
+  what happened (`TYPE:userId:scopeId`); inserts use `createMany({ skipDuplicates: true })`, so
+  two runners racing on one event produce one notification between them. Only keys that were
+  actually created are dispatched.
+- **`Mailer` is an interface with one factory**, exactly as D18 structured the LLM provider.
+  Nothing above `mailer.ts` knows Resend exists, and a deployment with no key degrades to
+  in-app-only rather than failing a lifecycle transition.
+- **What is worth notifying about is NOT owned here.** The Tournament module derives its own
+  events from persisted state (`tournament/notifications.ts`) and calls this module. The
+  dependency runs one way; Notification never reads a tournament.
+
+## 12b. Hall of Fame — **E8 ✅** *(new)*
+- **Responsibilities:** the permanent record of a finished tournament — podium, badges, public
+  history behind screens [3] and [4].
+- **Dependencies:** Tournament (standings), Prisma.
+- **Data ownership:** `HallOfFame`, `Badge`, `UserBadge`.
+- **Why separate from Leaderboard/Ranking:** rankings are *live and recomputable*; a Hall of Fame
+  entry is *frozen*. Participant count and prize pool are copied onto the row at publication so a
+  champion's page does not change because a registration was reconciled months later.
+- The badge catalogue lives in code, not in operator-editable rows: a badge that could be renamed
+  after it was awarded would rewrite history for whoever holds it.
 
 ## 11. Admin
 - **Responsibilities:** tournament/problem authoring, start rounds, monitor submissions, review/
