@@ -23,7 +23,7 @@
     "verify:auth": "tsx --conditions=react-server scripts/verify-auth.ts",
     "make:admin": "tsx --conditions=react-server scripts/make-admin.ts",
     "postinstall": "prisma generate",
-    "prepare": "husky",
+    "prepare": "husky || true",
     "dev:session": "tsx --conditions=react-server scripts/dev-session.ts",
     "verify:evaluation": "tsx --conditions=react-server scripts/verify-evaluation.ts",
     "verify:evaluation:e2e": "tsx --conditions=react-server scripts/verify-evaluation-e2e.ts",

@@ -67,26 +67,74 @@ choose the single HTTP port detected for the BlitzIt web service. Do **not** use
 Postgres ports (`5432`, `5434`) and do not set `PORT=3000` just to satisfy the
 domain form.
 
-### Copy-paste starter block
+### Copy-paste block — the whole thing
 
-Replace `YOUR-DOMAIN` after you generate a Railway domain or attach a custom
-one. The `Postgres` service name must match your Railway canvas exactly.
+Railway → your service → **Variables** → **Raw Editor** → paste, then fill in
+the blanks and replace `YOUR-DOMAIN`. Delete any line you aren't using yet;
+only the first five are required to boot. The `Postgres` service name must match
+your Railway canvas exactly.
 
-```
+```env
+# ---- REQUIRED ----
 DATABASE_URL=${{Postgres.DATABASE_URL}}
+NODE_ENV=production
 NEXT_PUBLIC_APP_URL=https://YOUR-DOMAIN
 BETTER_AUTH_URL=https://YOUR-DOMAIN
-NODE_ENV=production
+BETTER_AUTH_SECRET=
+
+# ---- REQUIRED FOR THE BUILD TO SUCCEED ----
+# NODE_ENV=production makes `npm ci` omit devDependencies, but the build needs
+# typescript, tailwind and the prisma CLI. Without this, the build fails.
+NPM_CONFIG_PRODUCTION=false
+
+# ---- PAYMENTS (required for paid tournaments) ----
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+NEXT_PUBLIC_RAZORPAY_KEY_ID=
+
+# ---- OAUTH (a provider registers only when BOTH id and secret are set) ----
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# ---- EVALUATION ----
+LLM_PROVIDER=anthropic
+LLM_MODEL=
+LLM_TEMPERATURE=0
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GITHUB_API_TOKEN=
+
+# ---- EMAIL ----
+RESEND_API_KEY=
+EMAIL_FROM=
+
+# ---- ANALYTICS / MONITORING ----
+NEXT_PUBLIC_POSTHOG_KEY=
+NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com
+POSTHOG_API_KEY=
+SENTRY_DSN=
+NEXT_PUBLIC_SENTRY_DSN=
+
+# ---- TUNING (defaults are fine; uncomment only to override) ----
+# RUNNER_ENABLED=true
+# RUNNER_CONCURRENCY=2
+# RUNNER_CLAIM_TIMEOUT_MS=300000
+# LIVE_STREAM_POLL_MS=3000
+# LIVE_STREAM_HEARTBEAT_MS=15000
+# LIVE_STREAM_MAX_DURATION_MS=900000
+# LIVE_LEADERBOARD_TAKE=25
+# TOURNAMENT_MIN_REGISTRATIONS=8
+# TOURNAMENT_MAX_REGISTRATIONS=512
+# TOURNAMENT_THIRD_PLACE_ENABLED=true
+# TOURNAMENT_SIMULATION_ROUNDS=3
+# TOURNAMENT_ADVANCE_HIGHER_SEED_ON_NO_SHOW=true
 ```
 
-With a Railway-generated domain `blitzit-production.up.railway.app`:
-
-```
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-NEXT_PUBLIC_APP_URL=https://blitzit-production.up.railway.app
-BETTER_AUTH_URL=https://blitzit-production.up.railway.app
-NODE_ENV=production
-```
+Do **not** set `RAZORPAY_USE_FAKE` — boot throws if it is `true` in production.
+Generate the auth secret with `openssl rand -base64 32`.
 
 Reference the database with Railway's variable reference syntax rather than
 pasting a URL, so it stays in sync:
