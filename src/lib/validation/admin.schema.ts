@@ -190,10 +190,13 @@ export const archiveTournamentSchema = z.object({
 // ───────────────────────── Tournament configuration (D7 / D20) ─────────────────
 
 /**
- * Knockout stages an operator can retime. `SUDDEN_DEATH` is deliberately absent:
- * sudden death is not implemented yet (E6), and offering a duration control for
- * a feature that never runs would be a lie in the UI. `resolveTournamentConfig`
- * still honours it if a value is ever set by other means.
+ * Knockout stages an operator can retime.
+ *
+ * `SUDDEN_DEATH` joined the list in E7: it was withheld while the feature was
+ * unimplemented (a control for a round that never runs is a lie in the UI), and
+ * E6 shipped it. It stays last because it is not a stage of the bracket — it is
+ * the decider that unsticks one. D14's ten minutes remains the default; this
+ * only exposes the override `resolveTournamentConfig` already honoured.
  */
 export const RETIMEABLE_STAGES = [
   'R64',
@@ -203,6 +206,7 @@ export const RETIMEABLE_STAGES = [
   'SF',
   'THIRD_PLACE',
   'FINAL',
+  'SUDDEN_DEATH',
 ] as const;
 
 /** How many simulation rounds a tournament plays (D13). */
@@ -279,6 +283,7 @@ export const configureTournamentFormSchema = z
     stageDurationSF: durationSeconds,
     stageDurationTHIRD_PLACE: durationSeconds,
     stageDurationFINAL: durationSeconds,
+    stageDurationSUDDEN_DEATH: durationSeconds,
   })
   .transform((value) => {
     const simulation = [
@@ -295,6 +300,7 @@ export const configureTournamentFormSchema = z
       ['SF', value.stageDurationSF],
       ['THIRD_PLACE', value.stageDurationTHIRD_PLACE],
       ['FINAL', value.stageDurationFINAL],
+      ['SUDDEN_DEATH', value.stageDurationSUDDEN_DEATH],
     ];
 
     const stages: Record<string, number> = {};

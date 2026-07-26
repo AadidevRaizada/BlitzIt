@@ -237,8 +237,19 @@ competitor cannot distinguish "does not exist" from "belongs to someone else".
 | Submission detail | `/submissions/[submissionId]` | Entry, live status, results, revision history |
 | Evaluation status | *(island)* | Polls a read action every 3s, stops when the entry settles |
 | Admin submissions | `/admin/submissions` | Every entry + retry |
+| Knockout Arena *(E7)* | `/arena/knockout/[matchId]` | Screen [10] — reuses the same form, redirecting back to the arena so a competitor mid-round is never navigated away from their timer |
 
-Polling lives in the view, never in a business module. SSE replaces it when the live surfaces land.
+Polling lives in the view, never in a business module.
+
+**E7 update.** The live surfaces now exist. `/api/live/[tournamentId]` (SSE, with a polling
+fallback) drives the arena and the bracket, and the `Knockout Arena` reuses this same form. The
+3-second poll on the *submission detail* island is deliberately left alone: it watches one
+competitor's own job lifecycle, which is not part of the public tournament snapshot and would
+have to be added to it purely to serve one page.
+
+E7 also added `hasSubmission(userId, roundId)` — a bare boolean, so the arena can tell one
+competitor whether their opponent submitted (after the window closes) without being able to render
+anything else about that entry.
 
 ---
 

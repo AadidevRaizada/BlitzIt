@@ -209,11 +209,34 @@ indistinguishable from a round nobody entered, and the entire bracket walks over
 instant it starts. (This was a real bug, caught by `verify:tournament:e2e`; `verify:bracket`
 carries the regression cases.)
 
-A **fully scored** match is still decided mid-window — there is nothing left to wait for.
+**Nothing is decided on scores until the window closes** — not even a match where both entries
+have already been scored. ~~A fully scored match is decided mid-window.~~ *(Corrected in E6.)*
+E4 lets a competitor **replace** their entry until the deadline and a decided match is never
+re-decided, so deciding early silently voided the right to improve. Byes and voids stay
+structural and are settled whenever they are seen.
 
 `progressTournament` seals an expired window itself (`OPEN` → `JUDGING` once `deadlineAt` passes),
 so the deadline is enforced by the same pull that advances the bracket. There is no separate timer
 to miss.
+
+### Windows are scheduled per round, applied per match (E7)
+
+Screen [10] and the roadmap both speak of "per-match submission windows". They are **derived**,
+not stored: `getMatchWindow(matchId)` reads the match's round.
+
+The schedule stays round-level deliberately. Every match at a stage must open at the same instant,
+or the simultaneous-reveal guarantee is gone and whoever happened to be paired into a later slot
+gets more thinking time on the same problem. One schedule means one source of truth, no drift
+between two records of the same deadline, and the fairness property holds by construction rather
+than by convention — the same principle D26 makes explicit for future environment profiles.
+
+The timers themselves are **server-authoritative** in the strict sense: the server owns two
+absolute instants (`opensAt`, `deadlineAt`) and publishes them with its own clock reading. The
+browser measures its offset from that anchor once and renders `deadline − (localNow − offset)`, so
+a wrong, tampered, sleeping or resuming client clock changes nothing. The countdown is decoration;
+the Submission module refuses a late entry regardless of what any client displays. The pure
+arithmetic lives in `tournament/timers.public.ts` and is shared by both sides so they cannot
+disagree.
 
 ### Concurrency
 
@@ -287,7 +310,7 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 
 | | Why | Where it lands |
 |---|---|---|
-| **Sudden death** (D5.6, D14) | A tie surviving all five tie-breaks sets `Match.tieUnresolved`, leaves the match `JUDGING`, and logs loudly. Resolving it needs a new short challenge + round, which is the bracket epic's job. | E6.3 |
+| **Sudden death** (D5.6, D14) | A tie surviving all five tie-breaks sets `Match.tieUnresolved`, leaves the match `JUDGING`, and logs loudly. Resolving it needs a new short challenge + round, which is the bracket epic's job. | E6.3 ✅ |
 | Admin UI (tournaments/problems/dashboard) | E3 delivers the engine and its server actions; screens are a separate deliverable. | E3.3–E3.5 |
 | Bracket UI | — | E6.4 |
 | Cron wiring | The `tournamentTransition` job and its idempotency exist and are verified; pointing Railway cron at them is deployment configuration. | E3.2 (ops) |
@@ -302,4 +325,5 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 |---|---|
 | `verify:tournament` | Every lifecycle edge; the exhaustive legal/illegal matrix per state; cancellation; stage lists per bracket size; state encoding; configuration layering and degradation |
 | `verify:bracket` | Seed order; structure at 8/16/32/64 with and without third place; better-seed-wins property; determinism; byes incl. an oversized draw; every D5 tie-break step; window gating; seeding aggregation |
+| `verify:live-arena` (E7) | Timer arithmetic at every boundary incl. clock-skew correction; arena state derivation; the reveal gate before `opensAt`; per-match windows deriving identically from one round; opponent progress withheld while the window is open; a late submission refused by the server; JUDGING past the timer; the deadlock → decider → result path from the competitor's side; the live snapshot's contents, its exclusions and its version stability; the feature flag's resolution order |
 | `verify:tournament:e2e` | CRUD; the whole lifecycle against the database; refusal of invalid transitions; idempotent replay; registration limits, withdrawal and a concurrent re-registration race; submission windows and simulation-round progression; seeding from real evaluations plus determinism on a fully tied field; bracket generation and byes; automatic advancement; tie-break, walkover and third place; completion and placements; cancellation and `force`; the transition job and its stage-scoped keys; **restart recovery in a separate process** |

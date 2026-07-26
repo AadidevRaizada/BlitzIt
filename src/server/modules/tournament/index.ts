@@ -157,6 +157,55 @@ export {
   type StartSuddenDeathResult,
 } from './sudden-death';
 
+// ---- Server-authoritative timers (E7.1, pure) ----
+export {
+  timerPhase,
+  secondsUntil,
+  computeCountdown,
+  classifySubmissionTiming,
+  clockSkewMs,
+  serverNowFromClient,
+  formatDuration,
+  type TimerPhase,
+  type TimerWindow,
+  type Countdown,
+  type SubmissionTiming,
+} from './timers.public';
+
+// ---- Knockout Arena (E7.2) ----
+export {
+  deriveArenaState,
+  isArenaActionable,
+  mayRevealOpponentProgress,
+  ARENA_STATE_LABEL,
+  type ArenaState,
+  type ArenaStateInput,
+} from './arena.public';
+
+export {
+  getMatchWindow,
+  getKnockoutArena,
+  listMyLiveMatches,
+  type MatchWindow,
+  type ArenaView,
+  type ArenaOpponent,
+  type MyMatchSummary,
+} from './arena';
+
+// ---- Live / spectator read model (E7.3) ----
+export {
+  getLiveSnapshot,
+  getLeaderboard,
+  snapshotVersion,
+  LEADERBOARD_DEFAULT_TAKE,
+  type LiveSnapshot,
+  type LiveSnapshotOptions,
+  type LiveRoundView,
+  type LeaderboardEntry,
+  type LeaderboardOptions,
+  type LeaderboardOrder,
+} from './live';
+
 export {
   progressTournament,
   progressSimulation,

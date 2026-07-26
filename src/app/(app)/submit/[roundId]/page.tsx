@@ -3,8 +3,10 @@ import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
 import { getRevealedRound, isRegistered } from '@/server/modules/tournament';
 import { getMySubmission } from '@/server/modules/submission';
+import { computeCountdown } from '@/server/modules/tournament/timers.public';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
-import { SubmissionForm } from './submission-form';
+import { Countdown } from '@/components/features/countdown';
+import { SubmissionForm } from '@/components/features/submission-form';
 
 export const metadata = { title: 'Submit — Blitz It' };
 
@@ -31,6 +33,9 @@ export default async function SubmitPage({
   const existing = await getMySubmission(user.id, roundId);
 
   const window = round.window;
+  const now = new Date();
+  const serverTime = now.toISOString();
+  const countdown = computeCountdown(window, now);
   // The module decides when the statement is revealed; a competitor must also
   // be registered to see it at all.
   const revealed = round.revealed && registered;
@@ -60,7 +65,21 @@ export default async function SubmitPage({
           label="Deadline"
           value={window.deadlineAt ? formatUtc(window.deadlineAt) : '—'}
         />
-        <Meta label="Window" value={window.isOpen ? 'Open' : 'Closed'} />
+        <div>
+          <dt className="text-muted-foreground text-xs">
+            {countdown.label === 'OPENS' ? 'Opens in' : 'Time left'}
+          </dt>
+          <dd>
+            {/* Server-authoritative (E7.1): the browser is given the deadline
+                and the server's clock, and corrects its own against it. */}
+            <Countdown
+              targetAt={countdown.targetAt}
+              serverTime={serverTime}
+              phase={countdown.phase}
+              className="text-sm"
+            />
+          </dd>
+        </div>
       </dl>
 
       {!registered ? (

@@ -10,7 +10,8 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 |--------|------|------|---------|----------|-------|
 | ALL | `/api/auth/[...all]` | — | Better Auth | — | GitHub/Google OAuth, session, callback |
 | POST | `/api/webhooks/razorpay` | signature | raw body + `x-razorpay-signature` | 200/4xx | verify against **raw body**; idempotent via `webhookEventId`; source of truth for payment state |
-| GET | `/api/live/[tournamentId]` | public | — | `text/event-stream` | SSE: leaderboard, bracket, current match, participantCount, prizePool, next-round countdown. Polling fallback. |
+| GET | `/api/live/[tournamentId]` | public | — | `text/event-stream` | **E7 ✅** SSE: leaderboard, bracket, current round, participantCount, prizePool, countdown. `event: snapshot` on connect and on every change; `: heartbeat` comment while quiet; `event: reconnect` before the stream's bounded lifetime expires. Withholds the challenge of any round that has not opened; UNLISTED tournaments 404; **503 + `Retry-After` when `FEATURE_LIVE_ARENA=false`** — the kill switch closes the transport, not just the links. |
+| GET | `/api/live/[tournamentId]?mode=poll` | public | — | `application/json` | **E7 ✅** The polling fallback — the *identical* `LiveSnapshot`, once. Used when SSE is blocked or buffered by a proxy. |
 | GET | `/api/health` | — | — | `{ db, runner, time }` | Railway liveness/readiness incl. runner heartbeat |
 
 ## Server Actions (`src/server/actions/**`)
@@ -41,16 +42,31 @@ revalidate → typed result** `{ ok: true, data } | { ok: false, error: { code, 
 | `disqualifySubmissionAction` | `{ submissionId, reason }` | **admin** | terminal removal from competition (D19) |
 | `getRevealedProblem` (read) | `{ roundId }` | registered + `now >= opensAt` | problem statement (never hidden tests) — *gating implemented inline on `/submit/[roundId]`; a standalone action lands with the arena (E5)* |
 
-> **Rate limiting on `submitSolution` is not yet implemented** — it needs its own Postgres-backed
-> table and is deferred to the arena epic. Duplicate-entry and deployment-URL-reuse checks are in
-> place.
+> **Rate limiting on `submitSolution` is still not implemented.** It was pencilled in for the arena
+> epic; E7's scope (E7.1–E7.4) does not include it, so it moves to **E10 (hardening)**, where the
+> load/burst and security work already lives and where a Postgres-backed limiter can be tuned
+> against real numbers. Duplicate-entry and deployment-URL-reuse checks are in place, and the
+> submission window itself bounds the exposure. See `CHANGELOG_EPIC_E7.md` → remaining risks.
 
 ### Live / Spectator (reads; also powering SSE)
-| Action | Input | Effect |
+
+**E7 as built:** these are module reads in `server/modules/tournament/live.ts`, called by the
+route handler and by the server components — not Server Actions, because their only mutating
+caller would be none. `getLiveSnapshot` is the single payload behind both transports.
+
+| Read | Input | Effect |
 |--------|-------|--------|
-| `getLeaderboard` | `{ tournamentId, by?: 'score'|'city'|'seed' }` | ranked standings |
-| `getBracket` | `{ tournamentId }` | full bracket tree + match statuses |
-| `getTournamentPublic` | `{ slug }` | status, countdown, participantCount, prizePool, stream URL |
+| `getLiveSnapshot` ✅ | `{ tournamentId, leaderboardTake?, now? }` | the whole spectator payload + a content `version` |
+| `getLeaderboard` ✅ | `{ tournamentId, by?: 'score'\|'city'\|'seed', take? }` | ranked standings |
+| `listBracketRounds` ✅ (E5/E6) | `{ tournamentId, revealProblems }` | full bracket tree + match statuses |
+| `getKnockoutArena` ✅ | `{ matchId, viewerId }` | screen [10]; null for anyone not in the match |
+| `getMatchWindow` ✅ | `{ matchId }` | the round's window as it applies to one match |
+| `listMyLiveMatches` ✅ | `{ userId }` | the arena entry point |
+| `getTournamentPublic` | `{ slug }` | *(E8)* landing-page read |
+
+> `LiveSnapshot.version` is a hash over the snapshot's *content*, excluding `serverTime` and the
+> countdown's ticking `secondsRemaining` — otherwise every read would look like a change and the
+> stream would be a poll with extra steps.
 
 ### Registration (E3 — the entry *state*; E4 attaches the payment)
 | Action | Input | Authz | Effect |
