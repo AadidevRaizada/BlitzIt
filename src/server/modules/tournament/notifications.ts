@@ -128,10 +128,15 @@ export async function syncTournamentNotifications(
       tournamentId,
       status: 'DECIDED',
       winnerId: { not: null },
-      // The final is covered by TOURNAMENT_COMPLETE, which can say what someone
-      // actually finished rather than "you advanced" to nothing, or
-      // "eliminated" to a runner-up.
-      round: { stage: { notIn: ['FINAL'] } },
+      // Terminal matches are covered by TOURNAMENT_COMPLETE, which can say
+      // what someone actually finished rather than "you advanced" to nothing.
+      //
+      // THIRD_PLACE belongs here as much as FINAL does: its winner finishes
+      // third and plays no further round, so an ADVANCED notification would
+      // tell them "the next round opens on schedule" when there is no next
+      // round. Its loser finishing fourth is not "eliminated" in any sense
+      // they would recognise either — they reached the last four.
+      round: { stage: { notIn: ['FINAL', 'THIRD_PLACE'] } },
     },
     select: {
       id: true,

@@ -27,8 +27,11 @@ export default async function ProfilePage({
   if (!user) notFound();
 
   const profile = user.profile;
+  // `publicOnly` on both: this page is readable by anyone, and a badge carries
+  // the name of the tournament that awarded it. A rehearsal runs UNLISTED and
+  // must not be announced here.
   const [badges, placements] = await Promise.all([
-    listUserBadges(user.id),
+    listUserBadges(user.id, { publicOnly: true }),
     listPublicPlacements(user.id),
   ]);
 

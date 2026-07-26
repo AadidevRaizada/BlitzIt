@@ -273,8 +273,22 @@ export interface UserBadgeView {
   tournamentName: string | null;
 }
 
+/**
+ * A competitor's badges.
+ *
+ * **`publicOnly` must be set on any surface a stranger can read.** A badge
+ * carries the name of the tournament that awarded it, and rehearsals run
+ * UNLISTED — without the filter a public profile would announce a tournament
+ * that is deliberately unannounced everywhere else. `listPublicPlacements`
+ * already applies the same rule; this is the other half of it.
+ *
+ * `UserBadge.tournamentId` is a plain column rather than a relation, so the
+ * filter is applied after the read instead of in the WHERE clause. A badge with
+ * no tournament (a future global award) has nothing to hide and always shows.
+ */
 export async function listUserBadges(
   userId: string,
+  options: { publicOnly?: boolean } = {},
   client: DbClient = db,
 ): Promise<UserBadgeView[]> {
   const rows = await client.userBadge.findMany({
@@ -291,21 +305,31 @@ export async function listUserBadges(
     ),
   ];
   const tournaments = await client.tournament.findMany({
-    where: { id: { in: tournamentIds } },
+    where: {
+      id: { in: tournamentIds },
+      ...(options.publicOnly ? { visibility: 'PUBLIC', archivedAt: null } : {}),
+    },
     select: { id: true, name: true },
   });
   const nameById = new Map(tournaments.map((t) => [t.id, t.name]));
 
-  return rows.map((row) => ({
-    slug: row.badge.slug,
-    name: row.badge.name,
-    description: row.badge.description,
-    awardedAt: row.awardedAt,
-    tournamentId: row.tournamentId,
-    tournamentName: row.tournamentId
-      ? (nameById.get(row.tournamentId) ?? null)
-      : null,
-  }));
+  return rows
+    .filter(
+      (row) =>
+        !options.publicOnly ||
+        row.tournamentId === null ||
+        nameById.has(row.tournamentId),
+    )
+    .map((row) => ({
+      slug: row.badge.slug,
+      name: row.badge.name,
+      description: row.badge.description,
+      awardedAt: row.awardedAt,
+      tournamentId: row.tournamentId,
+      tournamentName: row.tournamentId
+        ? (nameById.get(row.tournamentId) ?? null)
+        : null,
+    }));
 }
 
 /** Badge slugs a user holds — for the compact profile summary. */

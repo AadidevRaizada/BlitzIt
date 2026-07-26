@@ -87,6 +87,15 @@ export function awardsForPlacements(
 ): BadgeAward[] {
   const awards: BadgeAward[] = [];
 
+  // `third-place` means "won the third-place play-off", so it is only awarded
+  // when there is a sole third. With the play-off disabled (D6) both losing
+  // semi-finalists share placement 3, and giving both a badge that claims they
+  // won a play-off nobody played would contradict its own description — and
+  // `podiumFromPlacements`, which deliberately refuses to name a third in that
+  // case. They keep `semi-finalist`, which is exactly what they achieved.
+  const soleThird =
+    placements.filter((entry) => entry.placement === 3).length === 1;
+
   for (const entry of placements) {
     if (entry.qualified) {
       awards.push({ userId: entry.userId, slug: 'qualifier' });
@@ -96,7 +105,7 @@ export function awardsForPlacements(
     if (entry.placement <= 4) {
       awards.push({ userId: entry.userId, slug: 'semi-finalist' });
     }
-    if (entry.placement === 3) {
+    if (entry.placement === 3 && soleThird) {
       awards.push({ userId: entry.userId, slug: 'third-place' });
     }
     if (entry.placement === 2) {

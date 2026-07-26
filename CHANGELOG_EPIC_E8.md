@@ -112,13 +112,26 @@ No existing column or constraint changed. An E7 deployment runs unmodified again
 
 ## Codex review
 
-*(Pending — recorded below once the review completes.)*
+Three findings, all P2. **All three were genuine and are fixed**, each with a regression check.
+No false positives. Two are user-visible correctness bugs and one is a privacy leak; notably, one
+of them had been *enshrined in this suite as intended behaviour*, which is the most useful kind of
+finding a reviewer can produce.
+
+| # | Severity | Finding | Verdict & fix |
+|---|---|---|---|
+| **1** | P2 | **The third-place winner was told the next round opens.** The ADVANCED/ELIMINATED sweep excluded only `FINAL`, so a decided `THIRD_PLACE` match raised `ADVANCED` — whose copy reads "the next round opens on schedule" — for someone who had just finished third and was done. Its loser was told they were "eliminated" at a stage they reached by getting to the last four. | **Confirmed.** `THIRD_PLACE` is as terminal as `FINAL` and is now excluded alongside it. Both competitors are covered by `TOURNAMENT_COMPLETE`, which states their actual placement. |
+| **2** | P2 | **The third-place badge contradicted its own description.** With the play-off disabled (D6) both losing semi-finalists share placement 3, and both were awarded a badge defined as "won the third-place play-off" — for a play-off nobody played. It also contradicted `podiumFromPlacements`, which deliberately refuses to name a third in that case. | **Confirmed, and I had asserted the wrong behaviour in the suite.** The badge is now awarded only when exactly one competitor holds placement 3. Both shared thirds keep `semi-finalist`, which is exactly what they achieved. The offending check was replaced with three that assert the corrected rule. |
+| **3** | P2 | **Unlisted tournaments leaked through public profiles.** `publishHallOfFame` awards `UserBadge` rows for any completed tournament, and `/u/[username]` read them unfiltered — so a badge would display the *name* of a rehearsal tournament that is deliberately unannounced everywhere else. `listPublicPlacements` already applied the visibility filter; badges were the other half nobody had filtered. | **Confirmed.** `listUserBadges` takes `publicOnly`, which the public profile passes. A competitor still sees every badge on their own `/results`. |
+
+**On finding 2:** the value of an independent review is precisely that it does not accept a test
+as evidence of correctness. My suite asserted that both shared thirds get the badge; the reviewer
+read the badge's *description* and the podium rule and noticed all three disagreed.
 
 ## Verification
 
 | Suite | Result |
 |---|---|
-| `verify:spectator` | **105/105** — new |
+| `verify:spectator` | **114/114** — new (105 + 9 Codex regressions) |
 | `verify:tournament` / `bracket` / `tournament:e2e` | 197 / 119 / 134 — no regressions |
 | `verify:live-arena` / `sudden-death` | 103 / 55 — no regressions |
 | `verify:submission` / `admin` | 179 / 89 — no regressions |

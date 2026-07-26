@@ -350,10 +350,24 @@ function pureBadges() {
     'with no third-place play-off, no single third place is claimed',
     podiumFromPlacements(noPlayOff).thirdPlaceId === null,
   );
+  // Codex finding 2 (P2). This suite previously asserted the opposite — that
+  // both shared thirds get the badge — which contradicted the badge's own
+  // description ("won the third-place play-off") and the podium, which refuses
+  // to name a third in this case. The badge now follows the description.
   check(
-    'but both shared thirds still get the third-place badge',
+    'REGRESSION: neither shared third gets a badge for a play-off nobody played',
     awardsForPlacements(noPlayOff).filter((a) => a.slug === 'third-place')
-      .length === 2,
+      .length === 0,
+  );
+  check(
+    'REGRESSION: but both keep semi-finalist, which is what they achieved',
+    awardsForPlacements(noPlayOff).filter((a) => a.slug === 'semi-finalist')
+      .length === 4,
+  );
+  check(
+    'REGRESSION: a sole third — a play-off that was actually won — still earns it',
+    awardsForPlacements(field).filter((a) => a.slug === 'third-place')
+      .length === 1,
   );
 }
 
@@ -927,6 +941,27 @@ async function pipeline() {
       (entry) => entry.tournamentId !== tournament.id,
     ),
   );
+  // Codex finding 3 (P2): badges carry the awarding tournament's NAME, so a
+  // public profile reading them unfiltered announces a rehearsal that is
+  // deliberately unannounced everywhere else.
+  check(
+    'REGRESSION: an unlisted tournament’s badges are withheld from a public profile',
+    (await listUserBadges(championId, { publicOnly: true })).every(
+      (badge) => badge.tournamentId !== tournament.id,
+    ),
+  );
+  check(
+    'REGRESSION: and its name never appears in the public badge list',
+    !JSON.stringify(
+      await listUserBadges(championId, { publicOnly: true }),
+    ).includes(tournament.name),
+  );
+  check(
+    'but the competitor still sees them on their own results page',
+    (await listUserBadges(championId)).some(
+      (badge) => badge.tournamentId === tournament.id,
+    ),
+  );
   await db.tournament.update({
     where: { id: tournament.id },
     data: { visibility: 'PUBLIC' },
@@ -971,6 +1006,45 @@ async function pipeline() {
     !completeNotifications.some(
       (n) => n.type === 'ELIMINATED' && n.body.toLowerCase().includes('final'),
     ),
+  );
+
+  // Codex finding 1 (P2): a terminal match has no next round, so ADVANCED —
+  // whose copy says "the next round opens on schedule" — must not be raised
+  // for it. THIRD_PLACE is as terminal as FINAL.
+  const thirdPlaceMatch = await db.match.findFirst({
+    where: {
+      tournamentId: tournament.id,
+      round: { stage: 'THIRD_PLACE' },
+      status: 'DECIDED',
+    },
+    select: { winnerId: true, loserId: true },
+  });
+  check(
+    'the tournament actually played a third-place match',
+    thirdPlaceMatch?.winnerId != null,
+  );
+  const thirdWinnerNotifications = thirdPlaceMatch?.winnerId
+    ? await listMyNotifications(thirdPlaceMatch.winnerId, { take: 50 })
+    : [];
+  check(
+    'REGRESSION: the third-place winner is never told the next round opens',
+    !thirdWinnerNotifications.some(
+      (n) => n.type === 'ADVANCED' && n.body.toLowerCase().includes('third'),
+    ),
+  );
+  const thirdLoserNotifications = thirdPlaceMatch?.loserId
+    ? await listMyNotifications(thirdPlaceMatch.loserId, { take: 50 })
+    : [];
+  check(
+    'REGRESSION: and the fourth-place finisher is not "eliminated" at THIRD_PLACE',
+    !thirdLoserNotifications.some(
+      (n) => n.type === 'ELIMINATED' && n.body.toLowerCase().includes('third'),
+    ),
+  );
+  check(
+    'both are covered by the completion notification instead',
+    thirdWinnerNotifications.some((n) => n.type === 'TOURNAMENT_COMPLETE') &&
+      thirdLoserNotifications.some((n) => n.type === 'TOURNAMENT_COMPLETE'),
   );
 
   const finalSweep = await syncTournamentNotifications(tournament.id);
