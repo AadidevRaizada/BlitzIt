@@ -299,8 +299,13 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
   `Evaluation` **rows**. It never calls the engine.
 - The engine still contains no stage logic and no AI special cases (D20 architectural rule
   unchanged).
-- Registration is a *state* here. Paying for it is E4, which will attach a `Payment` to the row
-  this module creates.
+- Registration is a *state* here. Free registration creates an `ACTIVE` row with no expiry.
+  Paid checkout first creates an `ACTIVE` unpaid seat hold with `holdExpiresAt`, in the same
+  transaction that increments `Tournament.participantCount`, so capacity is reserved before
+  Razorpay can charge the user. Expiry reconciliation revokes stale unpaid holds and decrements
+  the reservation count. Successful capture conditionally attaches `Registration.paymentId`,
+  clears `holdExpiresAt`, marks the `Payment` paid, and recomputes the prize pool without claiming
+  a second seat.
 - Submissions are created by E5. E3 owns only the **window** (`isSubmissionWindowOpen`,
   `getSubmissionWindow`) so E5 asks rather than re-deriving the schedule.
 

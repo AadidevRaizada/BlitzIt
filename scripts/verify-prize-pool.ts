@@ -131,6 +131,16 @@ function refundBody(input: {
           payment_id: input.paymentId,
           amount: input.amount,
           currency: input.currency,
+          status: 'processed',
+        },
+      },
+      payment: {
+        entity: {
+          id: input.paymentId,
+          amount: input.amount,
+          currency: input.currency,
+          amount_refunded: input.amount,
+          refund_status: 'full',
         },
       },
     },

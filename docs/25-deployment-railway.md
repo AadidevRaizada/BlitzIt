@@ -26,9 +26,14 @@ after you've watched one instance under load.
 
 `railway.json` is already correct — don't change it:
 
-- build: `npm ci && npm run build`
+- install: `npm ci`
+- build: `npm run build`
 - start: `npx prisma migrate deploy && npm run start` (migrations run on every deploy)
 - healthcheck: `/api/health`
+
+Do **not** put `npm ci && npm run build` into Railway's build command. Nixpacks
+already runs the install phase, and running `npm ci` again in the build phase can
+collide with Railway's mounted `node_modules/.cache` cache.
 
 ---
 
@@ -41,15 +46,26 @@ they must exist *before* the build that ships them. On Railway that means:
 2. Create the web service from the repo, but **don't rely on the first build**.
 3. Generate the public domain (Settings → Networking → Generate Domain), or
    attach your custom domain, so you know the final URL.
-4. Set every variable in section 3, using that final URL.
-5. **Redeploy** so the build picks up the `NEXT_PUBLIC_*` values.
-6. Only then register the OAuth callbacks and the Razorpay webhook (section 4).
+4. In the web service, set `DATABASE_URL` to reference the Postgres service
+   variable, not a pasted placeholder URL.
+5. Set every remaining variable in section 3, using that final URL.
+6. **Redeploy** so the build picks up the `NEXT_PUBLIC_*` values and the runtime
+   container starts with `DATABASE_URL`.
+7. Only then register the OAuth callbacks and the Razorpay webhook (section 4).
 
 Do not set `PORT` yourself — Railway injects it and `next start` reads it.
 
 ---
 
 ## 3. Environment variables
+
+Domain/port reminder before you set URLs: for custom domains, do not enter a
+database port and do not create a TCP proxy for the web app. Use Railway's
+**Public Networking** domain flow. Leave the target port on automatic/detected
+when possible. If Railway forces a target-port choice after a successful deploy,
+choose the single HTTP port detected for the BlitzIt web service. Do **not** use
+Postgres ports (`5432`, `5434`) and do not set `PORT=3000` just to satisfy the
+domain form.
 
 Reference the database with Railway's variable reference syntax rather than
 pasting a URL, so it stays in sync:
@@ -58,15 +74,46 @@ pasting a URL, so it stays in sync:
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 ```
 
+Use the exact service name from your Railway canvas. If the database service is
+named `Production DB`, the reference must be:
+
+```
+DATABASE_URL=${{Production DB.DATABASE_URL}}
+```
+
+If the runtime logs say:
+
+```text
+Datasource "db": PostgreSQL database "unset", schema "public" at "localhost:1"
+Error: P1001: Can't reach database server at `localhost:1`
+```
+
+then the web service is **not connected to Postgres**. Fix the web service's
+`DATABASE_URL` variable, review/apply the staged variable change, and redeploy.
+This is a Railway configuration issue, not an app build issue.
+
 ### Required — the app refuses to boot without these
 
 | Var | Notes |
 |---|---|
 | `DATABASE_URL` | Reference the Postgres service |
-| `NODE_ENV` | `production` |
+| `NODE_ENV` | `production` exactly, or leave it unset and let Railway/Next set production behavior. Never use `Production`, `prod`, `preview`, or `staging` |
 | `BETTER_AUTH_SECRET` | **min 32 chars**; `openssl rand -base64 32`. Boot throws in production if missing |
 | `BETTER_AUTH_URL` | `https://YOUR-DOMAIN` |
 | `NEXT_PUBLIC_APP_URL` | `https://YOUR-DOMAIN` — build-time, no trailing slash |
+
+If the build logs say:
+
+```text
+You are using a non-standard "NODE_ENV" value
+Error: <Html> should not be imported outside of pages/_document
+Error occurred prerendering page "/500"
+```
+
+fix `NODE_ENV` first. That error can appear while Next is prerendering its
+built-in error page under an inconsistent environment. The app router root
+layout owns `<html>`; this repo should not import `Html`, `Main`, or
+`NextScript` from `next/document`.
 
 ### Required for paid tournaments
 

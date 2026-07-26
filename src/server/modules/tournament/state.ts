@@ -28,7 +28,7 @@ import {
 import { computeSeeding } from './seeding';
 import { generateBracket } from './bracket-generate';
 import { assignFinalPlacements, getRoundCompletion } from './advancement';
-import { countActiveRegistrations } from './registration';
+import { countCompetitionEligibleRegistrations } from './registration';
 
 /**
  * Persisted lifecycle transitions (E3.1).
@@ -127,18 +127,24 @@ async function assertGuards(
 ): Promise<void> {
   switch (transition) {
     case 'CLOSE_REGISTRATION': {
-      const active = await countActiveRegistrations(tournament.id, tx);
-      if (active < config.minRegistrations) {
+      const eligible = await countCompetitionEligibleRegistrations(
+        tournament.id,
+        tx,
+      );
+      if (eligible < config.minRegistrations) {
         throw new ConflictError(
-          `only ${active} registration(s); ${config.minRegistrations} are required to proceed`,
+          `only ${eligible} eligible registration(s); ${config.minRegistrations} are required to proceed`,
         );
       }
       return;
     }
 
     case 'START_SIMULATION': {
-      const active = await countActiveRegistrations(tournament.id, tx);
-      if (active === 0) {
+      const eligible = await countCompetitionEligibleRegistrations(
+        tournament.id,
+        tx,
+      );
+      if (eligible === 0) {
         throw new ConflictError('no registered competitors');
       }
       return;
@@ -270,15 +276,18 @@ async function applySideEffects(
       };
 
     case 'CLOSE_REGISTRATION': {
-      const active = await countActiveRegistrations(tournament.id, tx);
+      const eligible = await countCompetitionEligibleRegistrations(
+        tournament.id,
+        tx,
+      );
       return {
         data: {
           registrationClosesAt: now,
-          // The counter drives capacity and (in E4) the prize pool; lock it to
-          // reality at exactly the moment the field is frozen.
-          participantCount: active,
+          // Registration is closing, so the seat-reservation counter becomes
+          // the frozen competitive field count.
+          participantCount: eligible,
         },
-        detail: { registrations: active },
+        detail: { eligibleRegistrations: eligible },
       };
     }
 

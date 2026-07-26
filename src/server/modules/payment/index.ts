@@ -35,6 +35,7 @@ export {
   markManualPaymentPaidForAdmin,
   markPaymentFailed,
   processRazorpayWebhook,
+  reconcileExpiredSeatHolds,
   reconcilePendingRefundForAdmin,
   refundPaymentForAdmin,
   type AdminPaymentRow,

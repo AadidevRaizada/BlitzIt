@@ -11,6 +11,7 @@ import {
   hmacSha256Hex,
   listPaymentsForAdmin,
   processRazorpayWebhook,
+  reconcileExpiredSeatHolds,
   reconcilePendingRefundForAdmin,
   refundPaymentForAdmin,
   type RazorpayGateway,
@@ -204,8 +205,23 @@ function webhookBody(input: {
     currency: string;
     status: string;
   };
-  refund?: { id: string; paymentId: string; amount: number; currency: string };
+  refund?: {
+    id: string;
+    paymentId: string;
+    amount: number;
+    currency: string;
+    status?: string;
+    paymentAmount?: number;
+    amountRefunded?: number;
+    refundStatus?: string | null;
+  };
 }) {
+  const refundPaymentAmount =
+    input.refund?.paymentAmount ??
+    input.payment?.amount ??
+    input.refund?.amount;
+  const refundAmountRefunded =
+    input.refund?.amountRefunded ?? input.refund?.amount;
   return JSON.stringify({
     id: input.id,
     event: input.event,
@@ -225,12 +241,28 @@ function webhookBody(input: {
         : {}),
       ...(input.refund
         ? {
+            payment: {
+              entity: {
+                id: input.refund.paymentId,
+                amount: refundPaymentAmount,
+                currency: input.refund.currency,
+                amount_refunded: refundAmountRefunded,
+                refund_status:
+                  input.refund.refundStatus ??
+                  (refundAmountRefunded !== undefined &&
+                  refundPaymentAmount !== undefined &&
+                  refundAmountRefunded >= refundPaymentAmount
+                    ? 'full'
+                    : 'partial'),
+              },
+            },
             refund: {
               entity: {
                 id: input.refund.id,
                 payment_id: input.refund.paymentId,
                 amount: input.refund.amount,
                 currency: input.refund.currency,
+                status: input.refund.status ?? 'processed',
               },
             },
           }
@@ -334,11 +366,16 @@ async function main() {
       authorizedBody,
       webhookSignature(authorizedBody),
     );
-    const [pending, registrationCount, tournamentAfterAuthorized] =
+    const [pending, authorizedRegistration, tournamentAfterAuthorized] =
       await Promise.all([
         db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
-        db.registration.count({
-          where: { userId: user.id, tournamentId: tournament.id },
+        db.registration.findUnique({
+          where: {
+            userId_tournamentId: {
+              userId: user.id,
+              tournamentId: tournament.id,
+            },
+          },
         }),
         db.tournament.findUniqueOrThrow({
           where: { id: tournament.id },
@@ -352,11 +389,13 @@ async function main() {
       `status ${pending.status}; provider ${pending.providerPaymentId}`,
     );
     check(
-      'authorized webhook activates no registration or prize money',
-      registrationCount === 0 &&
-        tournamentAfterAuthorized.participantCount === 0 &&
+      'authorized webhook keeps only an unpaid seat hold and no prize money',
+      authorizedRegistration?.status === 'ACTIVE' &&
+        authorizedRegistration.paymentId === null &&
+        authorizedRegistration.holdExpiresAt !== null &&
+        tournamentAfterAuthorized.participantCount === 1 &&
         tournamentAfterAuthorized.prizePoolMinor === 0,
-      `registrations ${registrationCount}; count ${tournamentAfterAuthorized.participantCount}; pool ${tournamentAfterAuthorized.prizePoolMinor}`,
+      `registration ${authorizedRegistration?.status}; payment ${authorizedRegistration?.paymentId}; hold ${authorizedRegistration?.holdExpiresAt}; count ${tournamentAfterAuthorized.participantCount}; pool ${tournamentAfterAuthorized.prizePoolMinor}`,
     );
 
     gateway.setPaymentStatus(authorizedPayment.id, 'captured');
@@ -416,11 +455,21 @@ async function main() {
         ),
       'CONFLICT',
     );
+    const [activeHolds, afterFailed] = await Promise.all([
+      db.registration.count({
+        where: { tournamentId: tournament.id, status: 'ACTIVE' },
+      }),
+      db.tournament.findUniqueOrThrow({
+        where: { id: tournament.id },
+        select: { participantCount: true, prizePoolMinor: true },
+      }),
+    ]);
     check(
-      'cancelled payment creates no registration',
-      (await db.registration.count({
-        where: { tournamentId: tournament.id },
-      })) === 0,
+      'cancelled payment releases the seat hold',
+      activeHolds === 0 &&
+        afterFailed.participantCount === 0 &&
+        afterFailed.prizePoolMinor === 0,
+      `active ${activeHolds}; count ${afterFailed.participantCount}; pool ${afterFailed.prizePoolMinor}`,
     );
   }
 
@@ -630,6 +679,216 @@ async function main() {
     );
   }
 
+  // 6b. partial refund is flagged, not applied as a cancellation
+  {
+    const user = await makeUser('partial-refund');
+    const tournament = await makeTournament('partial-refund');
+    const order = await createPassOrder(tournament.id, user.id, { gateway });
+    const payment = gateway.simulatePayment(order.orderId, 'captured');
+    await confirmCheckout(
+      {
+        razorpayOrderId: order.orderId,
+        razorpayPaymentId: payment.id,
+        razorpaySignature: checkoutSignature(order.orderId, payment.id),
+      },
+      { gateway },
+    );
+    const beforePartial = await db.tournament.findUniqueOrThrow({
+      where: { id: tournament.id },
+      select: { participantCount: true, prizePoolMinor: true },
+    });
+    const partialBody = webhookBody({
+      id: `${TAG}-partial-refund`,
+      event: 'refund.processed',
+      refund: {
+        id: `${TAG}-partial-refund-id`,
+        paymentId: payment.id,
+        amount: Math.floor(payment.amount / 2),
+        currency: payment.currency,
+        paymentAmount: payment.amount,
+      },
+    });
+    const partial = await processRazorpayWebhook(
+      partialBody,
+      webhookSignature(partialBody),
+    );
+    const [afterPartialPayment, afterPartialRegistration, afterPartial, ops] =
+      await Promise.all([
+        db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
+        db.registration.findUniqueOrThrow({
+          where: {
+            userId_tournamentId: {
+              userId: user.id,
+              tournamentId: tournament.id,
+            },
+          },
+        }),
+        db.tournament.findUniqueOrThrow({
+          where: { id: tournament.id },
+          select: { participantCount: true, prizePoolMinor: true },
+        }),
+        db.opsEvent.findUnique({
+          where: {
+            idempotencyKey: `payment:${order.paymentId}:refund:${TAG}-partial-refund-id`,
+          },
+        }),
+      ]);
+    check(
+      'partial refund webhook is accepted without cancelling the entry',
+      partial.processed === false &&
+        afterPartialPayment.status === 'PAID' &&
+        afterPartialPayment.refundRequiredAt !== null &&
+        afterPartialRegistration.status === 'ACTIVE',
+      `processed ${partial.processed}; payment ${afterPartialPayment.status}; registration ${afterPartialRegistration.status}`,
+    );
+    check(
+      'partial refund leaves count and prize pool unchanged and flags ops',
+      afterPartial.participantCount === beforePartial.participantCount &&
+        afterPartial.prizePoolMinor === beforePartial.prizePoolMinor &&
+        ops?.type === 'payment.partialRefundOperatorActionRequired',
+      `${beforePartial.participantCount}/${beforePartial.prizePoolMinor} -> ${afterPartial.participantCount}/${afterPartial.prizePoolMinor}; ops ${ops?.type}`,
+    );
+
+    const fullBody = webhookBody({
+      id: `${TAG}-partial-then-full-refund`,
+      event: 'refund.processed',
+      refund: {
+        id: `${TAG}-partial-then-full-refund-id`,
+        paymentId: payment.id,
+        amount: payment.amount,
+        currency: payment.currency,
+        paymentAmount: payment.amount,
+        amountRefunded: payment.amount,
+        refundStatus: 'full',
+      },
+    });
+    await processRazorpayWebhook(fullBody, webhookSignature(fullBody));
+    await processRazorpayWebhook(fullBody, webhookSignature(fullBody));
+    const [afterFullPayment, afterFullRegistration, afterFull] =
+      await Promise.all([
+        db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
+        db.registration.findUniqueOrThrow({
+          where: {
+            userId_tournamentId: {
+              userId: user.id,
+              tournamentId: tournament.id,
+            },
+          },
+        }),
+        db.tournament.findUniqueOrThrow({
+          where: { id: tournament.id },
+          select: { participantCount: true, prizePoolMinor: true },
+        }),
+      ]);
+    check(
+      'full refund after partial releases the seat exactly once',
+      afterFullPayment.status === 'REFUNDED' &&
+        afterFullRegistration.status === 'REFUNDED' &&
+        afterFull.participantCount === beforePartial.participantCount - 1 &&
+        afterFull.prizePoolMinor < beforePartial.prizePoolMinor,
+      `payment ${afterFullPayment.status}; registration ${afterFullRegistration.status}; count ${afterFull.participantCount}; pool ${afterFull.prizePoolMinor}`,
+    );
+  }
+
+  // 6c. cumulative full refund across two sequential partial refund entities
+  {
+    const user = await makeUser('two-half-refunds');
+    const tournament = await makeTournament('two-half-refunds');
+    const order = await createPassOrder(tournament.id, user.id, { gateway });
+    const payment = gateway.simulatePayment(order.orderId, 'captured');
+    await confirmCheckout(
+      {
+        razorpayOrderId: order.orderId,
+        razorpayPaymentId: payment.id,
+        razorpaySignature: checkoutSignature(order.orderId, payment.id),
+      },
+      { gateway },
+    );
+    const beforeRefund = await db.tournament.findUniqueOrThrow({
+      where: { id: tournament.id },
+      select: { participantCount: true, prizePoolMinor: true },
+    });
+    const firstHalfAmount = Math.floor(payment.amount / 2);
+    const secondHalfAmount = payment.amount - firstHalfAmount;
+    const firstHalfBody = webhookBody({
+      id: `${TAG}-two-half-refund-a`,
+      event: 'refund.processed',
+      refund: {
+        id: `${TAG}-two-half-refund-id-a`,
+        paymentId: payment.id,
+        amount: firstHalfAmount,
+        currency: payment.currency,
+        paymentAmount: payment.amount,
+        amountRefunded: firstHalfAmount,
+        refundStatus: 'partial',
+      },
+    });
+    const secondHalfBody = webhookBody({
+      id: `${TAG}-two-half-refund-b`,
+      event: 'refund.processed',
+      refund: {
+        id: `${TAG}-two-half-refund-id-b`,
+        paymentId: payment.id,
+        amount: secondHalfAmount,
+        currency: payment.currency,
+        paymentAmount: payment.amount,
+        amountRefunded: payment.amount,
+        refundStatus: 'full',
+      },
+    });
+    const first = await processRazorpayWebhook(
+      firstHalfBody,
+      webhookSignature(firstHalfBody),
+    );
+    const afterFirst = await db.tournament.findUniqueOrThrow({
+      where: { id: tournament.id },
+      select: { participantCount: true, prizePoolMinor: true },
+    });
+    const second = await processRazorpayWebhook(
+      secondHalfBody,
+      webhookSignature(secondHalfBody),
+    );
+    await processRazorpayWebhook(
+      firstHalfBody,
+      webhookSignature(firstHalfBody),
+    );
+    await processRazorpayWebhook(
+      secondHalfBody,
+      webhookSignature(secondHalfBody),
+    );
+    const [afterPayment, afterRegistration, afterReplay] = await Promise.all([
+      db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
+      db.registration.findUniqueOrThrow({
+        where: {
+          userId_tournamentId: {
+            userId: user.id,
+            tournamentId: tournament.id,
+          },
+        },
+      }),
+      db.tournament.findUniqueOrThrow({
+        where: { id: tournament.id },
+        select: { participantCount: true, prizePoolMinor: true },
+      }),
+    ]);
+    check(
+      'first half refund stays partial and keeps the seat',
+      first.processed === false &&
+        afterFirst.participantCount === beforeRefund.participantCount &&
+        afterFirst.prizePoolMinor === beforeRefund.prizePoolMinor,
+      `processed ${first.processed}; count ${afterFirst.participantCount}; pool ${afterFirst.prizePoolMinor}`,
+    );
+    check(
+      'second half refund releases the seat exactly once using cumulative state',
+      second.processed === true &&
+        afterPayment.status === 'REFUNDED' &&
+        afterRegistration.status === 'REFUNDED' &&
+        afterReplay.participantCount === beforeRefund.participantCount - 1 &&
+        afterReplay.prizePoolMinor < beforeRefund.prizePoolMinor,
+      `processed ${second.processed}; payment ${afterPayment.status}; registration ${afterRegistration.status}; count ${afterReplay.participantCount}; pool ${afterReplay.prizePoolMinor}`,
+    );
+  }
+
   // 7. invalid signature rejected
   {
     const user = await makeUser('invalid-signature');
@@ -665,11 +924,28 @@ async function main() {
       'invalid signature mutates no payment state',
       stored.status === 'CREATED',
     );
+    const [held, afterRejected] = await Promise.all([
+      db.registration.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: user.id,
+            tournamentId: tournament.id,
+          },
+        },
+      }),
+      db.tournament.findUniqueOrThrow({
+        where: { id: tournament.id },
+        select: { participantCount: true, prizePoolMinor: true },
+      }),
+    ]);
     check(
-      'invalid signature creates no registration',
-      (await db.registration.count({
-        where: { tournamentId: tournament.id },
-      })) === 0,
+      'invalid signature leaves only the unpaid seat hold',
+      held?.status === 'ACTIVE' &&
+        held.paymentId === null &&
+        held.holdExpiresAt !== null &&
+        afterRejected.participantCount === 1 &&
+        afterRejected.prizePoolMinor === 0,
+      `registration ${held?.status}; payment ${held?.paymentId}; hold ${held?.holdExpiresAt}; count ${afterRejected.participantCount}; pool ${afterRejected.prizePoolMinor}`,
     );
   }
 
@@ -743,14 +1019,30 @@ async function main() {
       'RAZORPAY',
     );
     process.env.RAZORPAY_USE_FAKE = previousFakeMode;
-    const [stored, registrations] = await Promise.all([
+    const [stored, registration, afterRejected] = await Promise.all([
       db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
-      db.registration.count({ where: { tournamentId: tournament.id } }),
+      db.registration.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: user.id,
+            tournamentId: tournament.id,
+          },
+        },
+      }),
+      db.tournament.findUniqueOrThrow({
+        where: { id: tournament.id },
+        select: { participantCount: true, prizePoolMinor: true },
+      }),
     ]);
     check(
-      'forged fake-secret webhook activates no registration',
-      stored.status === 'CREATED' && registrations === 0,
-      `payment ${stored.status}; registrations ${registrations}`,
+      'forged fake-secret webhook does not convert the unpaid hold',
+      stored.status === 'CREATED' &&
+        registration?.status === 'ACTIVE' &&
+        registration.paymentId === null &&
+        registration.holdExpiresAt !== null &&
+        afterRejected.participantCount === 1 &&
+        afterRejected.prizePoolMinor === 0,
+      `payment ${stored.status}; registration ${registration?.status}; count ${afterRejected.participantCount}; pool ${afterRejected.prizePoolMinor}`,
     );
   }
 
@@ -934,26 +1226,145 @@ async function main() {
     );
   }
 
-  // 8. concurrent registration race for the last slot
+  // 7g. two captured payments racing to convert the same seat hold
   {
-    const tournament = await makeTournament('last-slot', 1);
-    const users = await Promise.all([makeUser('slot-a'), makeUser('slot-b')]);
-    const orders = await Promise.all(
-      users.map((user) => createPassOrder(tournament.id, user.id, { gateway })),
+    const user = await makeUser('double-capture-link');
+    const tournament = await makeTournament('double-capture-link', 1);
+    await db.registration.create({
+      data: {
+        userId: user.id,
+        tournamentId: tournament.id,
+        status: 'ACTIVE',
+        holdExpiresAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    await db.tournament.update({
+      where: { id: tournament.id },
+      data: { participantCount: 1 },
+    });
+    const providerOrders = await Promise.all([
+      gateway.createOrder({
+        amountMinor: tournament.passPriceMinor,
+        currency: tournament.currency,
+        receipt: `double-capture:${tournament.id}:${user.id}:a`,
+      }),
+      gateway.createOrder({
+        amountMinor: tournament.passPriceMinor,
+        currency: tournament.currency,
+        receipt: `double-capture:${tournament.id}:${user.id}:b`,
+      }),
+    ]);
+    const stored = await Promise.all(
+      providerOrders.map((providerOrder) =>
+        db.payment.create({
+          data: {
+            userId: user.id,
+            tournamentId: tournament.id,
+            providerOrderId: providerOrder.id,
+            amountMinor: providerOrder.amount,
+            currency: providerOrder.currency,
+            status: 'CREATED',
+          },
+        }),
+      ),
     );
-    const payments = orders.map((order) =>
-      gateway.simulatePayment(order.orderId, 'captured'),
+    const providerPayments = providerOrders.map((providerOrder) =>
+      gateway.simulatePayment(providerOrder.id, 'captured'),
     );
-    const webhookResults = await Promise.all(
-      orders.map((_order, index) => {
+    const results = await Promise.all(
+      providerPayments.map((providerPayment, index) => {
         const body = webhookBody({
-          id: `${TAG}-last-slot-${index}`,
+          id: `${TAG}-double-capture-link-${index}`,
           event: 'payment.captured',
-          payment: payments[index]!,
+          payment: providerPayment,
         });
         return processRazorpayWebhook(body, webhookSignature(body));
       }),
     );
+    const [registration, payments, after, adminRows, refundOps] =
+      await Promise.all([
+        db.registration.findUniqueOrThrow({
+          where: {
+            userId_tournamentId: {
+              userId: user.id,
+              tournamentId: tournament.id,
+            },
+          },
+        }),
+        db.payment.findMany({
+          where: { id: { in: stored.map((payment) => payment.id) } },
+          orderBy: { createdAt: 'asc' },
+        }),
+        db.tournament.findUniqueOrThrow({
+          where: { id: tournament.id },
+          select: { participantCount: true, prizePoolMinor: true },
+        }),
+        listPaymentsForAdmin({ tournamentId: tournament.id }),
+        db.opsEvent.count({
+          where: {
+            tournamentId: tournament.id,
+            type: 'payment.refundRequired',
+          },
+        }),
+      ]);
+    const linkedPayments = payments.filter(
+      (payment) => payment.id === registration.paymentId,
+    );
+    const refundPayment = payments.find(
+      (payment) => payment.id !== registration.paymentId,
+    );
+    check(
+      'concurrent captured payments link exactly one to the hold',
+      results.filter((result) => result.processed).length === 1 &&
+        linkedPayments.length === 1 &&
+        registration.status === 'ACTIVE' &&
+        registration.holdExpiresAt === null,
+      `processed ${JSON.stringify(results)}; linked ${registration.paymentId}; hold ${registration.holdExpiresAt}`,
+    );
+    check(
+      'concurrent captured loser is paid and refund-visible',
+      refundPayment?.status === 'PAID' &&
+        refundPayment.refundRequiredAt !== null &&
+        adminRows.some(
+          (row) => row.id === refundPayment.id && row.refundRequiredAt !== null,
+        ) &&
+        refundOps === 1,
+      `loser ${refundPayment?.status}; refund ${refundPayment?.refundRequiredAt}; ops ${refundOps}`,
+    );
+    check(
+      'concurrent captured payments move count and prize pool once',
+      after.participantCount === 1 && after.prizePoolMinor > 0,
+      `count ${after.participantCount}; pool ${after.prizePoolMinor}`,
+    );
+  }
+
+  // 8. concurrent order creation race for the last slot
+  {
+    const tournament = await makeTournament('last-slot', 1);
+    const users = await Promise.all([makeUser('slot-a'), makeUser('slot-b')]);
+    const attempts = await Promise.allSettled(
+      users.map((user) => createPassOrder(tournament.id, user.id, { gateway })),
+    );
+    const orders = attempts
+      .filter(
+        (
+          attempt,
+        ): attempt is PromiseFulfilledResult<
+          Awaited<ReturnType<typeof createPassOrder>>
+        > => attempt.status === 'fulfilled',
+      )
+      .map((attempt) => attempt.value);
+    const payment = orders[0]
+      ? gateway.simulatePayment(orders[0].orderId, 'captured')
+      : null;
+    if (orders[0] && payment) {
+      const body = webhookBody({
+        id: `${TAG}-last-slot-0`,
+        event: 'payment.captured',
+        payment,
+      });
+      await processRazorpayWebhook(body, webhookSignature(body));
+    }
     const [registrations, storedPayments, tournamentAfter, adminRows, ops] =
       await Promise.all([
         db.registration.findMany({
@@ -974,32 +1385,92 @@ async function main() {
           },
         }),
       ]);
-    const winnerPaymentIds = new Set(
-      registrations.map((registration) => registration.paymentId),
-    );
-    const losingPayment = storedPayments.find(
-      (payment) => !winnerPaymentIds.has(payment.id),
+    check(
+      'last-slot order race gives only one buyer a payable order',
+      orders.length === 1 &&
+        attempts.filter((attempt) => attempt.status === 'rejected').length ===
+          1 &&
+        storedPayments.length === 1,
+      `orders ${orders.length}; payments ${storedPayments.length}; attempts ${attempts.map((attempt) => attempt.status).join(',')}`,
     );
     check(
-      'last-slot race activates one registration',
-      registrations.length === 1 && tournamentAfter.participantCount === 1,
-      `registrations ${registrations.length}; count ${tournamentAfter.participantCount}`,
+      'last-slot winner converts the hold without refund ops',
+      registrations.length === 1 &&
+        registrations[0]?.paymentId === orders[0]?.paymentId &&
+        registrations[0]?.holdExpiresAt === null &&
+        tournamentAfter.participantCount === 1 &&
+        adminRows.every((row) => row.refundRequiredAt === null) &&
+        ops === 0,
+      `registrations ${registrations.length}; count ${tournamentAfter.participantCount}; ops ${ops}`,
     );
     check(
-      'last-slot loser is paid and flagged for admin refund',
-      losingPayment?.status === 'PAID' &&
-        losingPayment.refundRequiredAt !== null &&
-        adminRows.some(
-          (row) => row.id === losingPayment.id && row.refundRequiredAt !== null,
-        ) &&
-        ops === 1,
-      `loser ${losingPayment?.status}; ops ${ops}`,
+      'last-slot refused buyer is stopped before payment',
+      storedPayments.every((stored) => stored.status === 'PAID'),
+      storedPayments.map((stored) => stored.status).join(','),
+    );
+  }
+
+  // 8b. expired checkout hold returns the seat before payment
+  {
+    const firstUser = await makeUser('expired-hold-a');
+    const secondUser = await makeUser('expired-hold-b');
+    const tournament = await makeTournament('expired-hold', 1);
+    const first = await createPassOrder(tournament.id, firstUser.id, {
+      gateway,
+    });
+    await db.registration.update({
+      where: {
+        userId_tournamentId: {
+          userId: firstUser.id,
+          tournamentId: tournament.id,
+        },
+      },
+      data: { holdExpiresAt: new Date(Date.now() - 60_000) },
+    });
+    const expired = await reconcileExpiredSeatHolds(tournament.id, {
+      now: new Date(),
+      runBy: 'verify-payments',
+    });
+    const second = await createPassOrder(tournament.id, secondUser.id, {
+      gateway,
+    });
+    const [firstRegistration, secondRegistration, after] = await Promise.all([
+      db.registration.findUniqueOrThrow({
+        where: {
+          userId_tournamentId: {
+            userId: firstUser.id,
+            tournamentId: tournament.id,
+          },
+        },
+      }),
+      db.registration.findUniqueOrThrow({
+        where: {
+          userId_tournamentId: {
+            userId: secondUser.id,
+            tournamentId: tournament.id,
+          },
+        },
+      }),
+      db.tournament.findUniqueOrThrow({
+        where: { id: tournament.id },
+        select: { participantCount: true, prizePoolMinor: true },
+      }),
+    ]);
+    check(
+      'expired hold returns the seat',
+      expired.expired === 1 &&
+        firstRegistration.status === 'REVOKED' &&
+        secondRegistration.status === 'ACTIVE' &&
+        secondRegistration.paymentId === null &&
+        secondRegistration.holdExpiresAt !== null &&
+        after.participantCount === 1 &&
+        after.prizePoolMinor === 0,
+      `first ${firstRegistration.status}; second ${secondRegistration.status}; expired ${expired.expired}; count ${after.participantCount}; pool ${after.prizePoolMinor}`,
     );
     check(
-      'last-slot loser webhook is non-retryable',
-      webhookResults.filter((result) => result.processed).length === 1 &&
-        webhookResults.filter((result) => !result.processed).length === 1,
-      JSON.stringify(webhookResults),
+      'expired hold creates a fresh payable order for the next buyer',
+      first.paymentId !== second.paymentId && first.orderId !== second.orderId,
+      `${first.paymentId}/${first.orderId} -> ${second.paymentId}/${second.orderId}`,
     );
   }
 

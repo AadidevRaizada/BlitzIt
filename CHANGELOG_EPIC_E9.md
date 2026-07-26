@@ -53,6 +53,7 @@ that was already applied.
 | **Terms are versioned and idempotent** | `TermsAcceptance` is keyed by user/version and idempotency key, so paid entry can require the current terms without making repeated acceptance a special case. |
 | **Rejected webhooks are keyed outside provider event ids** | Invalid signatures and schema failures use `rejected:<raw-body-sha256>:<unsafe-id>:<uuid>`, never the provider event id itself. |
 | **Verified dedupe is filtered** | Real processing dedupes only rows that were signature-verified and ended APPLIED, DEDUPED or IGNORED. `REJECTED` rows are history, not control flow. |
+| **Paid checkout reserves capacity before payment** | `createPassOrder` creates an expiring unpaid `Registration` hold and increments `participantCount` under the `payment:{userId}:{tournamentId}` advisory lock before returning a payable Razorpay order. Capture converts that same hold; expiry reconciliation revokes stale holds and releases seats. |
 
 ## Migrations
 
@@ -71,6 +72,10 @@ that was already applied.
 `20260727010000_e9_webhook_rejected_append_only` - review fix:
 - removes global uniqueness from `WebhookEvent.providerEventId`
 - adds a filtered-read-friendly index on `(providerEventId, signatureVerified, outcome)`
+
+`20260727030000_e9_registration_seat_holds` - review fix:
+- adds nullable `Registration.holdExpiresAt`
+- adds `(tournamentId, status, holdExpiresAt)` index for bounded stale-hold reconciliation
 
 ## Breaking changes
 
@@ -101,6 +106,64 @@ One finding, P1. **Confirmed and fixed** with regression coverage.
 | **1** | P1 | **Rejected Razorpay webhooks were written into the verified event id namespace.** A bad-signature request naming a future event id could suppress the real payment, and a bad-signature request naming an existing event id could rewrite the ledger row to look rejected. | **Confirmed.** Invalid signatures and invalid payloads are now recorded under `rejected:<sha256>:<unsafe-id>:<uuid>` with append-only `create`. Real dedupe uses only signature-verified APPLIED/DEDUPED/IGNORED rows. `verify:payments` covers both suppression and audit-tampering regressions. |
 
 ## Review findings fixed
+
+Sixth adversarial review follow-up:
+
+1. **Concurrent captures could overwrite a registration link and strand a paid payment.** Paid
+   activation now serializes on `payment:{userId}:{tournamentId}` as well as the payment id, and the
+   unpaid registration link is a conditional `updateMany` requiring `status = ACTIVE` and
+   `paymentId = null`. A loser in that conditional race is marked `PAID` with
+   `refundRequiredAt` inside the same transaction. `verify:payments` fabricates two captured
+   payments for one held seat and proves exactly one links, the other is admin-visible for refund,
+   and participant count/prize pool move once.
+2. **Last-slot checkout could charge users before any seat was reserved.** Paid order creation now
+   creates an expiring unpaid seat hold in the same transaction that claims capacity. Only the
+   caller that increments `participantCount` receives a payable Razorpay order; capture clears
+   `holdExpiresAt` and attaches the payment without claiming a second seat. `reconcileExpiredSeatHolds`
+   releases stale holds through a bounded idempotent ops event. `verify:payments` covers the final
+   slot race, expired-hold release, and hold conversion without prize-pool double-counting.
+3. **Participant-count reconcile erased open paid reservations.** `reconcileParticipantCount` is now
+   lifecycle-aware: while registration is open it counts active seat reservations, including unpaid
+   rows and unexpired holds; after close it freezes to the paid/free competitive field. The Job K
+   close freeze still passes, and `verify:tournament:e2e` proves open reconcile does not free held
+   seats or permit overbooking.
+
+Fifth adversarial review follow-up:
+
+1. **Sequential partial Razorpay refunds could leave a fully refunded competitor active.** The
+   refund webhook now parses the signed payment payload's cumulative `amount_refunded` and
+   `refund_status`, combines that with the local processed-refund ledger keyed by provider refund id,
+   and finalizes cancellation only when both provider cumulative state and local idempotent state
+   cover the stored payment amount in the stored currency. Partial states still create the
+   operator-action-required event and return non-retryable responses. `verify:payments` now covers
+   two half-refund `refund.processed` events delivered sequentially, then replays both and proves the
+   seat, participant count and prize pool move exactly once.
+2. **Paid lifecycle guards still counted unpaid ACTIVE rows.** Registration now names raw ACTIVE rows
+   as seat reservations and adds `countCompetitionEligibleRegistrations` on the shared
+   `competitionEligibleRegistrationWhere` predicate. Lifecycle guards, registration-close field
+   freeze and participant-count reconciliation use the competitive helper, while capacity still uses
+   the raw seat-reservation counter. `verify:tournament:e2e` proves unpaid ACTIVE rows do not satisfy
+   `minRegistrations`, close freezes `participantCount` to the paid competitive field, and an unpaid
+   pending ACTIVE row still consumes capacity.
+
+Fourth adversarial review follow-up:
+
+1. **Paid tournaments admitted unpaid ACTIVE registrations into competition.** The submission and
+   seeding gates now share a paid-eligibility predicate: free tournaments accept ACTIVE
+   registrations, while paid tournaments require ACTIVE registrations linked to a PAID payment.
+   Introducing a paid pass on a free tournament with active uncomped entries is blocked, so the
+   operator must either cancel those entries or attach an auditable manual payment before the
+   price change can stand. `verify:submission` covers the free-to-paid transition block, the legacy
+   stranded-state submission and seeding refusal, and the manual-payment comp path that restores
+   eligibility and keeps participant count aligned with paid prize-pool entries.
+2. **Partial Razorpay refunds cancelled fully-paid entries.** `refund.processed` now parses and
+   validates the refund id, payment id, amount, currency and `processed` status before mutation.
+   Only a full matching refund finalizes cancellation; partial or mismatched refunds leave the
+   payment PAID and registration ACTIVE, record an operator-action-required ops event keyed by the
+   provider refund id, and keep the webhook response non-retryable. Full provider-side refunds with
+   no admin intent are still accepted when they are provably full. `verify:payments` covers a
+   half-refund that leaves the seat, participant count and prize pool unchanged, then a full refund
+   that releases the seat and shrinks the pool exactly once.
 
 The adversarial payment review is now fully closed. The latest seven confirmed findings were fixed
 as follows:

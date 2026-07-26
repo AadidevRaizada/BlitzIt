@@ -28,6 +28,13 @@ import {
 import { describeJob } from '../src/server/jobs/status';
 import { evaluateProcessor } from '../src/server/jobs/processors/evaluate';
 import { queue } from '../src/server/jobs/pg-queue';
+import { markManualPaymentPaidForAdmin } from '../src/server/modules/payment';
+import {
+  collectSimulationResults,
+  getPrizePoolDisplay,
+  registerCompetitor,
+  updateTournament,
+} from '../src/server/modules/tournament';
 import { AppError } from '../src/lib/errors';
 
 /**
@@ -90,6 +97,9 @@ async function cleanup() {
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.registration.deleteMany({
+    where: { tournament: { slug: { contains: TAG } } },
+  });
+  await db.payment.deleteMany({
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.match.deleteMany({
@@ -434,6 +444,7 @@ async function pipeline() {
       slug: `t-${TAG}`,
       name: 'E4 Submission Pipeline',
       status: 'SIMULATION',
+      passPriceMinor: 0,
     },
   });
 
@@ -501,6 +512,141 @@ async function pipeline() {
       }),
     'FORBIDDEN',
   );
+
+  // ---- Paid eligibility is the competition gate ----
+  {
+    const paidGateUser = await db.user.create({
+      data: {
+        authUserId: `auth-${TAG}-paid-gate`,
+        email: `paid-gate@${EMAIL_DOMAIN}`,
+        username: `paid-gate-${TAG}`,
+        profile: { create: {} },
+      },
+    });
+    const paidGateTournament = await db.tournament.create({
+      data: {
+        slug: `paid-gate-${TAG}`,
+        name: 'E9 Paid Gate',
+        status: 'REGISTRATION_OPEN',
+        passPriceMinor: 0,
+        prizePerRegistrationMinor: 10_000,
+        registrationOpensAt: new Date(Date.now() - 60_000),
+        registrationClosesAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    await registerCompetitor(paidGateTournament.id, paidGateUser.id);
+    const beforePrice = await db.tournament.findUniqueOrThrow({
+      where: { id: paidGateTournament.id },
+      select: { participantCount: true, prizePoolMinor: true },
+    });
+    await checkRejects(
+      'free-to-paid change with uncomped active entries is blocked',
+      () => updateTournament(paidGateTournament.id, { passPriceMinor: 10_000 }),
+      'CONFLICT',
+    );
+    const afterBlockedPrice = await db.tournament.findUniqueOrThrow({
+      where: { id: paidGateTournament.id },
+      select: { passPriceMinor: true, participantCount: true },
+    });
+    const afterBlockedPool = await getPrizePoolDisplay(paidGateTournament.id);
+    check(
+      'blocked free-to-paid change leaves count and pool consistent',
+      afterBlockedPrice.passPriceMinor === 0 &&
+        afterBlockedPrice.participantCount === beforePrice.participantCount &&
+        afterBlockedPool.paidEntries === beforePrice.participantCount,
+      `price ${afterBlockedPrice.passPriceMinor}; count ${afterBlockedPrice.participantCount}; paid entries ${afterBlockedPool.paidEntries}`,
+    );
+
+    await db.tournament.update({
+      where: { id: paidGateTournament.id },
+      data: { passPriceMinor: 10_000 },
+    });
+    const unpaidPaidGateRound = await db.round.create({
+      data: {
+        tournamentId: paidGateTournament.id,
+        type: 'SIMULATION',
+        stage: 'SIMULATION',
+        sequence: 2,
+        durationSeconds: 1800,
+        problemId: problem.id,
+        status: 'OPEN',
+        opensAt: new Date(Date.now() - 60_000),
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    await db.tournament.update({
+      where: { id: paidGateTournament.id },
+      data: { status: 'SIMULATION' },
+    });
+    await checkRejects(
+      'unpaid active registration in a paid tournament cannot submit',
+      () =>
+        submitSolution({
+          userId: paidGateUser.id,
+          roundId: unpaidPaidGateRound.id,
+          repoUrl: 'https://github.com/vercel/next.js',
+          deploymentUrl: 'https://unpaid-paid-gate.example.com',
+        }),
+      'FORBIDDEN',
+    );
+    check(
+      'unpaid active registration in a paid tournament is excluded from seeding input',
+      (await collectSimulationResults(paidGateTournament.id)).length === 0,
+    );
+
+    const manualPayment = await db.payment.create({
+      data: {
+        userId: paidGateUser.id,
+        tournamentId: paidGateTournament.id,
+        provider: 'MANUAL',
+        providerOrderId: `${TAG}-paid-gate-manual`,
+        amountMinor: 10_000,
+        currency: 'INR',
+        status: 'PENDING',
+      },
+    });
+    await markManualPaymentPaidForAdmin(manualPayment.id, {
+      id: admin.id,
+      role: 'ADMIN',
+    });
+    const paidGateRound = await db.round.create({
+      data: {
+        tournamentId: paidGateTournament.id,
+        type: 'SIMULATION',
+        stage: 'SIMULATION',
+        sequence: 1,
+        durationSeconds: 1800,
+        problemId: problem.id,
+        status: 'OPEN',
+        opensAt: new Date(Date.now() - 60_000),
+        deadlineAt: new Date(Date.now() + 3_600_000),
+      },
+    });
+    const paidGateSubmission = await submitSolution({
+      userId: paidGateUser.id,
+      roundId: paidGateRound.id,
+      repoUrl: 'https://github.com/vercel/next.js',
+      deploymentUrl: 'https://paid-gate.example.com',
+    });
+    const [paidGateRegistration, paidGatePool] = await Promise.all([
+      db.registration.findUniqueOrThrow({
+        where: {
+          userId_tournamentId: {
+            userId: paidGateUser.id,
+            tournamentId: paidGateTournament.id,
+          },
+        },
+      }),
+      getPrizePoolDisplay(paidGateTournament.id),
+    ]);
+    check(
+      'manual-paid comp links the existing entry and permits submission',
+      paidGateRegistration.paymentId === manualPayment.id &&
+        paidGatePool.paidEntries === 1 &&
+        Boolean(paidGateSubmission.submission.id),
+      `payment ${paidGateRegistration.paymentId}; paid entries ${paidGatePool.paidEntries}`,
+    );
+  }
 
   // ---- Invalid input is refused before anything is written ----
   await checkRejects(
@@ -1196,6 +1342,7 @@ async function pipeline() {
         slug: `t-${TAG}-draft`,
         name: 'E4 Draft',
         status: 'REGISTRATION_OPEN',
+        passPriceMinor: 0,
       },
     });
     const draftRound = await db.round.create({
@@ -1238,6 +1385,7 @@ async function pipeline() {
         slug: `t-${TAG}-ko`,
         name: 'E4 Knockout',
         status: 'LIVE',
+        passPriceMinor: 0,
         bracketSize: 8,
         currentStage: 'QF',
       },

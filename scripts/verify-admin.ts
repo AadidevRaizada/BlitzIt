@@ -169,6 +169,7 @@ async function main() {
     {
       name: 'E5 Admin Tournament',
       slug: TAG,
+      passPriceMinor: 0,
       bracketSize: 8,
       minRegistrations: 1,
       maxRegistrations: 8,

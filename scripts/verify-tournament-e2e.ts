@@ -17,6 +17,7 @@ import {
   listTournaments,
   progressSimulation,
   progressTournament,
+  reconcileParticipantCount,
   registerCompetitor,
   updateTournament,
   updateTournamentSchedule,
@@ -109,7 +110,20 @@ async function cleanup() {
     where: { tournament: { slug: { contains: TAG } } },
   });
   await db.registration.deleteMany({
-    where: { tournament: { slug: { contains: TAG } } },
+    where: {
+      OR: [
+        { tournament: { slug: { contains: TAG } } },
+        { user: { email: { contains: EMAIL_DOMAIN } } },
+      ],
+    },
+  });
+  await db.payment.deleteMany({
+    where: {
+      OR: [
+        { tournament: { slug: { contains: TAG } } },
+        { user: { email: { contains: EMAIL_DOMAIN } } },
+      ],
+    },
   });
   await db.auditLog.deleteMany({ where: { entityType: 'TournamentE3Test' } });
   await db.tournament.deleteMany({ where: { slug: { contains: TAG } } });
@@ -247,6 +261,7 @@ async function fullLifecycle() {
     {
       slug: `t-${TAG}-s1`,
       name: 'E3 Full Lifecycle',
+      passPriceMinor: 0,
       bracketSize: 8,
       thirdPlaceEnabled: true,
       minRegistrations: 8,
@@ -1075,6 +1090,7 @@ async function byeBracket() {
   const tournament = await createTournament({
     slug: `t-${TAG}-s2`,
     name: 'E3 Bye Bracket',
+    passPriceMinor: 0,
     // Deliberately oversized: 11 competitors would auto-size to 8, so byes only
     // happen because the organizer asked for a 16.
     bracketSize: 16,
@@ -1250,6 +1266,7 @@ async function cancellation() {
   const tournament = await createTournament({
     slug: `t-${TAG}-s3`,
     name: 'E3 Cancellation',
+    passPriceMinor: 0,
     minRegistrations: 8,
   });
 
@@ -1431,6 +1448,7 @@ async function seedingRegressions() {
   const tournament = await createTournament({
     slug: `t-${TAG}-s5`,
     name: 'E3 Seeding Regressions',
+    passPriceMinor: 0,
     minRegistrations: 8,
   });
   await applyTransition(tournament.id, 'PUBLISH');
@@ -1511,6 +1529,192 @@ async function seedingRegressions() {
   });
 }
 
+async function paidLifecycleEligibilityRegressions() {
+  console.log(
+    '\n--- Scenario 6: paid lifecycle counts only the competitive field ---',
+  );
+
+  const users = await createUsers(7, 'paid-lifecycle');
+  const [
+    paidUser,
+    unpaidUser,
+    secondPaidUser,
+    pendingUser,
+    extraUser,
+    holdUser,
+    reconcileExtraUser,
+  ] = users;
+  if (
+    !paidUser ||
+    !unpaidUser ||
+    !secondPaidUser ||
+    !pendingUser ||
+    !extraUser ||
+    !holdUser ||
+    !reconcileExtraUser
+  )
+    throw new Error('paid lifecycle fixture did not create enough users');
+  const tournament = await db.tournament.create({
+    data: {
+      slug: `t-${TAG}-paid-lifecycle`,
+      name: 'E9 Paid Lifecycle',
+      status: 'REGISTRATION_OPEN',
+      passPriceMinor: 10_000,
+      currency: 'INR',
+      minRegistrations: 2,
+      maxRegistrations: 8,
+      participantCount: 2,
+      registrationOpensAt: new Date(Date.now() - 60_000),
+      registrationClosesAt: new Date(Date.now() + 3_600_000),
+    },
+  });
+  const paidPayment = await db.payment.create({
+    data: {
+      userId: paidUser.id,
+      tournamentId: tournament.id,
+      provider: 'MANUAL',
+      providerOrderId: `${TAG}-paid-lifecycle-paid-0`,
+      amountMinor: 10_000,
+      currency: 'INR',
+      status: 'PAID',
+      paidAt: new Date(),
+      signatureVerified: true,
+    },
+  });
+  await db.registration.createMany({
+    data: [
+      {
+        userId: paidUser.id,
+        tournamentId: tournament.id,
+        status: 'ACTIVE',
+        paymentId: paidPayment.id,
+      },
+      {
+        userId: unpaidUser.id,
+        tournamentId: tournament.id,
+        status: 'ACTIVE',
+      },
+    ],
+  });
+
+  await checkRejects(
+    'paid lifecycle minRegistrations ignores unpaid active rows',
+    () => applyTransition(tournament.id, 'CLOSE_REGISTRATION'),
+    { code: 'CONFLICT' },
+  );
+
+  const secondPaidPayment = await db.payment.create({
+    data: {
+      userId: secondPaidUser.id,
+      tournamentId: tournament.id,
+      provider: 'MANUAL',
+      providerOrderId: `${TAG}-paid-lifecycle-paid-1`,
+      amountMinor: 10_000,
+      currency: 'INR',
+      status: 'PAID',
+      paidAt: new Date(),
+      signatureVerified: true,
+    },
+  });
+  await db.registration.create({
+    data: {
+      userId: secondPaidUser.id,
+      tournamentId: tournament.id,
+      status: 'ACTIVE',
+      paymentId: secondPaidPayment.id,
+    },
+  });
+  await db.tournament.update({
+    where: { id: tournament.id },
+    data: { participantCount: 3 },
+  });
+  await applyTransition(tournament.id, 'CLOSE_REGISTRATION');
+  const closed = await db.tournament.findUniqueOrThrow({
+    where: { id: tournament.id },
+    select: { status: true, participantCount: true },
+  });
+  check(
+    'paid registration close freezes participantCount to paid competitive field',
+    closed.status === 'REGISTRATION_CLOSED' && closed.participantCount === 2,
+    `status ${closed.status}; count ${closed.participantCount}`,
+  );
+
+  const reconcileTournament = await db.tournament.create({
+    data: {
+      slug: `t-${TAG}-paid-open-reconcile`,
+      name: 'E9 Paid Open Reconcile',
+      status: 'REGISTRATION_OPEN',
+      passPriceMinor: 10_000,
+      currency: 'INR',
+      minRegistrations: 1,
+      maxRegistrations: 2,
+      participantCount: 1,
+      registrationOpensAt: new Date(Date.now() - 60_000),
+      registrationClosesAt: new Date(Date.now() + 3_600_000),
+    },
+  });
+  await db.registration.createMany({
+    data: [
+      {
+        userId: unpaidUser.id,
+        tournamentId: reconcileTournament.id,
+        status: 'ACTIVE',
+      },
+      {
+        userId: holdUser.id,
+        tournamentId: reconcileTournament.id,
+        status: 'ACTIVE',
+        holdExpiresAt: new Date(Date.now() + 3_600_000),
+      },
+    ],
+  });
+  const reconciled = await reconcileParticipantCount(reconcileTournament.id);
+  const afterReconcile = await db.tournament.findUniqueOrThrow({
+    where: { id: reconcileTournament.id },
+    select: { participantCount: true, prizePoolMinor: true },
+  });
+  check(
+    'open paid reconcile keeps unpaid and held seat reservations',
+    reconciled.before === 1 &&
+      reconciled.after === 2 &&
+      afterReconcile.participantCount === 2 &&
+      afterReconcile.prizePoolMinor === 0,
+    `${reconciled.before} -> ${reconciled.after}; pool ${afterReconcile.prizePoolMinor}`,
+  );
+  await checkRejects(
+    'open reconcile does not free capacity for overbooking',
+    () => registerCompetitor(reconcileTournament.id, reconcileExtraUser.id),
+    { code: 'CONFLICT' },
+  );
+
+  const capacityTournament = await db.tournament.create({
+    data: {
+      slug: `t-${TAG}-paid-capacity`,
+      name: 'E9 Paid Capacity',
+      status: 'REGISTRATION_OPEN',
+      passPriceMinor: 10_000,
+      currency: 'INR',
+      minRegistrations: 1,
+      maxRegistrations: 1,
+      participantCount: 1,
+      registrationOpensAt: new Date(Date.now() - 60_000),
+      registrationClosesAt: new Date(Date.now() + 3_600_000),
+    },
+  });
+  await db.registration.create({
+    data: {
+      userId: pendingUser.id,
+      tournamentId: capacityTournament.id,
+      status: 'ACTIVE',
+    },
+  });
+  await checkRejects(
+    'unpaid active pending entry still reserves capacity',
+    () => registerCompetitor(capacityTournament.id, extraUser.id),
+    { code: 'CONFLICT' },
+  );
+}
+
 async function main() {
   await cleanup();
   await fullLifecycle();
@@ -1518,6 +1722,7 @@ async function main() {
   await cancellation();
   await transitionJob();
   await seedingRegressions();
+  await paidLifecycleEligibilityRegressions();
   await cleanup();
 
   console.log(

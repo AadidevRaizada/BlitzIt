@@ -130,6 +130,7 @@ export async function updateTournament(
   return db.$transaction(async (tx) => {
     const before = await requireTournament(tournamentId, tx);
     assertEditable(before, 'tournament details');
+    await assertPaidPriceChangeDoesNotStrandEntries(tx, before, input);
 
     const after = await tx.tournament.update({
       where: { id: tournamentId },
@@ -162,6 +163,28 @@ export async function updateTournament(
 
     return after;
   });
+}
+
+async function assertPaidPriceChangeDoesNotStrandEntries(
+  tx: Prisma.TransactionClient,
+  before: Tournament,
+  input: UpdateTournamentInput,
+): Promise<void> {
+  const newPrice = input.passPriceMinor ?? before.passPriceMinor;
+  if (before.passPriceMinor > 0 || newPrice <= 0) return;
+
+  const stranded = await tx.registration.count({
+    where: {
+      tournamentId: before.id,
+      status: 'ACTIVE',
+      payment: { isNot: { status: 'PAID' } },
+    },
+  });
+  if (stranded > 0) {
+    throw new ConflictError(
+      `cannot introduce a paid pass while ${stranded} active registration(s) have no paid or comped payment; mark them paid manually or cancel them first`,
+    );
+  }
 }
 
 /**

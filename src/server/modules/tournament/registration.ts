@@ -115,6 +115,7 @@ export async function registerCompetitorInTransaction(
       data: {
         status: 'ACTIVE',
         registeredAt: now,
+        holdExpiresAt: null,
         ...(options.paymentId ? { paymentId: options.paymentId } : {}),
       },
     });
@@ -238,13 +239,42 @@ export async function withdrawRegistration(
   });
 }
 
-/** Live count of competitors who may take part. */
-export async function countActiveRegistrations(
+/**
+ * Raw ACTIVE rows reserve capacity while registration is open. In paid
+ * tournaments this can include a pending/unpaid entry that still holds a seat,
+ * but is not yet part of the competitive field.
+ */
+export async function countActiveSeatReservations(
   tournamentId: string,
   client: DbClient = db,
 ): Promise<number> {
+  const now = new Date();
   return client.registration.count({
-    where: { tournamentId, status: 'ACTIVE' },
+    where: {
+      tournamentId,
+      status: 'ACTIVE',
+      OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: now } }],
+    },
+  });
+}
+
+/** Live count of competitors who may submit, seed and advance in the field. */
+export async function countCompetitionEligibleRegistrations(
+  tournamentId: string,
+  client: DbClient = db,
+): Promise<number> {
+  const tournament = await client.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { passPriceMinor: true },
+  });
+  if (!tournament)
+    throw new NotFoundError(`tournament ${tournamentId} not found`);
+
+  return client.registration.count({
+    where: competitionEligibleRegistrationWhere(
+      tournamentId,
+      tournament.passPriceMinor,
+    ),
   });
 }
 
@@ -253,11 +283,56 @@ export async function isRegistered(
   userId: string,
   client: DbClient = db,
 ): Promise<boolean> {
-  const registration = await client.registration.findUnique({
-    where: { userId_tournamentId: { userId, tournamentId } },
-    select: { status: true },
+  const tournament = await client.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { passPriceMinor: true },
   });
-  return registration?.status === 'ACTIVE';
+  if (!tournament)
+    throw new NotFoundError(`tournament ${tournamentId} not found`);
+
+  return (
+    (await client.registration.count({
+      where: {
+        ...competitionEligibleRegistrationWhere(
+          tournamentId,
+          tournament.passPriceMinor,
+        ),
+        userId,
+      },
+    })) === 1
+  );
+}
+
+export function competitionEligibleRegistrationWhere(
+  tournamentId: string,
+  passPriceMinor: number,
+): Prisma.RegistrationWhereInput {
+  return {
+    tournamentId,
+    status: 'ACTIVE',
+    ...(passPriceMinor > 0 ? { payment: { status: 'PAID' } } : {}),
+  };
+}
+
+export async function listCompetitionEligibleRegistrations(
+  tournamentId: string,
+  client: DbClient = db,
+): Promise<Array<{ userId: string; user: { city: string | null } }>> {
+  const tournament = await client.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { passPriceMinor: true },
+  });
+  if (!tournament)
+    throw new NotFoundError(`tournament ${tournamentId} not found`);
+
+  return client.registration.findMany({
+    where: competitionEligibleRegistrationWhere(
+      tournamentId,
+      tournament.passPriceMinor,
+    ),
+    select: { userId: true, user: { select: { city: true } } },
+    orderBy: [{ registeredAt: 'asc' }, { id: 'asc' }],
+  });
 }
 
 /**
@@ -275,9 +350,10 @@ export async function assertRegistered(
 }
 
 /**
- * Reconcile the denormalised counter against the registration rows. The
- * counter drives capacity checks and (in E4) the prize pool, so ops needs a
- * way to repair it without hand-written SQL.
+ * Reconcile the denormalised counter against the meaning it has in the current
+ * lifecycle state. While registration is open it is the capacity reservation
+ * count, including unpaid rows and unexpired checkout holds. Once registration
+ * closes it is frozen to the competitive paid/free field.
  */
 export async function reconcileParticipantCount(
   tournamentId: string,
@@ -285,12 +361,15 @@ export async function reconcileParticipantCount(
   return db.$transaction(async (tx) => {
     const tournament = await tx.tournament.findUnique({
       where: { id: tournamentId },
-      select: { participantCount: true },
+      select: { participantCount: true, status: true },
     });
     if (!tournament) {
       throw new NotFoundError(`tournament ${tournamentId} not found`);
     }
-    const actual = await countActiveRegistrations(tournamentId, tx);
+    const actual =
+      tournament.status === 'REGISTRATION_OPEN'
+        ? await countActiveSeatReservations(tournamentId, tx)
+        : await countCompetitionEligibleRegistrations(tournamentId, tx);
     await tx.tournament.update({
       where: { id: tournamentId },
       data: { participantCount: actual },

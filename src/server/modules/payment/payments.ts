@@ -1,7 +1,11 @@
 import 'server-only';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@/generated/prisma/client';
-import type { Payment, PaymentStatus } from '@/generated/prisma/client';
+import type {
+  Payment,
+  PaymentStatus,
+  Tournament,
+} from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
@@ -44,6 +48,8 @@ import { checkoutSignaturePayload, verifyHmacSha256Hex } from './signature';
  */
 
 const REUSABLE_STATUSES: PaymentStatus[] = ['CREATED', 'PENDING'];
+const SEAT_HOLD_TTL_MS = 15 * 60 * 1000;
+const SEAT_HOLD_RECONCILE_LIMIT = 100;
 
 export interface CheckoutOrder {
   paymentId: string;
@@ -128,6 +134,22 @@ export interface RazorpayWebhookPayload {
   };
 }
 
+interface RazorpayRefundEntity {
+  id: string;
+  paymentId: string;
+  amount: number;
+  currency: string;
+  status: string;
+}
+
+interface RazorpayRefundPaymentEntity {
+  id: string;
+  amount: number;
+  currency: string;
+  amountRefunded: number;
+  refundStatus: string | null;
+}
+
 function paymentEventId(payload: RazorpayWebhookPayload): string {
   const id = payload.id;
   if (typeof id === 'string' && id.length > 0) return id;
@@ -192,12 +214,75 @@ function providerPaymentFromEntity(
   };
 }
 
-function refundPaymentId(entity: Record<string, unknown> | undefined): string {
+function refundEntityFromPayload(
+  entity: Record<string, unknown> | undefined,
+): RazorpayRefundEntity {
+  if (!entity) throw new ValidationError('Razorpay webhook is missing refund');
+  const refundId = entity.id;
   const paymentId = entity?.payment_id;
+  const amount = Number(entity.amount ?? Number.NaN);
+  const currency = entity.currency;
+  const status = entity.status;
+  if (typeof refundId !== 'string' || refundId.length === 0) {
+    throw new ValidationError('Razorpay refund webhook is missing refund id');
+  }
   if (typeof paymentId !== 'string' || paymentId.length === 0) {
     throw new ValidationError('Razorpay refund webhook is missing payment_id');
   }
-  return paymentId;
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new ValidationError('Razorpay refund webhook has an invalid amount');
+  }
+  if (typeof currency !== 'string' || currency.length === 0) {
+    throw new ValidationError('Razorpay refund webhook is missing currency');
+  }
+  if (typeof status !== 'string' || status.length === 0) {
+    throw new ValidationError('Razorpay refund webhook is missing status');
+  }
+  return { id: refundId, paymentId, amount, currency, status };
+}
+
+function refundPaymentEntityFromPayload(
+  entity: Record<string, unknown> | undefined,
+): RazorpayRefundPaymentEntity {
+  if (!entity)
+    throw new ValidationError(
+      'Razorpay refund webhook is missing payment state',
+    );
+  const paymentId = entity.id;
+  const amount = Number(entity.amount ?? Number.NaN);
+  const currency = entity.currency;
+  const amountRefunded = Number(entity.amount_refunded ?? Number.NaN);
+  const refundStatus = entity.refund_status;
+  if (typeof paymentId !== 'string' || paymentId.length === 0) {
+    throw new ValidationError('Razorpay payment state is missing payment id');
+  }
+  if (!Number.isSafeInteger(amount) || amount < 0) {
+    throw new ValidationError('Razorpay payment state has an invalid amount');
+  }
+  if (typeof currency !== 'string' || currency.length === 0) {
+    throw new ValidationError('Razorpay payment state is missing currency');
+  }
+  if (!Number.isSafeInteger(amountRefunded) || amountRefunded < 0) {
+    throw new ValidationError(
+      'Razorpay payment state has an invalid amount_refunded',
+    );
+  }
+  if (
+    refundStatus !== null &&
+    refundStatus !== undefined &&
+    typeof refundStatus !== 'string'
+  ) {
+    throw new ValidationError(
+      'Razorpay payment state has an invalid refund_status',
+    );
+  }
+  return {
+    id: paymentId,
+    amount,
+    currency,
+    amountRefunded,
+    refundStatus: typeof refundStatus === 'string' ? refundStatus : null,
+  };
 }
 
 function isPaidState(status: RazorpayPayment['status']): boolean {
@@ -219,6 +304,17 @@ function isPostCaptureRegistrationConflict(
     'registration has not opened',
     'tournament is full',
   ].some((message) => error.message.includes(message));
+}
+
+function paymentActivationLockKey(
+  userId: string,
+  tournamentId: string,
+): string {
+  return `payment:${userId}:${tournamentId}`;
+}
+
+function seatHoldExpiresAt(now = new Date()): Date {
+  return new Date(now.getTime() + SEAT_HOLD_TTL_MS);
 }
 
 async function assertCanCreateOrder(
@@ -267,9 +363,12 @@ async function assertCanCreateOrder(
 
   const active = await tx.registration.findUnique({
     where: { userId_tournamentId: { userId, tournamentId } },
-    select: { status: true, paymentId: true },
+    select: { status: true, paymentId: true, holdExpiresAt: true },
   });
-  if (active?.status === 'ACTIVE') {
+  if (
+    active?.status === 'ACTIVE' &&
+    (active.paymentId !== null || active.holdExpiresAt === null)
+  ) {
     throw new ConflictError('Already registered for this tournament');
   }
 
@@ -424,6 +523,153 @@ async function markPaymentSuperseded(
   return updated;
 }
 
+async function releaseUnpaidHoldForPayment(
+  tx: Prisma.TransactionClient,
+  payment: Payment,
+  reason: string,
+): Promise<number> {
+  const released = await tx.registration.updateMany({
+    where: {
+      userId: payment.userId,
+      tournamentId: payment.tournamentId,
+      status: 'ACTIVE',
+      paymentId: null,
+      holdExpiresAt: { not: null },
+    },
+    data: { status: 'REVOKED', holdExpiresAt: null },
+  });
+  if (released.count > 0) {
+    await tx.tournament.updateMany({
+      where: { id: payment.tournamentId, participantCount: { gt: 0 } },
+      data: { participantCount: { decrement: released.count } },
+    });
+    await recordPaymentOpsEvent(tx, payment, 'payment.seatHoldReleased', {
+      reason,
+      released: released.count,
+    });
+  }
+  return released.count;
+}
+
+async function expireSeatHoldsInTransaction(
+  tx: Prisma.TransactionClient,
+  tournamentId: string,
+  now: Date,
+  limit = SEAT_HOLD_RECONCILE_LIMIT,
+): Promise<number> {
+  const expired = await tx.registration.findMany({
+    where: {
+      tournamentId,
+      status: 'ACTIVE',
+      paymentId: null,
+      holdExpiresAt: { lte: now },
+    },
+    select: { id: true },
+    orderBy: { holdExpiresAt: 'asc' },
+    take: limit,
+  });
+  if (expired.length === 0) return 0;
+
+  const released = await tx.registration.updateMany({
+    where: {
+      id: { in: expired.map((registration) => registration.id) },
+      status: 'ACTIVE',
+      paymentId: null,
+      holdExpiresAt: { lte: now },
+    },
+    data: { status: 'REVOKED', holdExpiresAt: null },
+  });
+  if (released.count > 0) {
+    await tx.tournament.updateMany({
+      where: { id: tournamentId, participantCount: { gte: released.count } },
+      data: { participantCount: { decrement: released.count } },
+    });
+  }
+  return released.count;
+}
+
+async function reserveSeatHoldInTransaction(
+  tx: Prisma.TransactionClient,
+  tournament: Pick<
+    Tournament,
+    | 'id'
+    | 'bracketSize'
+    | 'thirdPlaceEnabled'
+    | 'minRegistrations'
+    | 'maxRegistrations'
+    | 'roundDurations'
+  >,
+  userId: string,
+  expiresAt: Date,
+  actorId: string | null,
+) {
+  const existing = await tx.registration.findUnique({
+    where: {
+      userId_tournamentId: { userId, tournamentId: tournament.id },
+    },
+  });
+  if (existing?.status === 'ACTIVE') {
+    if (existing.paymentId !== null || existing.holdExpiresAt === null) {
+      throw new ConflictError('Already registered for this tournament');
+    }
+    return tx.registration.update({
+      where: { id: existing.id },
+      data: { holdExpiresAt: expiresAt },
+    });
+  }
+
+  const config = resolveTournamentConfig(tournament);
+  const claimed = await tx.tournament.updateMany({
+    where: {
+      id: tournament.id,
+      status: 'REGISTRATION_OPEN',
+      participantCount: { lt: config.maxRegistrations },
+    },
+    data: { participantCount: { increment: 1 } },
+  });
+  if (claimed.count === 0) {
+    throw new ConflictError(
+      `Tournament is full (${config.maxRegistrations} registrations)`,
+    );
+  }
+
+  const registration = existing
+    ? await tx.registration.update({
+        where: { id: existing.id },
+        data: {
+          status: 'ACTIVE',
+          paymentId: null,
+          holdExpiresAt: expiresAt,
+          registeredAt: new Date(),
+        },
+      })
+    : await tx.registration.create({
+        data: {
+          userId,
+          tournamentId: tournament.id,
+          status: 'ACTIVE',
+          holdExpiresAt: expiresAt,
+        },
+      });
+
+  await recordAudit(
+    {
+      actorId: actorId ?? userId,
+      action: 'payment.seatHoldCreated',
+      entityType: 'Registration',
+      entityId: registration.id,
+      after: {
+        userId,
+        tournamentId: tournament.id,
+        status: 'ACTIVE',
+        holdExpiresAt: expiresAt,
+      },
+    },
+    tx,
+  );
+  return registration;
+}
+
 export async function createPassOrder(
   tournamentId: string,
   userId: string,
@@ -431,11 +677,13 @@ export async function createPassOrder(
 ): Promise<CheckoutOrder> {
   const gateway = options.gateway ?? getRazorpayGateway();
 
-  const reusable = await db.$transaction(
+  const result = await db.$transaction(
     async (tx) => {
+      const now = new Date();
       await tx.$executeRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`payment:${userId}:${tournamentId}`}))`,
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${paymentActivationLockKey(userId, tournamentId)}))`,
       );
+      await expireSeatHoldsInTransaction(tx, tournamentId, now);
 
       const tournament = await assertCanCreateOrder(tx, tournamentId, userId);
       const existing = await tx.payment.findFirst({
@@ -451,9 +699,15 @@ export async function createPassOrder(
           existing.amountMinor === tournament.passPriceMinor &&
           existing.currency === tournament.currency
         ) {
+          await reserveSeatHoldInTransaction(
+            tx,
+            tournament,
+            userId,
+            seatHoldExpiresAt(now),
+            options.actorId ?? userId,
+          );
           return {
             payment: existing,
-            create: null,
             reused: true,
           };
         }
@@ -464,98 +718,136 @@ export async function createPassOrder(
           'payment.orderSuperseded',
           'Tournament pass price or currency changed before checkout',
         );
+        await releaseUnpaidHoldForPayment(
+          tx,
+          existing,
+          'Tournament pass price or currency changed before checkout',
+        );
       }
 
-      return {
-        payment: null,
-        create: {
-          amountMinor: tournament.passPriceMinor,
-          currency: tournament.currency,
-          receipt: `pass:${tournamentId}:${userId}`,
-        },
-        reused: false,
-      };
-    },
-    { timeout: 15_000, maxWait: 15_000 },
-  );
-
-  if (reusable.payment) {
-    return {
-      paymentId: reusable.payment.id,
-      razorpayKeyId: razorpayKeyId(),
-      orderId: reusable.payment.providerOrderId,
-      amountMinor: reusable.payment.amountMinor,
-      currency: reusable.payment.currency,
-      reused: true,
-    };
-  }
-
-  const order = await gateway.createOrder(reusable.create!);
-
-  const payment = await db.$transaction(async (tx) => {
-    await tx.$executeRaw(
-      Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`payment:${userId}:${tournamentId}`}))`,
-    );
-    const existing = await tx.payment.findFirst({
-      where: { userId, tournamentId, status: { in: REUSABLE_STATUSES } },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (existing) {
-      const tournament = await assertCanCreateOrder(tx, tournamentId, userId);
-      if (
-        existing.amountMinor === tournament.passPriceMinor &&
-        existing.currency === tournament.currency
-      ) {
-        return existing;
-      }
-      await markPaymentSuperseded(
+      await reserveSeatHoldInTransaction(
         tx,
-        existing,
-        'payment.orderSuperseded',
-        'Tournament pass price or currency changed before checkout',
-      );
-    }
-
-    const created = await tx.payment.create({
-      data: {
+        tournament,
         userId,
-        tournamentId,
-        providerOrderId: order.id,
-        amountMinor: order.amount,
-        currency: order.currency,
-        status: 'CREATED',
-      },
-    });
-    await recordAudit(
-      {
-        actorId: options.actorId ?? userId,
-        action: 'payment.orderCreated',
-        entityType: 'Payment',
-        entityId: created.id,
-        after: {
+        seatHoldExpiresAt(now),
+        options.actorId ?? userId,
+      );
+      const order = await gateway.createOrder({
+        amountMinor: tournament.passPriceMinor,
+        currency: tournament.currency,
+        receipt: `pass:${tournamentId}:${userId}`,
+      });
+
+      const created = await tx.payment.create({
+        data: {
           userId,
           tournamentId,
           providerOrderId: order.id,
           amountMinor: order.amount,
           currency: order.currency,
+          status: 'CREATED',
         },
-      },
-      tx,
-    );
-    await recordPaymentOpsEvent(tx, created, 'payment.orderCreated', {
-      providerOrderId: order.id,
-    });
-    return created;
-  });
+      });
+      await recordAudit(
+        {
+          actorId: options.actorId ?? userId,
+          action: 'payment.orderCreated',
+          entityType: 'Payment',
+          entityId: created.id,
+          after: {
+            userId,
+            tournamentId,
+            providerOrderId: order.id,
+            amountMinor: order.amount,
+            currency: order.currency,
+          },
+        },
+        tx,
+      );
+      await recordPaymentOpsEvent(tx, created, 'payment.orderCreated', {
+        providerOrderId: order.id,
+      });
+      return { payment: created, reused: false };
+    },
+    { timeout: 30_000, maxWait: 15_000 },
+  );
 
   return {
-    paymentId: payment.id,
+    paymentId: result.payment.id,
     razorpayKeyId: razorpayKeyId(),
-    orderId: payment.providerOrderId,
-    amountMinor: payment.amountMinor,
-    currency: payment.currency,
-    reused: false,
+    orderId: result.payment.providerOrderId,
+    amountMinor: result.payment.amountMinor,
+    currency: result.payment.currency,
+    reused: result.reused,
   };
+}
+
+export async function reconcileExpiredSeatHolds(
+  tournamentId: string,
+  options: { now?: Date; limit?: number; runBy?: string } = {},
+): Promise<{ expired: number; participantCount: number }> {
+  const now = options.now ?? new Date();
+  const key = `payment:${tournamentId}:seat-holds:${now.toISOString().slice(0, 16)}`;
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw(
+        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`seat-holds:${tournamentId}`}))`,
+      );
+      const prior = await tx.opsEvent.findUnique({
+        where: { idempotencyKey: key },
+      });
+      if (prior?.status === 'DONE') {
+        const tournament = await tx.tournament.findUniqueOrThrow({
+          where: { id: tournamentId },
+          select: { participantCount: true },
+        });
+        return { expired: 0, participantCount: tournament.participantCount };
+      }
+      await tx.opsEvent.upsert({
+        where: { idempotencyKey: key },
+        update: {
+          status: 'RUNNING',
+          startedAt: now,
+          error: null,
+          runBy: options.runBy ?? 'payment',
+        },
+        create: {
+          tournamentId,
+          type: 'payment.expireSeatHolds',
+          scheduledFor: now,
+          status: 'RUNNING',
+          idempotencyKey: key,
+          runBy: options.runBy ?? 'payment',
+          startedAt: now,
+          payload: { limit: options.limit ?? SEAT_HOLD_RECONCILE_LIMIT },
+        },
+      });
+      const expired = await expireSeatHoldsInTransaction(
+        tx,
+        tournamentId,
+        now,
+        options.limit ?? SEAT_HOLD_RECONCILE_LIMIT,
+      );
+      await recomputePrizePool(tournamentId, tx);
+      const tournament = await tx.tournament.findUniqueOrThrow({
+        where: { id: tournamentId },
+        select: { participantCount: true },
+      });
+      await tx.opsEvent.update({
+        where: { idempotencyKey: key },
+        data: {
+          status: 'DONE',
+          completedAt: new Date(),
+          result: {
+            expired,
+            participantCount: tournament.participantCount,
+          },
+        },
+      });
+      return { expired, participantCount: tournament.participantCount };
+    },
+    { timeout: 15_000, maxWait: 15_000 },
+  );
 }
 
 async function activatePaidPayment(
@@ -565,11 +857,14 @@ async function activatePaidPayment(
   eventId: string | null,
   options: { actorId?: string | null } = {},
 ): Promise<PaymentActivationResult> {
-  await tx.$executeRaw(
-    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`payment:${paymentId}`}))`,
-  );
   const payment = await tx.payment.findUnique({ where: { id: paymentId } });
   if (!payment) throw new NotFoundError('Payment not found');
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${paymentActivationLockKey(payment.userId, payment.tournamentId)}))`,
+  );
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`payment:${payment.id}`}))`,
+  );
 
   if (payment.status === 'PAID') {
     const activeRegistration = await tx.registration.findUnique({
@@ -579,7 +874,7 @@ async function activatePaidPayment(
           tournamentId: payment.tournamentId,
         },
       },
-      select: { id: true, status: true, paymentId: true },
+      select: { id: true, status: true, paymentId: true, holdExpiresAt: true },
     });
     return {
       payment,
@@ -639,11 +934,76 @@ async function activatePaidPayment(
         paidAt: payment.paidAt ?? paidAt,
       },
     });
+    await tx.registration.update({
+      where: { id: activeRegistration.id },
+      data: { holdExpiresAt: null },
+    });
     return {
       payment: updated,
       registrationId: activeRegistration.id,
       participantCount: null,
       applied: false,
+    };
+  }
+  if (
+    activeRegistration?.status === 'ACTIVE' &&
+    activeRegistration.paymentId === null
+  ) {
+    const updated = await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'PAID',
+        providerPaymentId: providerPayment.id,
+        signatureVerified: true,
+        webhookEventId: eventId ?? payment.webhookEventId,
+        paidAt: payment.paidAt ?? paidAt,
+      },
+    });
+    const linked = await tx.registration.updateMany({
+      where: {
+        id: activeRegistration.id,
+        status: 'ACTIVE',
+        paymentId: null,
+      },
+      data: { paymentId: payment.id, holdExpiresAt: null },
+    });
+    if (linked.count !== 1) {
+      return markCapturedPaymentRefundRequired(
+        tx,
+        updated,
+        providerPayment,
+        eventId,
+        'Captured payment lost the registration link race and must be refunded',
+        options,
+      );
+    }
+    await recomputePrizePool(payment.tournamentId, tx);
+    await recordAudit(
+      {
+        actorId: options.actorId ?? payment.userId,
+        action: 'payment.paid',
+        entityType: 'Payment',
+        entityId: payment.id,
+        before: { status: payment.status },
+        after: {
+          status: 'PAID',
+          providerPaymentId: providerPayment.id,
+          registrationId: activeRegistration.id,
+          linkedExistingRegistration: true,
+        },
+      },
+      tx,
+    );
+    await recordPaymentOpsEvent(tx, updated, 'payment.paid', {
+      providerPaymentId: providerPayment.id,
+      registrationId: activeRegistration.id,
+      linkedExistingRegistration: true,
+    });
+    return {
+      payment: updated,
+      registrationId: activeRegistration.id,
+      participantCount: null,
+      applied: true,
     };
   }
   if (
@@ -774,6 +1134,9 @@ async function markPaymentFailedInTransaction(
   providerPaymentId: string | null,
   eventId?: string | null,
 ): Promise<{ payment: Payment; applied: boolean }> {
+  await tx.$executeRaw(
+    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${paymentActivationLockKey(payment.userId, payment.tournamentId)}))`,
+  );
   if (
     payment.status === 'PAID' ||
     payment.status === 'REFUNDED' ||
@@ -807,6 +1170,12 @@ async function markPaymentFailedInTransaction(
   await recordPaymentOpsEvent(tx, failed, 'payment.failed', {
     providerPaymentId,
   });
+  await releaseUnpaidHoldForPayment(
+    tx,
+    failed,
+    'Payment failed before capture',
+  );
+  await recomputePrizePool(payment.tournamentId, tx);
   return { payment: failed, applied: true };
 }
 
@@ -911,6 +1280,104 @@ async function refundPaymentInTransaction(
     reason: options.reason ?? null,
   });
   return { payment: refunded, applied: true };
+}
+
+async function processedRefundTotalWithCurrent(
+  tx: Prisma.TransactionClient,
+  payment: Payment,
+  refund: RazorpayRefundEntity,
+): Promise<number> {
+  const prior = await tx.opsEvent.findMany({
+    where: {
+      tournamentId: payment.tournamentId,
+      type: 'payment.partialRefundOperatorActionRequired',
+      payload: { path: ['paymentId'], equals: payment.id },
+    },
+    select: { idempotencyKey: true, payload: true },
+  });
+  return prior.reduce((total, event) => {
+    if (event.idempotencyKey === `payment:${payment.id}:refund:${refund.id}`) {
+      return total;
+    }
+    const payload =
+      typeof event.payload === 'object' && event.payload !== null
+        ? (event.payload as Record<string, unknown>)
+        : null;
+    const amount =
+      typeof payload?.amountMinor === 'number' ? payload.amountMinor : 0;
+    return total + amount;
+  }, refund.amount);
+}
+
+async function flagPartialRefundInTransaction(
+  tx: Prisma.TransactionClient,
+  payment: Payment,
+  refund: RazorpayRefundEntity,
+  amountRefundedMinor: number,
+): Promise<Payment> {
+  const now = new Date();
+  const updated = await tx.payment.update({
+    where: { id: payment.id },
+    data: {
+      refundRequiredAt: payment.refundRequiredAt ?? now,
+      refundReason: `Partial refund ${refund.id} for ${refund.amount} ${refund.currency} requires operator review`,
+    },
+  });
+  await tx.opsEvent.upsert({
+    where: { idempotencyKey: `payment:${payment.id}:refund:${refund.id}` },
+    update: {
+      status: 'DONE',
+      completedAt: now,
+      result: {
+        providerRefundId: refund.id,
+        providerPaymentId: refund.paymentId,
+        amountMinor: refund.amount,
+        amountRefundedMinor,
+        currency: refund.currency,
+        status: refund.status,
+        operatorActionRequired: true,
+      },
+    },
+    create: {
+      tournamentId: payment.tournamentId,
+      type: 'payment.partialRefundOperatorActionRequired',
+      scheduledFor: now,
+      status: 'DONE',
+      idempotencyKey: `payment:${payment.id}:refund:${refund.id}`,
+      runBy: 'payment',
+      payload: {
+        paymentId: payment.id,
+        providerRefundId: refund.id,
+        providerPaymentId: refund.paymentId,
+        amountMinor: refund.amount,
+        currency: refund.currency,
+        status: refund.status,
+        operatorActionRequired: true,
+      },
+      result: {
+        amountRefundedMinor,
+        paymentAmountMinor: payment.amountMinor,
+      },
+      completedAt: now,
+    },
+  });
+  await recordAudit(
+    {
+      actorId: payment.userId,
+      action: 'payment.partialRefundFlagged',
+      entityType: 'Payment',
+      entityId: payment.id,
+      before: { status: payment.status },
+      after: {
+        providerRefundId: refund.id,
+        amountMinor: refund.amount,
+        amountRefundedMinor,
+        operatorActionRequired: true,
+      },
+    },
+    tx,
+  );
+  return updated;
 }
 
 export async function confirmCheckout(
@@ -1263,16 +1730,76 @@ export async function processRazorpayWebhook(
       }
 
       case 'refund.processed': {
-        const paymentId = refundPaymentId(payload.payload?.refund?.entity);
+        let refund: RazorpayRefundEntity;
+        let refundPayment: RazorpayRefundPaymentEntity;
+        try {
+          refund = refundEntityFromPayload(payload.payload?.refund?.entity);
+          refundPayment = refundPaymentEntityFromPayload(
+            payload.payload?.payment?.entity,
+          );
+        } catch (error) {
+          await recordWebhook(
+            'IGNORED',
+            null,
+            error instanceof Error ? error.message : String(error),
+          );
+          return { processed: false, paymentId: null };
+        }
         const payment = await tx.payment.findUnique({
-          where: { providerPaymentId: paymentId },
+          where: { providerPaymentId: refund.paymentId },
         });
         if (!payment) {
           await recordWebhook('IGNORED', null, 'Payment not found');
           return { processed: false, paymentId: null };
         }
+        if (payment.status === 'REFUNDED') {
+          await recordWebhook('DEDUPED', payment.id);
+          return { processed: false, paymentId: payment.id };
+        }
+        if (refund.status !== 'processed') {
+          await recordWebhook(
+            'IGNORED',
+            payment.id,
+            `Refund ${refund.id} is ${refund.status}`,
+          );
+          return { processed: false, paymentId: payment.id };
+        }
+        if (refundPayment.id !== refund.paymentId) {
+          await recordWebhook(
+            'IGNORED',
+            payment.id,
+            'Refund payment state does not match refund payment_id',
+          );
+          return { processed: false, paymentId: payment.id };
+        }
+        const amountRefundedMinor = await processedRefundTotalWithCurrent(
+          tx,
+          payment,
+          refund,
+        );
+        const cumulativeProviderFull =
+          refundPayment.amount === payment.amountMinor &&
+          refundPayment.amountRefunded >= payment.amountMinor &&
+          refundPayment.refundStatus === 'full';
+        const localProcessedFull = amountRefundedMinor >= payment.amountMinor;
+        if (
+          refund.currency !== payment.currency ||
+          refundPayment.currency !== payment.currency ||
+          !cumulativeProviderFull ||
+          !localProcessedFull
+        ) {
+          await flagPartialRefundInTransaction(
+            tx,
+            payment,
+            refund,
+            amountRefundedMinor,
+          );
+          await recordWebhook('APPLIED', payment.id);
+          return { processed: false, paymentId: payment.id };
+        }
         const result = await refundPaymentInTransaction(tx, payment, {
-          providerPaymentId: paymentId,
+          providerPaymentId: refund.paymentId,
+          providerRefundId: refund.id,
           eventId,
         });
         await recordWebhook(result.applied ? 'APPLIED' : 'DEDUPED', payment.id);

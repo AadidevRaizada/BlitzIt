@@ -4,6 +4,7 @@ import type { DbClient } from '@/server/modules/admin/audit';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { autoBracketSize, isBracketSize, type BracketSize } from './config';
+import { listCompetitionEligibleRegistrations } from './registration';
 import { rankByWinRule, type CompetitorResult } from './win-rule';
 
 /**
@@ -70,11 +71,10 @@ export async function collectSimulationResults(
   // free to return them differently between runs, which would make seeding
   // (and therefore the whole bracket) non-deterministic. Registration time is
   // the documented final tie-break; `id` settles even that.
-  const registrations = await client.registration.findMany({
-    where: { tournamentId, status: 'ACTIVE' },
-    select: { userId: true, user: { select: { city: true } } },
-    orderBy: [{ registeredAt: 'asc' }, { id: 'asc' }],
-  });
+  const registrations = await listCompetitionEligibleRegistrations(
+    tournamentId,
+    client,
+  );
 
   const entries = new Map<string, SeedingEntry>();
   for (const registration of registrations) {
