@@ -4,6 +4,8 @@ import { isAdmin } from '@/server/modules/auth';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import { SignOutButton } from '@/components/features/sign-out-button';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Guarded layout for the authenticated app. Every route in this group requires
  * a session; unauthenticated visitors are redirected to /login.

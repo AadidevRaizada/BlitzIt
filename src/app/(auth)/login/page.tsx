@@ -3,10 +3,12 @@ import { enabledProviders } from '@/server/auth';
 import { getSession } from '@/server/modules/auth';
 import { LoginButtons } from './login-buttons';
 
-export const metadata = { title: 'Sign in — Blitz It' };
+export const dynamic = 'force-dynamic';
+
+export const metadata = { title: 'Sign in - Blitz It' };
 
 /**
- * Login screen (E1). Functional, not styled — visual polish comes later.
+ * Login screen (E1). Functional, not styled - visual polish comes later.
  * Already-authenticated visitors are bounced to their intended destination.
  */
 export default async function LoginPage({
