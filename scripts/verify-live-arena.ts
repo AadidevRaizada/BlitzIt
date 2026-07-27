@@ -38,6 +38,7 @@ import {
 } from '../src/server/modules/submission';
 import { evaluateFlag, envVarNameForFlag, FLAGS } from '../src/lib/flags';
 import { AppError } from '../src/lib/errors';
+import { attachProblemsToRounds } from './internal/harness-problems';
 
 /**
  * Epic E7 — live knockout arena acceptance.
@@ -554,6 +555,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'CLOSE_REGISTRATION', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION', {
     actorId: admin.id,
   });
@@ -584,6 +586,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'GENERATE_BRACKET', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
 
   // ── The leaderboard is public standings, ordered by placement then score ──
   const leaderboard = await getLeaderboard(tournament.id, { take: 8 });

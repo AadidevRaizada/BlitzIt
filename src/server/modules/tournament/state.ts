@@ -280,6 +280,20 @@ async function applySideEffects(
         tournament.id,
         tx,
       );
+
+      // Create the simulation rounds here, PENDING, rather than at
+      // START_SIMULATION. Creating and opening round 1 in one transaction left
+      // no instant at which a problem could be attached to it: before the
+      // transition the round did not exist, and after it `assignProblemToRound`
+      // refuses anything that is no longer PENDING. That is how a round can end
+      // up OPEN with a live countdown and no statement to show.
+      //
+      // This mirrors the knockout split that already works — GENERATE_BRACKET
+      // creates the rounds, START_KNOCKOUT opens one — and the upsert on
+      // (tournamentId, stage, sequence) keeps START_SIMULATION's own call a
+      // no-op, so re-running either transition is still harmless.
+      const rounds = await createSimulationRounds(tx, tournament.id, config);
+
       return {
         data: {
           registrationClosesAt: now,
@@ -287,13 +301,19 @@ async function applySideEffects(
           // the frozen competitive field count.
           participantCount: eligible,
         },
-        detail: { eligibleRegistrations: eligible },
+        detail: {
+          eligibleRegistrations: eligible,
+          simulationRoundsCreated: rounds.length,
+        },
       };
     }
 
     case 'START_SIMULATION': {
+      // Idempotent: CLOSE_REGISTRATION already created these. Kept so a
+      // tournament that closed registration before this change still starts.
       const rounds = await createSimulationRounds(tx, tournament.id, config);
       const first = rounds[0];
+      // Refuses when no problem is assigned, rolling back the whole transition.
       if (first) await openRound(tx, first.id, now);
       return {
         data: { simulationOpensAt: tournament.simulationOpensAt ?? now },

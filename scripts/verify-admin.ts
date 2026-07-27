@@ -57,6 +57,7 @@ import {
 } from '../src/lib/validation/admin.schema';
 import { AppError } from '../src/lib/errors';
 import { readFileSync } from 'node:fs';
+import { attachProblemsToRounds } from './internal/harness-problems';
 
 /**
  * Epic E5 acceptance: Admin Platform & Tournament Management.
@@ -553,6 +554,7 @@ async function main() {
     actorId: admin.id,
     force: true,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION', {
     actorId: admin.id,
   });

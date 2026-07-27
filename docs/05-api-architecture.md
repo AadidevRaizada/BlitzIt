@@ -54,11 +54,11 @@ keys prevent duplicate processing; the same contract maps onto BullMQ later.
 | Job | Trigger | Idempotency key | Does |
 |-----|---------|-----------------|------|
 | `EVALUATE` | after submit / round close | `eval:{submissionId}:{attempt}` | resolve the round's stage profile (D20) → pick challenge-type strategy → run only the ACTIVE dimensions: functional tests vs URL + perf + security/reliability probes, plus the repo-text LLM pass **only from SF/THIRD_PLACE/FINAL** → `Evaluation` (renormalised blend) → update `Ranking` |
-| `SEED_TOURNAMENT` | Sat cron / admin | `seed:{tournamentId}:{attempt}` | rank qualifiers by the summed simulation score (D13) → write seeds. **Ops path only:** the normal route is the `CLOSE_SIMULATION` transition. Refuses to run once a bracket exists |
-| `ADVANCE_BRACKET` | all match evals done | `advance:{roundId}` | seal an expired window → apply win rule + tie-breaks (D5) → write winners into the slots the bracket already reserved → advance the stage or complete the tournament; flag ties needing sudden-death |
+| `SEED_TOURNAMENT` | admin / ops | `seed:{tournamentId}:{attempt}` | rank qualifiers by the summed simulation score (D13) → write seeds. **Ops path only:** the normal route is the `CLOSE_SIMULATION` transition. Refuses to run once a bracket exists |
+| `ADVANCE_BRACKET` | all match evals done, **or** the runner's deadline sweep | `advance:{roundId}` when evaluation-driven; `progress:{roundId}:{minute}` from the sweep | seal an expired window → apply win rule + tie-breaks (D5) → write winners into the slots the bracket already reserved → advance the stage or complete the tournament; flag ties needing sudden-death |
 | `SEND_EMAIL` | domain events | `email:{notificationId}` | render React Email → Resend |
 | `PROCESS_PAYOUT` | admin approval | `payout:{payoutId}` | compliance gate → RazorpayX → update `Payout` |
-| `TOURNAMENT_TRANSITION` | Railway cron / admin | `optransition:{tournamentId}:{transition}` (plus the from-state for `ADVANCE_STAGE`) | idempotent state change. The key must stay stable across the transition itself, since a replay reads it *after* the state moved |
+| `TOURNAMENT_TRANSITION` | admin / ops | `optransition:{tournamentId}:{transition}` (plus the from-state for `ADVANCE_STAGE`) | idempotent state change. The key must stay stable across the transition itself, since a replay reads it *after* the state moved |
 | `RECOMPUTE_PRIZE_POOL` | on paid registration | `pool:{tournamentId}:{participantCount}` | recompute dynamic prize pool + distribution (D9) |
 
 ## API design conventions

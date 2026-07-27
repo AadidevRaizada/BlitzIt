@@ -53,6 +53,7 @@ import {
   publishProblem,
 } from '../src/server/modules/problem';
 import { AppError } from '../src/lib/errors';
+import { attachProblemsToRounds } from './internal/harness-problems';
 
 /**
  * Epic E8 — spectator surfaces, notifications and the Hall of Fame.
@@ -821,6 +822,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'CLOSE_REGISTRATION', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION', {
     actorId: admin.id,
   });
@@ -851,6 +853,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'GENERATE_BRACKET', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
 
   // ── Leaderboard ordering (E8.2) ──
   const byScore = await getLeaderboard(tournament.id, { take: 8 });

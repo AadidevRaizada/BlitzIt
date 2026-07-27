@@ -22,6 +22,7 @@ import {
   publishProblem,
 } from '../src/server/modules/problem';
 import { AppError } from '../src/lib/errors';
+import { attachProblemsToRounds } from './internal/harness-problems';
 
 /**
  * Epic E6 — sudden death (D5.6 / D14) acceptance.
@@ -357,6 +358,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'CLOSE_REGISTRATION', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION', {
     actorId: admin.id,
   });
@@ -388,6 +390,7 @@ async function pipeline() {
   await applyTransition(tournament.id, 'GENERATE_BRACKET', {
     actorId: admin.id,
   });
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_KNOCKOUT', { actorId: admin.id });
 
   const qfRound = await db.round.findFirstOrThrow({

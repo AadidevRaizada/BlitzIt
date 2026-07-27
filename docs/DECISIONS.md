@@ -342,6 +342,64 @@ investment**. Roadmap and hiring decisions should weight these above additional 
 features.
 
 
+## D30 - Round progression is triggered in-process, not by Railway Cron (locked 2026-07-27)
+
+A round deadline is an instant in the database, not an event. Something has to notice it has
+passed. Nothing did: the queue, the runner and the `advanceBracket` processor were all built and
+healthy, but no code ever enqueued the job they waited for. In production a simulation round sat
+OPEN 29 minutes past its deadline while the rounds behind it never started, and every
+`OpsEvent` ever recorded carried `runBy = admin`.
+
+**Decision.** The runner sweeps for rounds whose `deadlineAt` has passed and **enqueues** an
+`advanceBracket` job. It never transitions directly, so progression keeps one path through the
+queue, under the existing concurrency cap and retry policy.
+
+**Why not Railway Cron,** which D3 and `01-technical-architecture.md` originally assumed:
+
+1. **The cadence is impossible.** Railway's minimum interval between cron executions is 5 minutes.
+   The shortest rounds are 600s (simulation round 3, and sudden death), so a worst-case tick lands
+   half a round late.
+2. **A cron service must terminate.** Railway expects a cron service to finish its task and exit,
+   and explicitly excludes long-running web servers. Ours hosts the in-process runner (D3) and
+   never exits, so cron would require a *second* service — contradicting the single-service
+   topology in `25-deployment-railway.md`.
+3. Railway also **skips** a scheduled run if the previous one is still going, which turns a slow
+   pass into a silently missed one.
+
+Cron remains appropriate for coarse, day-scale transitions (open/close registration, seeding) if
+we ever want them automated. Those stay admin/ops-driven for now.
+
+**Why not a separate polling service.** The runner already polls Postgres every 2s, already has
+the start-once guard and already handles failures. A second loop would duplicate all of it, so the
+sweep rides the existing tick.
+
+**Replica safety.** The sweep's idempotency key is bucketed by minute
+(`progress:{roundId}:{minute}`), so concurrent replicas within a minute collapse to one job via
+the unique index. It cannot reuse the evaluation-driven `advance:{roundId}` key: that one is
+permanent per round, so a sweep sharing it would fire once per round ever.
+
+**Production configuration required: none.** No cron service, no second service, no new env var.
+
+---
+
+## D31 - Simulation rounds are created at CLOSE_REGISTRATION (locked 2026-07-27)
+
+`START_SIMULATION` used to create the three simulation rounds *and* open round 1 in the same
+transaction. That left no instant at which a problem could be attached to round 1: before the
+transition the round did not exist, and after it `assignProblemToRound` refuses anything that is
+no longer PENDING. A tournament could therefore only ever start with round 1 problem-less — which
+is exactly what happened in production, where the round showed a live countdown and
+"the problem has not been revealed yet" at the same time.
+
+**Decision.** `CLOSE_REGISTRATION` creates the simulation rounds PENDING. `START_SIMULATION`
+opens round 1, and `openRound` now refuses any round with no problem assigned. This mirrors the
+knockout split that already worked (`GENERATE_BRACKET` creates, `START_KNOCKOUT` opens), and
+the upsert on `(tournamentId, stage, sequence)` keeps both calls idempotent.
+
+The operational consequence is deliberate: **an organizer must assign problems between closing
+registration and starting the simulation**, and starting without them fails loudly rather than
+opening a round nobody can compete in.
+
 ---
 
 ### What these decisions removed from earlier drafts

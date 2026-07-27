@@ -133,6 +133,19 @@ export async function openRound(
     return round;
   }
 
+  // A round with no problem is not a round. Opening one starts its countdown
+  // and reveals a statement that does not exist, so competitors watch a live
+  // timer against nothing — and `assignProblemToRound` refuses a round that is
+  // no longer PENDING, making the state unrecoverable through the product.
+  // This is the only writer of `opensAt`, so it is the only place the invariant
+  // can be enforced once rather than at every caller.
+  if (round.problemId === null) {
+    throw new ConflictError(
+      `Round ${roundId} (${round.stage}, sequence ${round.sequence}) cannot open: ` +
+        `no problem is assigned. Assign a published problem to this round before opening it.`,
+    );
+  }
+
   return client.round.update({
     where: { id: roundId },
     data: {

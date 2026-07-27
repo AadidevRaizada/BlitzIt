@@ -13,7 +13,19 @@ Everything below is derived from this repo's actual config: `railway.json`,
 | Postgres | Yes | All state |
 | Volume | **No** | Nothing writes to disk; all state is Postgres |
 | Separate worker service | **No** | The runner is in-process |
+| **Cron service** | **No** | Round progression rides the runner — see below |
 | Separate PostHog service | **No** | Use PostHog Cloud |
+
+**Do not add a Railway cron service for round progression.** Earlier drafts of the architecture
+assumed one. It cannot do the job: Railway's minimum cron interval is 5 minutes and a cron service
+must terminate when its task finishes, which this service (a Next.js server hosting the runner)
+never does. The shortest rounds are 600s, so a 5-minute tick lands half a round late. Instead the
+runner's poll loop sweeps for rounds whose `deadlineAt` has passed and enqueues an
+`advanceBracket` job — no extra service, no extra environment variable. See D30/D31 in
+`DECISIONS.md`.
+
+That sweep is replica-safe (its idempotency key is bucketed by minute, so concurrent replicas
+collapse to one job), but `replicas = 1` below still stands for the other reasons.
 
 **The runner is in-process.** `startRunner()` is called from
 `src/instrumentation.ts`, so the web service *is* the worker. There is no
@@ -319,6 +331,14 @@ is wired.
 3. Promote yourself to admin: `npm run make:admin` against the production
    database.
 4. Create a tournament in `/admin`, open registration.
+   - After **closing** registration, assign a published problem to every
+     simulation round in the Timeline tab. `START_SIMULATION` refuses to open a
+     round with no problem, so this is now a required step, not an optional one.
+   - Confirm progression is automatic: once a round's deadline passes, the next
+     round should open within ~30s without anyone pressing Progress. If it does
+     not, check `runner.started` on `/api/health` — the sweep rides that loop.
+     `SELECT id, status, "opensAt", "problemId" FROM "Round" WHERE status = 'OPEN'
+     AND "problemId" IS NULL;` must always return zero rows.
 5. Run one **real Razorpay test-mode payment** end to end (see below).
 6. Confirm the webhook shows delivered in the Razorpay dashboard and appears in
    `/admin/payments` webhook history.

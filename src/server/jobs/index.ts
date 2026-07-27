@@ -121,3 +121,14 @@ export function enqueueAdvanceBracket(
     { idempotencyKey: `advance:${roundId}`, priority: 15 },
   );
 }
+
+// The deadline-driven counterpart lives in `progress-sweep` beside the sweep
+// that calls it: the runner imports that module, so defining it here would
+// close a cycle (runner → progress-sweep → index → runner).
+export {
+  enqueueRoundProgression,
+  sweepExpiredRounds,
+  findExpiredRounds,
+  PROGRESSION_BUCKET_MS,
+  SWEEP_INTERVAL_MS,
+} from './progress-sweep';

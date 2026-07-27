@@ -108,10 +108,24 @@ database would be free to return them differently on each run and the whole brac
 
 ### Driving the phase
 
-`START_SIMULATION` opens round 1 only. `progressSimulation()` seals a round whose window has
-expired and opens the next, so all three become playable; `progressTournament` routes a tournament
-in `SIMULATION` to it, meaning one driver covers both phases and callers never need to know which
-phase they are in.
+`CLOSE_REGISTRATION` **creates** the three simulation rounds, PENDING. `START_SIMULATION` opens
+round 1 only. The split matters: `openRound` refuses a round with no problem attached, and
+`assignProblemToRound` refuses a round that is no longer PENDING, so there has to be an interval
+in which the rounds exist and are still closed. Creating and opening in one transaction left none,
+and a tournament could only ever start with round 1 problem-less — a live countdown against a
+statement that did not exist. This mirrors `GENERATE_BRACKET` creating the knockout rounds that
+`START_KNOCKOUT` later opens. Both calls are idempotent upserts on
+`(tournamentId, stage, sequence)`.
+
+**Operationally: assign problems between closing registration and starting the simulation.**
+Starting without them fails loudly with a `CONFLICT` naming the round.
+
+`progressSimulation()` seals a round whose window has expired and opens the next, so all three
+become playable; `progressTournament` routes a tournament in `SIMULATION` to it, meaning one
+driver covers both phases and callers never need to know which phase they are in.
+
+Nothing used to *call* that driver on a schedule. The runner's deadline sweep now does: it finds
+rounds past `deadlineAt` and enqueues `advanceBracket`, which runs the pass. See D30.
 
 Seeding then runs as the side effect of `CLOSE_SIMULATION`, guarded on **both**:
 
@@ -318,7 +332,7 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 | **Sudden death** (D5.6, D14) | A tie surviving all five tie-breaks sets `Match.tieUnresolved`, leaves the match `JUDGING`, and logs loudly. Resolving it needs a new short challenge + round, which is the bracket epic's job. | E6.3 ✅ |
 | Admin UI (tournaments/problems/dashboard) | E3 delivers the engine and its server actions; screens are a separate deliverable. | E3.3–E3.5 |
 | Bracket UI | — | E6.4 |
-| Cron wiring | The `tournamentTransition` job and its idempotency exist and are verified; pointing Railway cron at them is deployment configuration. | E3.2 (ops) |
+| Cron wiring | **Resolved: there is no cron.** Round progression is triggered by the runner's deadline sweep, which enqueues `advanceBracket`. Railway Cron cannot serve this — 5-minute floor, and a cron service must exit. Coarse transitions stay admin/ops-driven. See D30 in `DECISIONS.md`. | Done |
 | Payments / prize pool | Registration deliberately carries no money yet. | E4 |
 | Submission creation, arena, problem reveal | E3 owns the window, not the submission. | E5 |
 

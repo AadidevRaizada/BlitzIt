@@ -4,6 +4,7 @@ import { queue } from './pg-queue';
 import type { ClaimedJob } from './queue';
 import { processors } from './processors';
 import { backoffForAttempt } from './retry-policy';
+import { sweepExpiredRounds, SWEEP_INTERVAL_MS } from './progress-sweep';
 import { logger } from '@/lib/logger';
 import { captureException } from '@/lib/observability';
 import { AppError } from '@/lib/errors';
@@ -56,6 +57,7 @@ class Runner {
   private running = false;
   private stopped = false;
   private lastReclaimAt = 0;
+  private lastSweepAt = 0;
   /** Jobs this runner currently holds — refreshed by the claim heartbeat. */
   private readonly inFlight = new Set<string>();
   private heartbeatTimer: NodeJS.Timeout | undefined;
@@ -116,6 +118,7 @@ class Runner {
       this.lastHeartbeat = Date.now();
       try {
         await this.reclaimStaleJobs();
+        await this.sweepDeadlines();
 
         // Only claim what we can actually start now. Awaiting the whole batch
         // would idle free capacity behind the slowest job in it — an
@@ -162,6 +165,26 @@ class Runner {
         { instanceId: this.instanceId, requeued, failed },
         'reclaimed stale jobs from abandoned claims',
       );
+    }
+  }
+
+  /**
+   * Notice rounds whose deadline has passed and enqueue an advancement pass for
+   * them. Rides this loop rather than standing up a second poller: the polling,
+   * the start-once guard and the failure handling already exist here.
+   *
+   * Enqueue only — the `advanceBracket` processor does the work, so progression
+   * keeps a single path through the queue.
+   */
+  private async sweepDeadlines(): Promise<void> {
+    if (Date.now() - this.lastSweepAt < SWEEP_INTERVAL_MS) return;
+    this.lastSweepAt = Date.now();
+
+    try {
+      await sweepExpiredRounds();
+    } catch (error) {
+      // Never let a sweep failure stop jobs from being claimed.
+      captureException(error, { where: 'runner.sweepDeadlines' });
     }
   }
 

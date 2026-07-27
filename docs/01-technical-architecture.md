@@ -67,8 +67,8 @@
                                      │ GitHub API (text) │   │ pinned per t'ment) │
                                      └───────────────────┘   └───────────────────┘
 
-           Resend (email, sent from runner) · Railway Cron (>=5min) fires idempotent
-           tournament state transitions (open/close registration, unlock rounds, seed)
+           Resend (email, sent from runner) · the runner's deadline sweep enqueues
+           idempotent round progression (close a round, open the next) — NOT cron
 ```
 
 ## How each piece works and communicates
@@ -123,9 +123,16 @@
   from the runner, triggered by an admin action, behind a lightweight compliance gate (D11).
 
 ### Infrastructure — Railway
-- Single web service + managed Postgres. **Railway Cron (≥5-min)** fires **idempotent** DB-backed
-  state transitions; the DB schedule is authoritative so a missed/duplicate tick is harmless.
-  Live sub-5-min round timing is **server-authoritative in the app**, not cron.
+- Single web service + managed Postgres. No cron service.
+- **Round progression originates in the runner**, not in cron. Its poll loop sweeps for rounds
+  whose `deadlineAt` has passed and enqueues an `advanceBracket` job; the processor closes the
+  round and opens the next. The sweep only ever enqueues, so progression has exactly one path.
+- **Railway Cron was the original plan and cannot do this job.** Its minimum interval is 5
+  minutes and a cron service must exit when its task finishes, which a Next.js server hosting the
+  in-process runner never does — it would need a second service. The shortest rounds are 600s, so
+  a 5-minute lag is half a round. See D30 in `DECISIONS.md`.
+- Round timing itself remains **server-authoritative in the app**: `opensAt`/`deadlineAt` are
+  persisted instants and no client clock is trusted.
 
 ### Monitoring & analytics
 - **Sentry** for exceptions/traces (web + runner). **PostHog** for funnels

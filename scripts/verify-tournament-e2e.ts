@@ -25,8 +25,12 @@ import {
   InvalidTransitionError,
   openRound,
   closeRound,
+  getRevealedRound,
 } from '../src/server/modules/tournament';
+import { queue, sweepExpiredRounds } from '../src/server/jobs';
+import { processors } from '../src/server/jobs/processors';
 import { AppError } from '../src/lib/errors';
+import { attachProblemsToRounds } from './internal/harness-problems';
 
 /**
  * Epic E3 end-to-end acceptance — the DoD.
@@ -127,6 +131,10 @@ async function cleanup() {
   });
   await db.auditLog.deleteMany({ where: { entityType: 'TournamentE3Test' } });
   await db.tournament.deleteMany({ where: { slug: { contains: TAG } } });
+  // Progression jobs carry a tournament id in their payload rather than a
+  // foreign key, so deleting the tournament leaves them behind. An orphan
+  // claimed by a later run makes that run fail on a tournament that is gone.
+  await db.$executeRaw`DELETE FROM "EvaluationJob" WHERE "name" = 'advanceBracket' AND ("payload"->>'tournamentId') NOT IN (SELECT "id" FROM "Tournament")`;
   await db.hiddenTest.deleteMany({
     where: { problem: { slug: { contains: TAG } } },
   });
@@ -472,6 +480,19 @@ async function fullLifecycle() {
     'REGISTRATION_OPEN → REGISTRATION_CLOSED',
     (await getLifecycleState(tournament.id)) === 'REGISTRATION_CLOSED',
   );
+  // CLOSE_REGISTRATION creates the simulation rounds PENDING; they need
+  // problems before START_SIMULATION is allowed to open the first one.
+  check(
+    'CLOSE_REGISTRATION creates the simulation rounds PENDING',
+    (await db.round.count({
+      where: {
+        tournamentId: tournament.id,
+        type: 'SIMULATION',
+        status: 'PENDING',
+      },
+    })) === 3,
+  );
+  await attachProblemsToRounds(tournament.id, TAG);
 
   await checkRejects(
     'registration is refused once closed',
@@ -638,6 +659,9 @@ async function fullLifecycle() {
 
   const generated = await applyTransition(tournament.id, 'GENERATE_BRACKET');
   check('SEEDING → BRACKET_GENERATED', generated.to === 'BRACKET_GENERATED');
+  // Knockout rounds are created PENDING here and opened stage by stage later,
+  // so one pass covers START_KNOCKOUT and every ADVANCE_STAGE after it.
+  await attachProblemsToRounds(tournament.id, TAG);
 
   const bracket = await getBracket(tournament.id);
   check(
@@ -1079,6 +1103,178 @@ function runInFreshProcess(tournamentId: string) {
   };
 }
 
+// ───────── Scenario 1b: the round-open invariant and the deadline sweep ─────────
+
+/**
+ * A round must never open without a problem, and a round whose deadline has
+ * passed must advance without anyone pressing a button.
+ *
+ * Both defects were found together in production: simulation round 1 sat OPEN
+ * with `problemId = NULL` (so its statement could never be revealed) and stayed
+ * OPEN 29 minutes past its deadline (so rounds 2 and 3 never started).
+ */
+async function roundInvariantAndProgression() {
+  console.log('\n── Scenario 1b: round-open invariant + deadline sweep ──');
+
+  const users = await createUsers(8, 's1b');
+
+  const tournament = await createTournament({
+    slug: `t-${TAG}-s1b`,
+    name: 'E3 Round Invariant',
+    passPriceMinor: 0,
+    bracketSize: 8,
+    thirdPlaceEnabled: false,
+    minRegistrations: 8,
+    maxRegistrations: 32,
+  });
+
+  await applyTransition(tournament.id, 'PUBLISH');
+  await applyTransition(tournament.id, 'OPEN_REGISTRATION');
+  for (const user of users) {
+    await registerCompetitor(tournament.id, user.id);
+  }
+
+  // ---- Scenario A: no problem assigned ----
+  await applyTransition(tournament.id, 'CLOSE_REGISTRATION');
+
+  const pending = await db.round.findMany({
+    where: { tournamentId: tournament.id, type: 'SIMULATION' },
+    orderBy: { sequence: 'asc' },
+  });
+  check(
+    'CLOSE_REGISTRATION creates the simulation rounds so a problem can be attached before they open',
+    pending.length === 3 &&
+      pending.every((r) => r.status === 'PENDING' && r.opensAt === null),
+    pending.map((r) => `${r.sequence}:${r.status}`).join(','),
+  );
+
+  await checkRejects(
+    'SCENARIO A: START_SIMULATION is refused while round 1 has no problem',
+    () => applyTransition(tournament.id, 'START_SIMULATION'),
+    { code: 'CONFLICT' },
+  );
+
+  const afterRefusal = await db.round.findFirstOrThrow({
+    where: { tournamentId: tournament.id, type: 'SIMULATION', sequence: 1 },
+  });
+  check(
+    'SCENARIO A: the refusal rolls back — round 1 is still PENDING with no opensAt',
+    afterRefusal.status === 'PENDING' && afterRefusal.opensAt === null,
+    `${afterRefusal.status}; opensAt ${String(afterRefusal.opensAt)}`,
+  );
+  check(
+    'SCENARIO A: an OPEN round with no problem cannot exist',
+    (await db.round.count({
+      where: { tournamentId: tournament.id, status: 'OPEN', problemId: null },
+    })) === 0,
+  );
+
+  // ---- Scenario B: with a problem, it opens and then advances on its own ----
+  const problemId = await attachProblemsToRounds(tournament.id, TAG);
+  await applyTransition(tournament.id, 'START_SIMULATION');
+
+  const round1 = await db.round.findFirstOrThrow({
+    where: { tournamentId: tournament.id, type: 'SIMULATION', sequence: 1 },
+  });
+  check(
+    'SCENARIO B: with a problem assigned, round 1 opens',
+    round1.status === 'OPEN' &&
+      round1.opensAt !== null &&
+      round1.problemId === problemId,
+  );
+  check(
+    'SCENARIO B: the problem is revealed to a competitor once the round is open',
+    (await getRevealedRound(round1.id))?.problem?.id === problemId,
+  );
+
+  // A submission scored exactly as E5 + E2 would leave it, so the round has
+  // real work behind it when the deadline arrives.
+  for (const [index, user] of users.entries()) {
+    await scoreSubmission(tournament.id, round1.id, problemId, user.id, {
+      overall: 100 - index,
+    });
+  }
+
+  // Reach the deadline without sleeping through it. Only the timestamp moves —
+  // the sweep still discovers it exactly as it would in production.
+  await db.round.update({
+    where: { id: round1.id },
+    data: { deadlineAt: new Date(Date.now() - 1000) },
+  });
+
+  // The sweep is global by design, so on a shared dev database it may also find
+  // expired rounds left by another suite. Assert on this round specifically.
+  const enqueued = await sweepExpiredRounds();
+  check(
+    'SCENARIO B: the sweep notices the expired window and enqueues a pass',
+    enqueued >= 1,
+    `enqueued ${enqueued}`,
+  );
+
+  const queuedJob = await db.evaluationJob.findFirstOrThrow({
+    where: { idempotencyKey: { startsWith: `progress:${round1.id}:` } },
+  });
+  check(
+    'SCENARIO B: the sweep only enqueues — it never transitions directly',
+    queuedJob.name === 'advanceBracket' && queuedJob.status === 'QUEUED',
+    `${queuedJob.name}/${queuedJob.status}`,
+  );
+
+  // Two sweeps in the same minute must collapse to one job: a replica-safe
+  // trigger, not one pass per instance per tick.
+  await sweepExpiredRounds();
+  check(
+    'SCENARIO B: a second sweep in the same bucket collapses to the same job',
+    (await db.evaluationJob.count({
+      where: { idempotencyKey: { startsWith: `progress:${round1.id}:` } },
+    })) === 1,
+  );
+
+  // Run it exactly as the runner would: claim, then hand to the processor.
+  // Claim a batch rather than one job so an unrelated leftover cannot hide this
+  // suite's; anything else claimed here is retired so the run stays repeatable.
+  const claimedBatch = await queue.claim(20, 'verify-e2e');
+  const mine = claimedBatch.find((job) => job.id === queuedJob.id);
+  check(
+    'SCENARIO B: the runner claims the enqueued pass',
+    mine !== undefined && mine.name === 'advanceBracket',
+    `claimed ${claimedBatch.length} job(s)`,
+  );
+  for (const other of claimedBatch) {
+    if (other.id !== queuedJob.id) await queue.complete(other.id, 'verify-e2e');
+  }
+  if (mine) await processors.advanceBracket!(mine);
+
+  const [closed, opened] = await Promise.all([
+    db.round.findFirstOrThrow({
+      where: { tournamentId: tournament.id, type: 'SIMULATION', sequence: 1 },
+    }),
+    db.round.findFirstOrThrow({
+      where: { tournamentId: tournament.id, type: 'SIMULATION', sequence: 2 },
+    }),
+  ]);
+  check(
+    'SCENARIO B: round 1 is finished with no admin interaction',
+    closed.status === 'COMPLETED',
+    closed.status,
+  );
+  check(
+    'SCENARIO B: round 2 opened automatically',
+    opened.status === 'OPEN' && opened.opensAt !== null,
+    `${opened.status}; opensAt ${String(opened.opensAt)}`,
+  );
+
+  // Nothing between the deadline and round 2 opening was an admin action: the
+  // only calls made above were the sweep and the runner's own processor.
+  check(
+    'SCENARIO B: no lifecycle transition was recorded for the progression',
+    (await db.opsEvent.count({
+      where: { tournamentId: tournament.id, type: 'START_SIMULATION' },
+    })) === 1,
+    'simulation progression opens rounds directly; it must not re-run the transition',
+  );
+}
+
 // ───────────────────────── Scenario 2: byes ─────────────────────────
 
 async function byeBracket() {
@@ -1105,6 +1301,7 @@ async function byeBracket() {
     await registerCompetitor(tournament.id, user.id);
   }
   await applyTransition(tournament.id, 'CLOSE_REGISTRATION');
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION');
 
   const simRounds = await db.round.findMany({
@@ -1123,6 +1320,7 @@ async function byeBracket() {
 
   await applyTransition(tournament.id, 'CLOSE_SIMULATION');
   await applyTransition(tournament.id, 'GENERATE_BRACKET');
+  await attachProblemsToRounds(tournament.id, TAG);
 
   const bracket = await getBracket(tournament.id);
   check(
@@ -1457,6 +1655,7 @@ async function seedingRegressions() {
     await registerCompetitor(tournament.id, user.id);
   }
   await applyTransition(tournament.id, 'CLOSE_REGISTRATION');
+  await attachProblemsToRounds(tournament.id, TAG);
   await applyTransition(tournament.id, 'START_SIMULATION');
 
   // Nobody submits anything: every competitor ties on every aggregate D5 field.
@@ -1718,6 +1917,7 @@ async function paidLifecycleEligibilityRegressions() {
 async function main() {
   await cleanup();
   await fullLifecycle();
+  await roundInvariantAndProgression();
   await byeBracket();
   await cancellation();
   await transitionJob();
