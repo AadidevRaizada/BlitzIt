@@ -2,6 +2,8 @@ import { requireUser, isAdmin } from '@/server/modules/auth';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import { ProductShell } from '@/components/features/product-shell';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Guarded layout for the authenticated app. Every route in this group requires
  * a session; unauthenticated visitors are redirected to /login.

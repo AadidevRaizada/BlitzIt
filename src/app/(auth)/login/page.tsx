@@ -6,10 +6,15 @@ import { DisplayHeading } from '@/components/ui/display-heading';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { LoginButtons } from './login-buttons';
 
+// Keeps `enabledProviders` from being evaluated at build time, when the OAuth
+// env vars are not present — without this the build resolves the provider list
+// to empty and ships a login page with no sign-in buttons.
+export const dynamic = 'force-dynamic';
+
 export const metadata = { title: 'Sign in - The Circuit' };
 
 /**
- * Login screen (E1). Functional, not styled — visual polish comes later.
+ * Login screen (E1).
  * Already-authenticated visitors are bounced to their intended destination.
  */
 export default async function LoginPage({

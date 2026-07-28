@@ -3,6 +3,8 @@ import { requireAdmin } from '@/server/modules/auth';
 import { SignOutButton } from '@/components/features/sign-out-button';
 import { AdminNav } from './admin-nav';
 
+export const dynamic = 'force-dynamic';
+
 /**
  * Guarded layout for the admin platform (E5). Requires an ADMIN role;
  * signed-in non-admins are redirected to the dashboard, signed-out users to
