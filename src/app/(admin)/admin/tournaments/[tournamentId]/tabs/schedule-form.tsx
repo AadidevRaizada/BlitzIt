@@ -14,10 +14,12 @@ type State = Result<{ id: string }> | null;
 /**
  * Schedule editor (E5).
  *
- * `datetime-local` inputs carry no timezone, so the values are rendered from —
- * and parsed back as — UTC. The Zod schema pins them explicitly rather than
- * letting `new Date()` apply the server's local offset, which would shift every
- * schedule by the deployment's timezone.
+ * `datetime-local` inputs carry no timezone, so these are rendered from — and
+ * parsed back as — **IST**, and labelled as such. The Zod schema pins the
+ * offset explicitly rather than letting `new Date()` apply the server's local
+ * offset, which would shift every schedule by the deployment's timezone.
+ *
+ * Storage is still UTC. Only what the operator sees and types is IST.
  */
 export function ScheduleForm({
   tournamentId,
@@ -51,31 +53,31 @@ export function ScheduleForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
           name="registrationOpensAt"
-          label="Registration opens"
+          label="Registration opens (IST)"
           type="datetime-local"
           defaultValue={toDateTimeLocal(initial.registrationOpensAt)}
         />
         <TextField
           name="registrationClosesAt"
-          label="Registration closes"
+          label="Registration closes (IST)"
           type="datetime-local"
           defaultValue={toDateTimeLocal(initial.registrationClosesAt)}
         />
         <TextField
           name="simulationOpensAt"
-          label="Simulation opens"
+          label="Simulation opens (IST)"
           type="datetime-local"
           defaultValue={toDateTimeLocal(initial.simulationOpensAt)}
         />
         <TextField
           name="simulationClosesAt"
-          label="Simulation closes"
+          label="Simulation closes (IST)"
           type="datetime-local"
           defaultValue={toDateTimeLocal(initial.simulationClosesAt)}
         />
         <TextField
           name="liveStartsAt"
-          label="Knockout starts"
+          label="Knockout starts (IST)"
           type="datetime-local"
           defaultValue={toDateTimeLocal(initial.liveStartsAt)}
           className="sm:col-span-2"

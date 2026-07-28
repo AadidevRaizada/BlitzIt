@@ -6,12 +6,7 @@ import {
   CardTitle,
   StatCard,
 } from '@/components/ui/card';
-import {
-  DataRow,
-  SectionTitle,
-  formatIst,
-  formatUtc,
-} from '@/components/ui/page-header';
+import { DataRow, SectionTitle, formatIst } from '@/components/ui/page-header';
 import { LifecycleControls } from '@/components/features/lifecycle-controls';
 import { formatMinor } from '@/server/modules/notification';
 
@@ -155,15 +150,16 @@ export function OverviewTab({ summary }: { summary: TournamentSummary }) {
   );
 }
 
-/** Both zones: the operator schedules in UTC (D8) but thinks in IST. */
+/**
+ * IST only. The operator now schedules in IST as well as reading it, so the
+ * second UTC line that used to sit here was noise — and worse, it invited the
+ * reader to check their schedule against the wrong number.
+ */
 function ScheduleRow({ label, value }: { label: string; value: Date | null }) {
   return (
     <div>
       <dt className="text-muted-foreground text-xs">{label}</dt>
       <dd className="text-sm font-medium">{formatIst(value)}</dd>
-      <dd className="text-muted-foreground font-mono text-xs">
-        {formatUtc(value)}
-      </dd>
     </div>
   );
 }

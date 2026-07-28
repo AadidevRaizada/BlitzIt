@@ -8,7 +8,11 @@ import { SubmissionStatusBadge } from '@/components/features/submission-status-b
 import { Countdown } from '@/components/features/countdown';
 import { SubmissionForm } from '@/components/features/submission-form';
 import { Card } from '@/components/ui/card';
-import { PageHeader, SectionTitle } from '@/components/ui/page-header';
+import {
+  PageHeader,
+  SectionTitle,
+  formatIst,
+} from '@/components/ui/page-header';
 import { EmptyState } from '@/components/ui/table';
 
 export const metadata = { title: 'Submit - The Circuit' };
@@ -59,11 +63,11 @@ export default async function SubmitPage({
           <Meta label="Status" value={window.status} />
           <Meta
             label="Opens"
-            value={window.opensAt ? formatUtc(window.opensAt) : '-'}
+            value={window.opensAt ? formatIst(window.opensAt) : '-'}
           />
           <Meta
             label="Deadline"
-            value={window.deadlineAt ? formatUtc(window.deadlineAt) : '-'}
+            value={window.deadlineAt ? formatIst(window.deadlineAt) : '-'}
           />
           <div>
             <dt className="text-muted-foreground text-xs">
@@ -151,9 +155,4 @@ function Meta({ label, value }: { label: string; value: string }) {
       <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
-}
-
-/** All timestamps are stored UTC (D8); IST display arrives with the arena. */
-function formatUtc(date: Date): string {
-  return `${date.toISOString().replace('T', ' ').slice(0, 16)}Z`;
 }

@@ -41,19 +41,29 @@ const bracketSize = z.coerce
   );
 
 /**
- * A `datetime-local` input yields `YYYY-MM-DDTHH:mm` with no zone. The admin
- * schedules in UTC (D8), so the value is interpreted as UTC explicitly rather
- * than through the server's local timezone — which would silently shift every
- * schedule by the deployment's offset.
+ * A `datetime-local` input yields `YYYY-MM-DDTHH:mm` with no zone.
+ *
+ * The operator schedules in **IST**, so the value is pinned to +05:30
+ * explicitly. Two things this is deliberately NOT doing:
+ *
+ *   - It is not passing the bare string to `new Date()`, which would apply the
+ *     SERVER's timezone and shift every schedule by the deployment's offset.
+ *   - It is not interpreting the value as UTC, which is what it used to do.
+ *     The field is labelled and rendered in IST, so reading it back as UTC put
+ *     every schedule 5h30m into the future: `2026-w2` showed "registration
+ *     closes in 6:29:35" while simultaneously refusing entries with
+ *     "registration has not opened yet".
+ *
+ * Storage stays UTC (D8) — `new Date` returns an absolute instant. Only the
+ * interpretation of the operator's keystrokes changed. Must stay in step with
+ * `toDateTimeLocal`, which renders the other half of this round trip.
  */
-const utcDateTime = z.preprocess((value) => {
+const istDateTime = z.preprocess((value) => {
   if (value instanceof Date) return value;
   if (typeof value !== 'string' || value.trim() === '') return undefined;
 
-  // `YYYY-MM-DDTHH:mm` (no zone) is pinned to UTC by appending seconds + `Z`.
-  // Passing it to `new Date()` unqualified would use the SERVER's timezone and
-  // silently shift every schedule by the deployment's offset.
-  const iso = value.endsWith('Z') ? value : `${value.slice(0, 16)}:00Z`;
+  // Already-zoned values (an ISO string with `Z`) are taken at face value.
+  const iso = value.endsWith('Z') ? value : `${value.slice(0, 16)}:00+05:30`;
   const parsed = new Date(iso);
   // Return the raw value on a parse failure so Zod reports it as invalid
   // rather than silently dropping the field.
@@ -152,11 +162,11 @@ export const prizePoolFormSchema = z.object({
 
 export const scheduleFormSchema = z
   .object({
-    registrationOpensAt: utcDateTime,
-    registrationClosesAt: utcDateTime,
-    simulationOpensAt: utcDateTime,
-    simulationClosesAt: utcDateTime,
-    liveStartsAt: utcDateTime,
+    registrationOpensAt: istDateTime,
+    registrationClosesAt: istDateTime,
+    simulationOpensAt: istDateTime,
+    simulationClosesAt: istDateTime,
+    liveStartsAt: istDateTime,
   })
   .refine((v) => ordered(v.registrationOpensAt, v.registrationClosesAt), {
     message: 'Registration must close after it opens',

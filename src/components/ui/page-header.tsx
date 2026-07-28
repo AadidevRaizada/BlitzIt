@@ -91,13 +91,14 @@ export function DataRow({
 }
 
 /**
- * All timestamps are stored UTC (D8). IST is the display timezone for V1, so
- * both are shown — the operator schedules in UTC but thinks in IST.
+ * Timestamps are STORED in UTC (D8) — that does not change, and must not.
+ * Everything the operator reads or types is IST.
+ *
+ * IST is UTC+05:30 with no daylight saving, ever. That is why a fixed offset is
+ * correct here and no timezone library is needed; if The Circuit ever runs in a
+ * DST-observing zone this constant has to become a real tz lookup.
  */
-export function formatUtc(date: Date | null | undefined): string {
-  if (!date) return '—';
-  return `${date.toISOString().replace('T', ' ').slice(0, 16)} UTC`;
-}
+export const IST_OFFSET_MINUTES = 330;
 
 export function formatIst(date: Date | null | undefined): string {
   if (!date) return '—';
@@ -108,8 +109,20 @@ export function formatIst(date: Date | null | undefined): string {
   }).format(date)} IST`;
 }
 
-/** Value for a `datetime-local` input, in UTC. */
+/**
+ * Value for a `datetime-local` input, rendered in IST.
+ *
+ * A `datetime-local` input carries no timezone, so whatever this returns is
+ * what the operator sees and edits. It previously returned UTC while the field
+ * was labelled only "Registration opens", so an operator typing the IST time
+ * they meant had every schedule silently stored 5h30m late — which is exactly
+ * how `2026-w2` ended up refusing registrations that its own countdown said
+ * were open. Pair this with `istDateTime` in the admin schema; the two must
+ * always change together.
+ */
 export function toDateTimeLocal(date: Date | null | undefined): string {
   if (!date) return '';
-  return date.toISOString().slice(0, 16);
+  return new Date(date.getTime() + IST_OFFSET_MINUTES * 60_000)
+    .toISOString()
+    .slice(0, 16);
 }
