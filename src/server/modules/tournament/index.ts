@@ -33,13 +33,26 @@ export {
   type TournamentConfigSource,
 } from './config';
 
+// ---- Schedule → lifecycle diagnostics (server) ----
+export {
+  getLifecycleDiagnostics,
+  type LifecycleDiagnostics,
+} from './schedule-status';
+
 // ---- Schedule → lifecycle (pure) ----
 export {
   nextScheduledStep,
-  dueScheduledTransition,
+  targetStatusFor,
+  reconciliationPath,
+  scheduleEditConflicts,
+  registrationOpenNow,
+  nextRealEvent,
   AUTOMATED_STATUSES,
   type ScheduledStep,
   type ScheduledTournament,
+  type ScheduleAnchor,
+  type ScheduleConflict,
+  type RealEvent,
 } from './schedule.public';
 
 // ---- Lifecycle (pure state machine) ----

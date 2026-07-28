@@ -9,6 +9,7 @@ import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
+import { scheduleEditConflicts } from './schedule.public';
 import { evaluationProfileConfigSchema } from './evaluation-profiles';
 import {
   getPrizePoolDisplay,
@@ -188,8 +189,25 @@ async function assertPaidPriceChangeDoesNotStrandEntries(
 }
 
 /**
- * Set the UTC schedule (D8). Stored as authoritative timestamps that cron and
- * the scheduler read; display in IST is a presentation concern.
+ * Set the UTC schedule (D8). Stored as authoritative timestamps the reconciler
+ * reads; display in IST is a presentation concern.
+ *
+ * ## The invariant this enforces (D33)
+ *
+ * A milestone that has already happened cannot be scheduled for the future.
+ *
+ * Without that rule the schedule and the lifecycle could contradict each other,
+ * and in production they did: a tournament sat in REGISTRATION_OPEN with a
+ * `registrationOpensAt` of the following day, so the page rendered
+ * "REGISTRATION OPEN" directly above "registration has not opened yet" — both
+ * statements true, read from two different sources. The reconciler cannot
+ * repair that, because transitions are forward-only and the work they did
+ * (rounds created, seeding computed) cannot be un-done.
+ *
+ * So it is refused at the door instead. Anything AHEAD of the tournament may be
+ * rewritten freely; anything behind it may be corrected, but only to another
+ * past time — which is also the recovery path for a schedule that was entered
+ * wrongly in the first place.
  */
 export async function updateTournamentSchedule(
   tournamentId: string,
@@ -201,6 +219,13 @@ export async function updateTournamentSchedule(
     if (before.status === 'COMPLETED' || before.status === 'CANCELLED') {
       throw new ConflictError(
         `cannot reschedule a ${before.status} tournament`,
+      );
+    }
+
+    const conflicts = scheduleEditConflicts(before, input, new Date());
+    if (conflicts.length > 0) {
+      throw new ConflictError(
+        conflicts.map((conflict) => conflict.message).join(' '),
       );
     }
 

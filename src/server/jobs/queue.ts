@@ -16,6 +16,10 @@ export type JobName =
   // admin-requested state change; `seedTournament` and `advanceBracket` are
   // the two long-running steps that must survive a restart.
   | 'tournamentTransition'
+  // Converge one tournament onto the state its schedule justifies, applying
+  // every intervening transition in a single pass. Distinct from
+  // `tournamentTransition`, which runs exactly one named change.
+  | 'reconcileTournament'
   | 'seedTournament'
   | 'advanceBracket'
   // E8 — deliver one notification over email. The queue is the only path from

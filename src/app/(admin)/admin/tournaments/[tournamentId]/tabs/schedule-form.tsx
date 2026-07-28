@@ -85,22 +85,52 @@ const DAY = 24 * HOUR;
  */
 const PRESETS = [
   {
-    id: 'local',
-    label: 'Local testing',
-    description: 'Everything inside an hour. For poking at the flow.',
-    offsets: [0, 5 * MINUTE, 6 * MINUTE, 36 * MINUTE, 40 * MINUTE],
-  },
-  {
-    id: 'demo',
-    label: 'Demo',
-    description: 'A single afternoon, wide enough to narrate.',
-    offsets: [0, 30 * MINUTE, 35 * MINUTE, 2 * HOUR + 35 * MINUTE, 3 * HOUR],
-  },
-  {
     id: 'weekly',
     label: 'Weekly tournament',
     description: 'The default cadence: five days of registration, then play.',
     offsets: [0, 5 * DAY, 5 * DAY + HOUR, 5 * DAY + 3 * HOUR, 6 * DAY],
+    devOnly: false,
+  },
+  {
+    id: 'demo',
+    label: 'Demo',
+    description: 'Two hours of registration, then a single afternoon of play.',
+    offsets: [
+      0,
+      2 * HOUR,
+      2 * HOUR + 5 * MINUTE,
+      4 * HOUR + 5 * MINUTE,
+      4 * HOUR + 30 * MINUTE,
+    ],
+    devOnly: false,
+  },
+  {
+    // DEVELOPMENT ONLY, and it earned that label.
+    //
+    // The original version gave registration a five-minute window. Production
+    // requires `minRegistrations` competitors before registration can close —
+    // eight, by default — and nobody assembles eight competitors in five
+    // minutes. Every tournament built from it wedged immediately: registration
+    // shut before the field could form, `CLOSE_REGISTRATION` refused forever,
+    // and because the window had passed nobody could register to satisfy it.
+    // Two production tournaments died exactly this way.
+    //
+    // It now runs an hour of registration, which is short enough to test with
+    // and long enough to actually fill. It is hidden outside development rather
+    // than made "safe", because production defaults must not bend to a testing
+    // convenience.
+    id: 'local',
+    label: 'Local testing',
+    description:
+      'One hour of registration, then a fast run. Development builds only.',
+    offsets: [
+      0,
+      HOUR,
+      HOUR + 2 * MINUTE,
+      HOUR + 32 * MINUTE,
+      HOUR + 36 * MINUTE,
+    ],
+    devOnly: true,
   },
 ] as const;
 
@@ -142,8 +172,11 @@ function formatIstLabel(date: Date): string {
 export function ScheduleForm({
   tournamentId,
   initial,
+  allowDevPresets = false,
 }: {
   tournamentId: string;
+  /** Development builds only — see the `local` preset's note. */
+  allowDevPresets?: boolean;
   initial: {
     registrationOpensAt: Date | null;
     registrationClosesAt: Date | null;
@@ -228,25 +261,27 @@ export function ScheduleForm({
       <section className="space-y-2">
         <Eyebrow tone="muted">Start from a preset</Eyebrow>
         <div className="flex flex-wrap gap-2">
-          {PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              onClick={() => applyPreset(preset)}
-              title={preset.description}
-              className={cn(
-                'focus-visible:ring-ring rounded-md border px-3 py-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none',
-                appliedPreset === preset.id
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border hover:border-primary/50 hover:bg-muted',
-              )}
-            >
-              <span className="font-medium">{preset.label}</span>
-              <span className="text-muted-foreground block text-xs">
-                {preset.description}
-              </span>
-            </button>
-          ))}
+          {PRESETS.filter((preset) => allowDevPresets || !preset.devOnly).map(
+            (preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                title={preset.description}
+                className={cn(
+                  'focus-visible:ring-ring rounded-md border px-3 py-1.5 text-left text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none',
+                  appliedPreset === preset.id
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border hover:border-primary/50 hover:bg-muted',
+                )}
+              >
+                <span className="font-medium">{preset.label}</span>
+                <span className="text-muted-foreground block text-xs">
+                  {preset.description}
+                </span>
+              </button>
+            ),
+          )}
         </div>
         <p className="text-muted-foreground text-xs">
           Presets are anchored to the moment you click them and remain fully

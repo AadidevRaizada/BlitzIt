@@ -3,6 +3,7 @@ import type { JobName, JobProcessor } from '../queue';
 import { noopProcessor } from './noop';
 import { evaluateProcessor } from './evaluate';
 import { tournamentTransitionProcessor } from './tournament-transition';
+import { reconcileTournamentProcessor } from './reconcile-tournament';
 import { seedTournamentProcessor } from './seed-tournament';
 import { advanceBracketProcessor } from './advance-bracket';
 import { sendEmailProcessor } from './send-email';
@@ -15,6 +16,7 @@ export const processors: Partial<Record<JobName, JobProcessor>> = {
   noop: noopProcessor,
   evaluate: evaluateProcessor,
   tournamentTransition: tournamentTransitionProcessor,
+  reconcileTournament: reconcileTournamentProcessor,
   seedTournament: seedTournamentProcessor,
   advanceBracket: advanceBracketProcessor,
   sendEmail: sendEmailProcessor,

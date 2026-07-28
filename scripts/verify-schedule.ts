@@ -7,10 +7,16 @@ import {
   LIFECYCLE_BUCKET_MS,
 } from '../src/server/jobs/progress-sweep';
 import {
-  dueScheduledTransition,
+  nextRealEvent,
   nextScheduledStep,
+  reconciliationPath,
+  registrationOpenNow,
+  scheduleEditConflicts,
+  targetStatusFor,
   type ScheduledTournament,
 } from '../src/server/modules/tournament/schedule.public';
+import { updateTournamentSchedule } from '../src/server/modules/tournament/tournaments';
+import { applyTransition } from '../src/server/modules/tournament/state';
 import { DEFAULT_SIMULATION_DURATIONS } from '../src/server/modules/tournament/config.public';
 
 /**
@@ -142,15 +148,14 @@ async function tick(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function pureChecks() {
-  console.log('\n--- 1. Schedule → transition mapping (pure) ---');
+  console.log('\n--- 1. Schedule -> lifecycle model (pure) ---');
 
   const past = new Date('2026-01-01T00:00:00Z');
   const future = new Date('2099-01-01T00:00:00Z');
   const now = new Date('2026-06-01T00:00:00Z');
 
-  const base: ScheduledTournament = {
+  const allPast: ScheduledTournament = {
     status: 'PUBLISHED',
-    currentStage: null,
     registrationOpensAt: past,
     registrationClosesAt: past,
     simulationOpensAt: past,
@@ -158,75 +163,150 @@ function pureChecks() {
     liveStartsAt: past,
   };
 
-  const expected: Array<[ScheduledTournament['status'], string | null]> = [
-    ['DRAFT', 'PUBLISH'],
-    ['PUBLISHED', 'OPEN_REGISTRATION'],
-    ['REGISTRATION_OPEN', 'CLOSE_REGISTRATION'],
-    ['REGISTRATION_CLOSED', 'START_SIMULATION'],
-    ['SIMULATION', 'CLOSE_SIMULATION'],
-    ['SEEDING', 'GENERATE_BRACKET'],
-    ['BRACKET_GENERATED', 'START_KNOCKOUT'],
-    ['LIVE', null],
-    ['COMPLETED', null],
-    ['CANCELLED', null],
-  ];
-
-  for (const [status, transition] of expected) {
-    const actual = dueScheduledTransition({ ...base, status }, now);
-    check(
-      `${status} → ${transition ?? 'nothing automatic'}`,
-      actual === transition,
-      `got ${actual}`,
-    );
-  }
-
-  // The anchor gates it: not due until the clock says so.
+  // --- the target state ----------------------------------------------------
   check(
-    'a future anchor is not due yet',
-    dueScheduledTransition(
-      { ...base, status: 'PUBLISHED', registrationOpensAt: future },
+    'a schedule entirely in the past targets LIVE',
+    targetStatusFor(allPast, now) === 'LIVE',
+    targetStatusFor(allPast, now),
+  );
+  check(
+    'a DRAFT is never dragged forward — publishing stays an operator decision',
+    targetStatusFor({ ...allPast, status: 'DRAFT' }, now) === 'DRAFT',
+  );
+  check(
+    'the target stops at the first anchor still in the future',
+    targetStatusFor(
+      {
+        ...allPast,
+        simulationOpensAt: future,
+        simulationClosesAt: future,
+        liveStartsAt: future,
+      },
       now,
-    ) === null,
+    ) === 'REGISTRATION_CLOSED',
   );
   check(
-    'the same anchor fires once it passes',
-    dueScheduledTransition(
-      { ...base, status: 'PUBLISHED', registrationOpensAt: future },
-      new Date('2099-06-01T00:00:00Z'),
-    ) === 'OPEN_REGISTRATION',
-  );
-
-  // An unscheduled tournament must never be dragged forward by the sweep.
-  check(
-    'a DRAFT with no registration time stays put forever',
-    nextScheduledStep({
-      ...base,
-      status: 'DRAFT',
-      registrationOpensAt: null,
-    }) === null,
+    'a missing anchor halts the target rather than skipping the milestone',
+    targetStatusFor({ ...allPast, registrationClosesAt: null }, now) ===
+      'REGISTRATION_OPEN',
   );
   check(
-    'a PUBLISHED tournament with no registration time is not automated',
-    nextScheduledStep({
-      ...base,
-      status: 'PUBLISHED',
-      registrationOpensAt: null,
-    }) === null,
+    'LIVE is terminal for the schedule — stages are round-driven',
+    targetStatusFor({ ...allPast, status: 'LIVE' }, now) === 'LIVE',
   );
 
-  // GENERATE_BRACKET has no anchor and must fire immediately.
-  const seeding = nextScheduledStep({ ...base, status: 'SEEDING' });
+  // --- missed windows converge in ONE pass ---------------------------------
+  // The requirement: a server that was down overnight must NOT open
+  // registration and then close it thirty seconds later.
+  const overnight = reconciliationPath(allPast, now);
   check(
-    'GENERATE_BRACKET has no anchor and is due immediately',
-    seeding?.dueAt === null &&
-      dueScheduledTransition({ ...base, status: 'SEEDING' }, now) ===
-        'GENERATE_BRACKET',
+    'a fully-missed schedule yields the whole path at once, not one step',
+    overnight.length === 6 &&
+      overnight[0] === 'OPEN_REGISTRATION' &&
+      overnight[overnight.length - 1] === 'START_KNOCKOUT',
+    overnight.join(' -> '),
+  );
+  check(
+    'an already-converged tournament has an empty path',
+    reconciliationPath(
+      { ...allPast, status: 'PUBLISHED', registrationOpensAt: future },
+      now,
+    ).length === 0,
   );
 
-  // LIVE is round-driven, never clock-driven.
+  // --- schedule edits ------------------------------------------------------
+  // This is the invariant that makes the whole bug class unreachable.
+  const openTournament: ScheduledTournament = {
+    ...allPast,
+    status: 'REGISTRATION_OPEN',
+  };
+  const backwards = scheduleEditConflicts(
+    openTournament,
+    { registrationOpensAt: future },
+    now,
+  );
   check(
-    'LIVE is never advanced by the schedule sweep',
-    nextScheduledStep({ ...base, status: 'LIVE', currentStage: 'QF' }) === null,
+    'REGRESSION: a passed milestone cannot be moved into the future',
+    backwards.length === 1 && backwards[0]!.anchor === 'registrationOpensAt',
+    JSON.stringify(backwards.map((c) => c.anchor)),
+  );
+  check(
+    'a passed milestone MAY be corrected to another past time (the recovery path)',
+    scheduleEditConflicts(
+      openTournament,
+      { registrationOpensAt: new Date('2026-05-01T00:00:00Z') },
+      now,
+    ).length === 0,
+  );
+  check(
+    'a milestone that has NOT happened yet may be rescheduled freely',
+    scheduleEditConflicts(
+      openTournament,
+      { registrationClosesAt: future, simulationOpensAt: future },
+      now,
+    ).length === 0,
+  );
+  check(
+    'a DRAFT may be scheduled entirely in the future',
+    scheduleEditConflicts(
+      { ...allPast, status: 'DRAFT' },
+      { registrationOpensAt: future, liveStartsAt: future },
+      now,
+    ).length === 0,
+  );
+
+  // --- one definition of "registration is open" ----------------------------
+  check(
+    'registration is open only when status AND window agree',
+    registrationOpenNow(openTournament, now) === false,
+    'window closed in the past, so status alone must not say open',
+  );
+  check(
+    'registration is open inside a live window',
+    registrationOpenNow(
+      { ...openTournament, registrationClosesAt: future },
+      now,
+    ) === true,
+  );
+  check(
+    'REGRESSION: status REGISTRATION_OPEN with a future opensAt is NOT open',
+    registrationOpenNow(
+      {
+        ...openTournament,
+        registrationOpensAt: future,
+        registrationClosesAt: future,
+      },
+      now,
+    ) === false,
+  );
+
+  // --- countdowns ----------------------------------------------------------
+  const event = nextRealEvent(
+    { ...allPast, status: 'PUBLISHED', registrationOpensAt: future },
+    now,
+  );
+  check(
+    'the countdown targets the next REAL event, not a status-derived guess',
+    event?.label === 'Registration opens' &&
+      event.at?.getTime() === future.getTime() &&
+      event.overdue === false,
+  );
+  const overdueEvent = nextRealEvent(allPast, now);
+  check(
+    'a passed anchor reports overdue rather than counting down backwards',
+    overdueEvent?.overdue === true,
+  );
+  check(
+    'a tournament with no next milestone has no countdown',
+    nextRealEvent({ ...allPast, status: 'COMPLETED' }, now) === null,
+  );
+
+  // --- the step description the admin panel renders ------------------------
+  const step = nextScheduledStep(openTournament);
+  check(
+    'the next step names its transition and anchor',
+    step?.transition === 'CLOSE_REGISTRATION' &&
+      step.anchor === 'registrationClosesAt',
   );
 }
 
@@ -299,29 +379,32 @@ async function endToEnd() {
       })
     ).status;
 
-  // --- DRAFT → PUBLISHED → REGISTRATION_OPEN ---
+  // --- a DRAFT is NEVER dragged forward -----------------------------------
+  // Every anchor is already in the past, so the old model published this
+  // 35 seconds after creation while the operator was still configuring it.
+  await tick();
   await tick();
   check(
-    'a DRAFT with a due registration time publishes itself',
-    (await statusNow()) !== 'DRAFT',
+    'REGRESSION: a DRAFT is never auto-published, however overdue its schedule',
+    (await statusNow()) === 'DRAFT',
     await statusNow(),
   );
 
-  await tick();
-  check(
-    'registration opens automatically',
-    ['REGISTRATION_OPEN', 'REGISTRATION_CLOSED'].includes(await statusNow()),
-    await statusNow(),
-  );
+  // Publishing is the operator's one deliberate act. From here the schedule is
+  // authoritative and nothing else needs a human.
+  await applyTransition(tournament.id, 'PUBLISH', {
+    actorId: 'verify-operator',
+    runBy: 'admin',
+  });
 
-  // --- registration closes, simulation starts ---
+  // --- one pass converges everything that is already overdue --------------
+  // The requirement: do NOT open registration and then close it a tick later.
   await tick();
-  await tick();
-  const afterRegistration = await statusNow();
+  const afterOneTick = await statusNow();
   check(
-    'registration closes automatically once its time passes',
-    afterRegistration !== 'REGISTRATION_OPEN',
-    afterRegistration,
+    'a fully-overdue schedule converges in ONE pass, not one milestone per tick',
+    afterOneTick === 'REGISTRATION_CLOSED',
+    afterOneTick,
   );
 
   // START_SIMULATION refuses while any simulation round has no problem — the
@@ -448,8 +531,8 @@ async function endToEnd() {
     (event) => event.runBy === null || !automated.has(event.runBy),
   );
   check(
-    'ZERO operator-driven transitions were required',
-    manual.length === 0,
+    'PUBLISH is the ONLY operator-driven transition in the whole lifecycle',
+    manual.length === 1 && manual[0]!.type === 'PUBLISH',
     manual.map((m) => `${m.type} by ${m.runBy}`).join(', '),
   );
   check(
@@ -459,11 +542,117 @@ async function endToEnd() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 3. Divergence is unwritable, and nothing wedges
+// ---------------------------------------------------------------------------
+
+async function divergenceAndRecovery() {
+  console.log('\n--- 3. Schedule edits cannot contradict the lifecycle ---');
+
+  const past = (minutesAgo: number) =>
+    new Date(Date.now() - minutesAgo * 60_000);
+  const future = (minutesAhead: number) =>
+    new Date(Date.now() + minutesAhead * 60_000);
+
+  const tournament = await db.tournament.create({
+    data: {
+      slug: `${TAG}-diverge`,
+      name: 'Divergence',
+      status: 'REGISTRATION_OPEN',
+      visibility: 'PUBLIC',
+      passPriceMinor: 0,
+      registrationOpensAt: past(60),
+      registrationClosesAt: past(30),
+      simulationOpensAt: past(20),
+      simulationClosesAt: future(60),
+      liveStartsAt: future(90),
+      thirdPlaceEnabled: false,
+    },
+  });
+
+  // This is EXACTLY what happened to 2026-w2 in production: registration was
+  // already open, and the operator moved `registrationOpensAt` to tomorrow.
+  // The page then rendered "REGISTRATION OPEN" above "registration has not
+  // opened yet". It must now be impossible to write.
+  let rejected = false;
+  let message = '';
+  try {
+    await updateTournamentSchedule(tournament.id, {
+      registrationOpensAt: future(1440),
+      registrationClosesAt: future(1500),
+      simulationOpensAt: future(1560),
+      simulationClosesAt: future(1600),
+      liveStartsAt: future(1700),
+    });
+  } catch (error) {
+    rejected = true;
+    message = error instanceof Error ? error.message : String(error);
+  }
+  check(
+    'REGRESSION: moving an already-passed milestone into the future is refused',
+    rejected && message.includes('already happened'),
+    message || 'the edit was accepted',
+  );
+
+  const unchanged = await db.tournament.findUniqueOrThrow({
+    where: { id: tournament.id },
+    select: { registrationOpensAt: true },
+  });
+  check(
+    'the rejected edit wrote nothing',
+    unchanged.registrationOpensAt !== null &&
+      unchanged.registrationOpensAt < new Date(),
+  );
+
+  // The recovery path: push the FUTURE milestones out so registration can be
+  // reached again. A tournament stuck under its minimum is unwedged this way,
+  // with no SQL and no cancellation.
+  let recovered = true;
+  try {
+    await updateTournamentSchedule(tournament.id, {
+      registrationOpensAt: past(60),
+      registrationClosesAt: future(120),
+      simulationOpensAt: future(180),
+      simulationClosesAt: future(240),
+      liveStartsAt: future(300),
+    });
+  } catch {
+    recovered = false;
+  }
+  check(
+    'extending the future window is allowed — this is the unwedge path',
+    recovered,
+  );
+
+  const after = await db.tournament.findUniqueOrThrow({
+    where: { id: tournament.id },
+    select: {
+      status: true,
+      registrationOpensAt: true,
+      registrationClosesAt: true,
+      simulationOpensAt: true,
+      simulationClosesAt: true,
+      liveStartsAt: true,
+    },
+  });
+  check(
+    'after recovery the status and the window agree',
+    registrationOpenNow(after, new Date()) &&
+      after.status === 'REGISTRATION_OPEN',
+    `${after.status} / open=${registrationOpenNow(after, new Date())}`,
+  );
+  check(
+    'and the countdown now points at the next real event',
+    nextRealEvent(after, new Date())?.label === 'Registration closes',
+  );
+}
+
 async function main() {
   await cleanup();
   try {
     pureChecks();
     await endToEnd();
+    await divergenceAndRecovery();
   } finally {
     await cleanup();
     await db.$disconnect();

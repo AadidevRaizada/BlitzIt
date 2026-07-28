@@ -1,4 +1,5 @@
 import {
+  getLifecycleDiagnostics,
   nextScheduledStep,
   type TournamentSummary,
 } from '@/server/modules/tournament';
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/card';
 import { DataRow, SectionTitle, formatIst } from '@/components/ui/page-header';
 import { LifecycleControls } from '@/components/features/lifecycle-controls';
+import { LifecycleStatus } from '@/components/features/lifecycle-status';
 import { formatMinor } from '@/server/modules/notification';
 
 /**
@@ -20,7 +22,7 @@ import { formatMinor } from '@/server/modules/notification';
  * permits; the list comes from the server so the UI can never offer an illegal
  * move.
  */
-export function OverviewTab({ summary }: { summary: TournamentSummary }) {
+export async function OverviewTab({ summary }: { summary: TournamentSummary }) {
   const terminal =
     summary.status === 'COMPLETED' || summary.status === 'CANCELLED';
 
@@ -29,8 +31,14 @@ export function OverviewTab({ summary }: { summary: TournamentSummary }) {
   // will not fire.
   const step = nextScheduledStep(summary);
 
+  // Why the tournament is where it is — including a guard that keeps refusing,
+  // which used to be visible only in the job table.
+  const diagnostics = await getLifecycleDiagnostics(summary.id);
+
   return (
     <div className="space-y-6">
+      {diagnostics ? <LifecycleStatus diagnostics={diagnostics} /> : null}
+
       <section className="space-y-3">
         <SectionTitle>Controls</SectionTitle>
         {summary.availableTransitions.length === 0 && terminal ? (

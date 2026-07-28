@@ -52,6 +52,7 @@ export async function TimelineTab({ summary }: { summary: TournamentSummary }) {
           </CardHeader>
           <CardContent>
             <ScheduleForm
+              allowDevPresets={process.env.NODE_ENV !== 'production'}
               tournamentId={summary.id}
               initial={{
                 registrationOpensAt: summary.registrationOpensAt,

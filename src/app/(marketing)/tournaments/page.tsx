@@ -4,6 +4,7 @@ import {
   listPublicTournaments,
   type PublicTournamentBucket,
   type PublicTournamentCard,
+  nextRealEvent,
 } from '@/server/modules/tournament';
 import { Countdown } from '@/components/features/countdown';
 import { Badge, LiveDot, type BadgeTone } from '@/components/ui/badge';
@@ -301,22 +302,15 @@ function cardCountdown(
   tournament: PublicTournamentCard,
   bucket: PublicTournamentBucket,
 ): { label: string; targetAt: Date | null } {
-  if (bucket === 'REGISTERING') {
+  // Both of these buckets ask the same question — "what is the next real
+  // milestone?" — so both defer to the one function that answers it. The
+  // hand-rolled version keyed off `status` alone and would advertise
+  // "Registration closes" for a tournament whose registration had not opened.
+  if (bucket === 'REGISTERING' || bucket === 'COMING_SOON') {
+    const event = nextRealEvent(tournament, new Date());
     return {
-      label: 'Registration closes',
-      targetAt: tournament.registrationClosesAt,
-    };
-  }
-  if (bucket === 'COMING_SOON') {
-    return {
-      label:
-        tournament.status === 'PUBLISHED'
-          ? 'Registration opens'
-          : 'Qualifiers open',
-      targetAt:
-        tournament.status === 'PUBLISHED'
-          ? tournament.registrationOpensAt
-          : tournament.simulationOpensAt,
+      label: event?.label ?? 'Next milestone',
+      targetAt: event?.at ?? null,
     };
   }
   if (bucket === 'LIVE_NOW') {

@@ -484,6 +484,74 @@ until problems are attached.
 Verified end to end by `npm run verify:schedule`, which drives a tournament DRAFT → COMPLETED using
 only the sweep and the queue, and asserts that **zero** OpsEvents carry an operator.
 
+## D33 - The lifecycle is RECONCILED against the schedule, not cached from it (locked 2026-07-28)
+
+D32 automated the schedule but left the two descriptions of a tournament free to contradict each
+other. A tournament has a **plan** (five timestamps) and a **position** (`status`). D32 made the
+plan write the position once, at transition time, and nothing ever invalidated it. Four
+different-looking production failures were all that one flaw:
+
+- a page rendering `REGISTRATION OPEN` directly above `registration has not opened yet` — both
+  statements true, read from two different sources;
+- `2026-w1` and `2026-w2` wedged with no exit, because the lifecycle is forward-only and
+  `CLOSE_REGISTRATION` could never satisfy `minRegistrations`;
+- `OPEN_REGISTRATION` firing at 16:52 for a window that had closed at 16:20;
+- a draft publishing itself 35 seconds after creation, mid-configuration.
+
+**Decision: reconciled.** The three candidates and why:
+
+- **Derived** (status is a pure function of schedule + now) is impossible. Transitions do
+  irreversible work — `CLOSE_REGISTRATION` creates the simulation rounds, `CLOSE_SIMULATION`
+  computes seeding, `GENERATE_BRACKET` writes the match tree. A derived status would claim a
+  tournament was SEEDING while no seeding had run. Status also depends on facts outside the
+  schedule (`minRegistrations`), so the clock alone cannot decide it.
+- **Cached** is what broke. Write-once with no invalidation.
+- **Reconciled** keeps status stored — it records work that really happened — while the schedule
+  remains the plan. `targetStatusFor` computes where the plan says the tournament should be, and
+  convergence happens by applying real transitions through the real state machine, guards and
+  audit intact.
+
+The stored status is therefore never authoritative about *where the tournament should be*. It is
+authoritative only about *what has already been done*.
+
+**Two invariants make the divergence class unreachable, rather than merely fixed:**
+
+1. **Forward drift self-heals.** The sweep reconciles continuously. A schedule ahead of the status
+   converges on its own.
+2. **Backward drift cannot be written.** `scheduleEditConflicts` refuses to move a milestone that
+   has already happened into the future. The plan may be rewritten freely ahead of the tournament
+   and never behind it.
+
+**Missed windows converge in ONE pass.** `reconciliationPath` returns the whole chain, and
+`reconcileTournament` applies all of it in a single job. A server down overnight comes back and
+lands on REGISTRATION_CLOSED at once, instead of opening registration and closing it thirty
+seconds later while spectators watch the tournament perform its own history. The intermediate
+transitions all still RUN — they are the work, not ceremony — but the catch-up is atomic from the
+outside.
+
+**Publishing is manual again.** DRAFT is not on the automatic path. Creating a tournament is not
+the same as saying it is ready; the schedule becomes authoritative only once an operator has
+published. This is the one deliberate human act in the whole lifecycle.
+
+**Recovery always exists.** A tournament blocked by a guard is unwedged by extending the FUTURE
+anchors — always a legal edit — so more competitors can register. A schedule entered wrongly is
+corrected by moving the passed anchor to another past time. Neither needs SQL or cancellation.
+
+**Nothing is silent.** `getLifecycleDiagnostics` assembles position, target, pending path, the
+guard's verbatim refusal, attempt count, retry cadence and a recommended action, and the admin
+overview renders it. An operator should never need psql to learn why a tournament is stuck.
+
+**One definition of each fact.** `registrationOpenNow` is the only answer to "can someone register",
+read by the guard and the UI. `nextRealEvent` is the only source for a countdown — the old code
+derived the label from `status`, which is how a page counted down to the close of a registration
+that had not opened. A countdown is a promise; one function makes it.
+
+Superseded from D32: the `DRAFT -> PUBLISH` automatic step, and the one-transition-per-sweep
+enqueue (`tournamentTransition` per milestone) which is now one `reconcileTournament` per
+tournament.
+
+Verified by `npm run verify:schedule`.
+
 ---
 
 ### What these decisions removed from earlier drafts
@@ -495,3 +563,7 @@ only the sweep and the queue, and asserts that **zero** OpsEvents carry an opera
 - ❌ Hardcoded 32-competitor bracket — replaced by 8/16/32/64 (D6).
 - ❌ Operator-driven phase transitions — the schedule drives them (D32); the buttons remain as
   overrides.
+- ❌ Lifecycle status as a cache of the schedule — replaced by continuous reconciliation plus a
+  no-backward-edits invariant (D33).
+- ❌ Automatic publishing of drafts (D32) — reverted by D33; publishing is the operator's one
+  deliberate act.

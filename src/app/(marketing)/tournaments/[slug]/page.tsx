@@ -6,11 +6,13 @@ import {
   DEFAULT_STAGE_PROFILES,
   getMyTournamentState,
   listPublicTournaments,
+  nextRealEvent,
 } from '@/server/modules/tournament';
 import { DEFAULT_WEIGHTS } from '@/server/modules/evaluation/types';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Countdown } from '@/components/features/countdown';
+import { Reward } from '@/components/ui/reward';
 import { RegisterControl } from '../register-control';
 import { formatMinor } from '@/server/modules/notification';
 
@@ -46,6 +48,10 @@ export default async function TournamentPage({
       : 'REST API';
   const serverTime = new Date().toISOString();
   const expectedDuration = estimatedDuration(tournament);
+  // One source for "what happens next", shared with the reconciler and the
+  // admin panel, so this page can never promise an event the engine will not
+  // cause.
+  const nextEvent = nextRealEvent(tournament, new Date());
 
   return (
     <main className="bg-background text-foreground min-h-screen">
@@ -67,7 +73,13 @@ export default async function TournamentPage({
             <dl className="grid gap-3 text-sm">
               <Meta
                 label="Prize pool"
-                value={formatMinor(tournament.prizePool.prizePoolMinor)}
+                value={
+                  /* `Reward`, not `formatMinor`. A bare "₹0" reads as a broken
+                     value rather than an undecided one, and this panel was the
+                     last place still rendering it while the tournament cards
+                     said "To be announced" for the same tournament. */
+                  <Reward amountMinor={tournament.prizePool.prizePoolMinor} />
+                }
               />
               <Meta
                 label="Eligible entries"
@@ -86,7 +98,7 @@ export default async function TournamentPage({
                 value={
                   tournament.passPriceMinor > 0
                     ? formatMinor(tournament.passPriceMinor)
-                    : 'Free'
+                    : 'Free entry'
                 }
               />
               <Meta
@@ -97,24 +109,28 @@ export default async function TournamentPage({
                     : ''
                 }`}
               />
-              <div className="flex items-center justify-between gap-3">
-                <dt className="text-muted-foreground">
-                  Registration closes in
-                </dt>
-                <dd className="text-right font-medium">
-                  <Countdown
-                    targetAt={
-                      tournament.registrationClosesAt?.toISOString() ?? null
-                    }
-                    serverTime={serverTime}
-                    phase={
-                      tournament.status === 'REGISTRATION_OPEN'
-                        ? 'OPEN'
-                        : 'BEFORE_OPEN'
-                    }
-                  />
-                </dd>
-              </div>
+              {/* Whatever genuinely happens next — never a hardcoded
+                  "registration closes". This panel used to count down to the
+                  close of a registration that had not opened, because the
+                  label was fixed and only the phase came from state. */}
+              {nextEvent ? (
+                <div className="flex items-center justify-between gap-3">
+                  <dt className="text-muted-foreground">
+                    {nextEvent.at ? `${nextEvent.label} in` : nextEvent.label}
+                  </dt>
+                  <dd className="text-right font-medium">
+                    {nextEvent.at && !nextEvent.overdue ? (
+                      <Countdown
+                        targetAt={nextEvent.at.toISOString()}
+                        serverTime={serverTime}
+                        phase="OPEN"
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">shortly</span>
+                    )}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
           </Card>
         </div>
@@ -359,7 +375,15 @@ function Ready({ ok, children }: { ok: boolean; children: React.ReactNode }) {
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({
+  label,
+  value,
+}: {
+  label: string;
+  // Not just `string`: shared primitives like `Reward` decide their own empty
+  // state, and this row has to be able to host them.
+  value: React.ReactNode;
+}) {
   return (
     <div className="flex items-center justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>

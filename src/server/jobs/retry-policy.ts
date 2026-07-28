@@ -15,6 +15,16 @@ export const JOB_RETRY_POLICIES: Record<JobName, JobRetryPolicy> = {
     baseBackoffMs: 10_000,
     maxBackoffMs: 5 * 60_000,
   },
+  // Few attempts on purpose. A reconciliation that stops short has almost
+  // always hit a business guard ("too few registrations"), which no amount of
+  // retrying inside one job will change — the sweep re-enqueues a fresh pass
+  // every bucket anyway, and THAT is the retry loop. Burning eight attempts
+  // here only buries the reason in a longer job history.
+  reconcileTournament: {
+    maxAttempts: 2,
+    baseBackoffMs: 15_000,
+    maxBackoffMs: 60_000,
+  },
   seedTournament: {
     maxAttempts: 3,
     baseBackoffMs: 10_000,

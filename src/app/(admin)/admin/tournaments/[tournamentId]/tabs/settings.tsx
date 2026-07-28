@@ -124,6 +124,7 @@ export function SettingsTab({ summary }: { summary: TournamentSummary }) {
         <section className="space-y-3">
           <SectionTitle>Schedule</SectionTitle>
           <ScheduleForm
+            allowDevPresets={process.env.NODE_ENV !== 'production'}
             tournamentId={summary.id}
             initial={{
               registrationOpensAt: summary.registrationOpensAt,

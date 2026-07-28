@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 import { queue } from './pg-queue';
 import {
   AUTOMATED_STATUSES,
-  dueScheduledTransition,
+  reconciliationPath,
 } from '@/server/modules/tournament/schedule.public';
 
 /**
@@ -153,30 +153,27 @@ export async function sweepExpiredRounds(): Promise<number> {
 // ---------------------------------------------------------------------------
 
 /**
- * Enqueue a scheduled lifecycle transition.
+ * Enqueue a reconciliation pass.
  *
- * Reuses the existing `tournamentTransition` processor rather than adding a
- * path into `applyTransition`, so scheduled transitions inherit the retry
- * policy that processor already encodes: an illegal transition completes
- * without retrying (it will never become legal), a guard rejection backs off
- * and retries (it might).
+ * One job per tournament, not one per transition. The job works out the whole
+ * path itself and applies it in a single pass, which is what stops a tournament
+ * that has fallen behind from performing its own history one milestone every
+ * thirty seconds.
  *
- * The key includes the transition name. Without it, two different transitions
- * becoming due in the same bucket — which happens the moment a DRAFT with a due
- * `registrationOpensAt` is published — would collide and the second would be
- * silently dropped as a duplicate.
+ * The key therefore carries no transition name: "reconcile this tournament" is
+ * the whole instruction, so two sweeps in the same bucket asking for it are
+ * genuinely the same request.
  */
-export function enqueueScheduledTransition(
+export function enqueueReconciliation(
   tournamentId: string,
-  transition: string,
   now: Date = new Date(),
 ): Promise<string> {
   const bucket = Math.floor(now.getTime() / LIFECYCLE_BUCKET_MS);
   return queue.enqueue(
-    'tournamentTransition',
-    { tournamentId, transition, runBy: 'schedule' },
+    'reconcileTournament',
+    { tournamentId },
     {
-      idempotencyKey: `lifecycle:${tournamentId}:${transition}:${bucket}`,
+      idempotencyKey: `reconcile:${tournamentId}:${bucket}`,
       // Above round progression: a phase boundary gates everything behind it,
       // and a tournament that cannot start makes every round job moot.
       priority: 20,
@@ -184,26 +181,21 @@ export function enqueueScheduledTransition(
   );
 }
 
-interface DueTransition {
-  tournamentId: string;
-  transition: string;
-}
-
 /**
- * Tournaments whose next scheduled step is due.
+ * Tournaments whose stored status has fallen behind their schedule.
  *
  * The candidate set is narrowed in SQL — only non-archived tournaments in a
- * status the schedule drives — and the actual decision is made in TypeScript by
- * `dueScheduledTransition`, the same pure function the admin UI calls to say
- * what happens next. Encoding the mapping twice, once as SQL and once as a
- * switch, is exactly how the UI and the engine drifted apart in the first place.
+ * status the schedule drives — and the decision is made in TypeScript by
+ * `reconciliationPath`, the same pure function the processor and the admin UI
+ * read. Encoding the mapping twice, once as SQL and once as a switch, is
+ * exactly how the UI and the engine drifted apart in the first place.
  *
  * The row count here is bounded by the number of live tournaments, which is a
  * handful — this is not a table scan worth optimising into SQL.
  */
-export async function findDueTransitions(
+export async function findDriftedTournaments(
   now: Date = new Date(),
-): Promise<DueTransition[]> {
+): Promise<string[]> {
   const candidates = await db.tournament.findMany({
     where: {
       status: { in: [...AUTOMATED_STATUSES] },
@@ -221,44 +213,37 @@ export async function findDueTransitions(
     },
   });
 
-  const due: DueTransition[] = [];
-  for (const tournament of candidates) {
-    const transition = dueScheduledTransition(tournament, now);
-    if (transition) due.push({ tournamentId: tournament.id, transition });
-  }
-  return due;
+  return candidates
+    .filter((tournament) => reconciliationPath(tournament, now).length > 0)
+    .map((tournament) => tournament.id);
 }
 
 /**
- * One lifecycle pass. Returns how many transitions were enqueued so the
+ * One lifecycle pass. Returns how many reconciliations were enqueued so the
  * verification suite can assert on it.
  */
 export async function sweepDueTransitions(
   now: Date = new Date(),
 ): Promise<number> {
-  const due = await findDueTransitions(now);
-  if (due.length === 0) return 0;
+  const drifted = await findDriftedTournaments(now);
+  if (drifted.length === 0) return 0;
 
   let enqueued = 0;
-  for (const item of due) {
+  for (const tournamentId of drifted) {
     try {
-      await enqueueScheduledTransition(item.tournamentId, item.transition, now);
+      await enqueueReconciliation(tournamentId, now);
       enqueued++;
     } catch (error) {
       // One unhealthy tournament must not stop the others, nor the sweep.
       logger.error(
-        {
-          err: error,
-          tournamentId: item.tournamentId,
-          transition: item.transition,
-        },
-        'failed to enqueue scheduled lifecycle transition',
+        { err: error, tournamentId },
+        'failed to enqueue tournament reconciliation',
       );
     }
   }
 
   if (enqueued > 0) {
-    logger.info({ enqueued }, 'schedule sweep enqueued lifecycle transitions');
+    logger.info({ enqueued }, 'schedule sweep enqueued reconciliations');
   }
   return enqueued;
 }
