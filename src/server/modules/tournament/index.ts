@@ -33,6 +33,15 @@ export {
   type TournamentConfigSource,
 } from './config';
 
+// ---- Schedule → lifecycle (pure) ----
+export {
+  nextScheduledStep,
+  dueScheduledTransition,
+  AUTOMATED_STATUSES,
+  type ScheduledStep,
+  type ScheduledTournament,
+} from './schedule.public';
+
 // ---- Lifecycle (pure state machine) ----
 export {
   toLifecycleState,

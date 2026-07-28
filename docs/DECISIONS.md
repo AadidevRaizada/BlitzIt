@@ -83,6 +83,10 @@
 
 ## D8 — Timezone
 - Store all timestamps in **UTC**. Display **IST** in V1. Localization later.
+- Admin input is **IST** as well as display; the Zod schema pins `+05:30` explicitly rather than
+  letting the server's local offset apply.
+- Schedule timestamps are **triggers**, not just gates — see **D32**. A countdown that reaches
+  zero causes the transition it counted down to.
 
 ## D9 — Prize pool (Week 1)
 - **Dynamic pool** that grows automatically as registrations increase.
@@ -391,8 +395,9 @@ queue, under the existing concurrency cap and retry policy.
 3. Railway also **skips** a scheduled run if the previous one is still going, which turns a slow
    pass into a silently missed one.
 
-Cron remains appropriate for coarse, day-scale transitions (open/close registration, seeding) if
-we ever want them automated. Those stay admin/ops-driven for now.
+~~Cron remains appropriate for coarse, day-scale transitions (open/close registration, seeding) if
+we ever want them automated. Those stay admin/ops-driven for now.~~ **Superseded by D32** — those
+transitions are automated, and they ride this same sweep rather than a cron service.
 
 **Why not a separate polling service.** The runner already polls Postgres every 2s, already has
 the start-once guard and already handles failures. A second loop would duplicate all of it, so the
@@ -425,6 +430,60 @@ The operational consequence is deliberate: **an organizer must assign problems b
 registration and starting the simulation**, and starting without them fails loudly rather than
 opening a round nobody can compete in.
 
+## D32 - The schedule drives the lifecycle (locked 2026-07-28)
+
+D30 automated round *deadlines* but left phase *milestones* manual, and the product was
+incoherent as a result. The schedule columns were read only as **gates** — `registration.ts`
+refuses an entry before `registrationOpensAt` — and never as **triggers**. Nothing noticed the
+gate had opened. Meanwhile the public pages rendered a countdown to that instant, so the product
+promised an event no code was going to cause: the clock reached 00:00 and the tournament sat in
+PUBLISHED until an operator pressed a button. In production `2026-w1` did exactly that, five
+minutes past its own registration time.
+
+**Decision.** The schedule is the source of truth for lifecycle progression. The existing deadline
+sweep gained a second query — tournaments whose next scheduled milestone is due — and enqueues the
+matching `tournamentTransition` job. One timer, two kinds of due work (`sweepDueWork`).
+
+| From | Transition | Anchor |
+|---|---|---|
+| DRAFT | PUBLISH | `registrationOpensAt` |
+| PUBLISHED | OPEN_REGISTRATION | `registrationOpensAt` |
+| REGISTRATION_OPEN | CLOSE_REGISTRATION | `registrationClosesAt` |
+| REGISTRATION_CLOSED | START_SIMULATION | `simulationOpensAt` |
+| SIMULATION | CLOSE_SIMULATION | `simulationClosesAt` |
+| SEEDING | GENERATE_BRACKET | none — fires as soon as the guards allow |
+| BRACKET_GENERATED | START_KNOCKOUT | `liveStartsAt` |
+| LIVE | ADVANCE_STAGE / COMPLETE | **not the clock** — round completion (D30) |
+
+The mapping is one pure function, `nextScheduledStep` in `schedule.public.ts`, read by BOTH the
+sweep and the admin UI. Encoding it twice is how the UI and the engine drifted apart originally.
+
+**A due transition is offered, not forced.** `applyTransition` still runs every business guard, so
+"the clock says close registration" never overrides "only 3 registered and the minimum is 8". The
+schedule decides *when* a transition is attempted; the state machine decides whether it is allowed.
+
+**A tournament with no schedule is never dragged forward.** A DRAFT with no `registrationOpensAt`
+stays a draft indefinitely — which is what a draft is for. Setting a registration time is the
+statement that it is finished.
+
+**Retry cadence is deliberately coarse.** Lifecycle jobs bucket at 5 minutes, not the 1 minute
+round progression uses. The bucket does not delay the first attempt (latency stays bounded by the
+30s sweep); it bounds how often a permanently-failing guard re-enqueues. A tournament that closes
+registration under its minimum would otherwise log a failed job every minute all night.
+
+**Admin buttons become overrides.** Every transition remains manually available, and `force` still
+skips business guards. What changed is presentation: no lifecycle action is the page's primary
+button any more, and the one the schedule is about to fire is labelled "… now" — pressing it means
+*sooner*, not *required*.
+
+**What stays manual:** `CANCEL` (by definition), and assigning problems to rounds. The latter is
+content setup, not lifecycle driving — but it is load-bearing, because `openRound` refuses a round
+with no problem (D31), so both `START_SIMULATION` and `START_KNOCKOUT` will fail on the schedule
+until problems are attached.
+
+Verified end to end by `npm run verify:schedule`, which drives a tournament DRAFT → COMPLETED using
+only the sweep and the queue, and asserts that **zero** OpsEvents carry an operator.
+
 ---
 
 ### What these decisions removed from earlier drafts
@@ -434,3 +493,5 @@ opening a round nobody can compete in.
 - ❌ Cloudflare R2 — evidence stored in Postgres JSONB (D3).
 - ❌ "Constrain problems to HTTP APIs" — replaced by multi-category pluggable strategies (D4).
 - ❌ Hardcoded 32-competitor bracket — replaced by 8/16/32/64 (D6).
+- ❌ Operator-driven phase transitions — the schedule drives them (D32); the buttons remain as
+  overrides.

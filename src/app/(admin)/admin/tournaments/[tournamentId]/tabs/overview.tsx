@@ -1,4 +1,7 @@
-import type { TournamentSummary } from '@/server/modules/tournament';
+import {
+  nextScheduledStep,
+  type TournamentSummary,
+} from '@/server/modules/tournament';
 import {
   Card,
   CardContent,
@@ -21,6 +24,11 @@ export function OverviewTab({ summary }: { summary: TournamentSummary }) {
   const terminal =
     summary.status === 'COMPLETED' || summary.status === 'CANCELLED';
 
+  // What the schedule will do without anyone pressing anything. The same pure
+  // function the sweep uses, so this cannot promise a transition the engine
+  // will not fire.
+  const step = nextScheduledStep(summary);
+
   return (
     <div className="space-y-6">
       <section className="space-y-3">
@@ -37,6 +45,15 @@ export function OverviewTab({ summary }: { summary: TournamentSummary }) {
                 tournamentId={summary.id}
                 transitions={summary.availableTransitions}
                 canCancel={!terminal}
+                automatic={
+                  step
+                    ? {
+                        transition: step.transition,
+                        label: step.label,
+                        dueAt: step.dueAt?.toISOString() ?? null,
+                      }
+                    : null
+                }
               />
             </CardContent>
           </Card>

@@ -4,7 +4,7 @@ import { queue } from './pg-queue';
 import type { ClaimedJob } from './queue';
 import { processors } from './processors';
 import { backoffForAttempt } from './retry-policy';
-import { sweepExpiredRounds, SWEEP_INTERVAL_MS } from './progress-sweep';
+import { sweepDueWork, SWEEP_INTERVAL_MS } from './progress-sweep';
 import { logger } from '@/lib/logger';
 import { captureException } from '@/lib/observability';
 import { AppError } from '@/lib/errors';
@@ -173,15 +173,16 @@ class Runner {
    * them. Rides this loop rather than standing up a second poller: the polling,
    * the start-once guard and the failure handling already exist here.
    *
-   * Enqueue only — the `advanceBracket` processor does the work, so progression
-   * keeps a single path through the queue.
+   * Enqueue only — the `advanceBracket` and `tournamentTransition` processors
+   * do the work, so progression keeps a single path through the queue.
    */
   private async sweepDeadlines(): Promise<void> {
     if (Date.now() - this.lastSweepAt < SWEEP_INTERVAL_MS) return;
     this.lastSweepAt = Date.now();
 
     try {
-      await sweepExpiredRounds();
+      // Round windows AND scheduled lifecycle milestones — see `sweepDueWork`.
+      await sweepDueWork();
     } catch (error) {
       // Never let a sweep failure stop jobs from being claimed.
       captureException(error, { where: 'runner.sweepDeadlines' });

@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { CheckboxField } from '@/components/ui/field';
 import { TRANSITION_LABEL } from './tournament-status-badge';
+import { Eyebrow } from '@/components/ui/eyebrow';
+import { formatIst } from '@/components/ui/page-header';
 
 /**
  * Lifecycle controls (E5).
@@ -23,17 +25,38 @@ import { TRANSITION_LABEL } from './tournament-status-badge';
  * `force` skips the BUSINESS guards only (minimum registrations, round
  * completion). An illegal transition is refused regardless, which is why the
  * checkbox is safe to expose to an operator at all.
+ *
+ * ## These buttons are overrides now
+ *
+ * The schedule drives the lifecycle (`schedule.public.ts`), so the transition
+ * the clock is going to fire anyway is not the operator's job — it is a thing
+ * they may want to do EARLY. Presenting it as the page's primary action taught
+ * the operator that the tournament needed babysitting, which was true before
+ * and is not now. The automatic step is announced, and its button is demoted
+ * out of the primary slot and relabelled so pressing it reads as impatience
+ * rather than obligation.
  */
 export function LifecycleControls({
   tournamentId,
   transitions,
   canCancel = true,
   compact = false,
+  automatic = null,
 }: {
   tournamentId: string;
   transitions: readonly string[];
   canCancel?: boolean;
   compact?: boolean;
+  /**
+   * The step the schedule will fire on its own, if any. Serialised as an ISO
+   * string because this is a client component and Dates do not survive the
+   * boundary intact.
+   */
+  automatic?: {
+    transition: string;
+    label: string;
+    dueAt: string | null;
+  } | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -60,23 +83,51 @@ export function LifecycleControls({
 
   if (transitions.length === 0 && !canCancel) return null;
 
+  const dueAt = automatic?.dueAt ? new Date(automatic.dueAt) : null;
+  const overdue = dueAt !== null && dueAt.getTime() <= Date.now();
+
   return (
     <div className="space-y-3">
+      {automatic && !compact ? (
+        <div className="border-border bg-muted/30 flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-md border px-3 py-2 text-sm">
+          <Eyebrow tone="primary">Automatic</Eyebrow>
+          <span className="font-medium">{automatic.label}</span>
+          <span className="text-muted-foreground">
+            {dueAt === null
+              ? 'runs as soon as the guards allow — no action needed'
+              : overdue
+                ? 'is due now; the scheduler runs within 30 seconds'
+                : `at ${formatIst(dueAt)} — no action needed`}
+          </span>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-2">
-        {transitions.map((transition, index) => (
-          <Button
-            key={transition}
-            size={compact ? 'sm' : 'md'}
-            // One primary action per view: the first available transition is
-            // the thing the operator almost certainly came here to do.
-            variant={index === 0 ? 'primary' : 'secondary'}
-            disabled={pending}
-            aria-busy={pending}
-            onClick={() => run(transition)}
-          >
-            {TRANSITION_LABEL[transition] ?? transition}
-          </Button>
-        ))}
+        {transitions.map((transition) => {
+          const isAutomatic = automatic?.transition === transition;
+          return (
+            <Button
+              key={transition}
+              size={compact ? 'sm' : 'md'}
+              // Nothing here is primary any more. The transition the schedule
+              // is about to fire is an override, and the others are off-path
+              // by definition.
+              variant="secondary"
+              disabled={pending}
+              aria-busy={pending}
+              onClick={() => run(transition)}
+              title={
+                isAutomatic
+                  ? 'This runs on the schedule. Pressing it only makes it happen sooner.'
+                  : undefined
+              }
+            >
+              {isAutomatic
+                ? `${TRANSITION_LABEL[transition] ?? transition} now`
+                : (TRANSITION_LABEL[transition] ?? transition)}
+            </Button>
+          );
+        })}
 
         {!compact ? (
           <Button

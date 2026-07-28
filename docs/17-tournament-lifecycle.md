@@ -351,7 +351,7 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 | **Sudden death** (D5.6, D14) | A tie surviving all five tie-breaks sets `Match.tieUnresolved`, leaves the match `JUDGING`, and logs loudly. Resolving it needs a new short challenge + round, which is the bracket epic's job. | E6.3 ✅ |
 | Admin UI (tournaments/problems/dashboard) | E3 delivers the engine and its server actions; screens are a separate deliverable. | E3.3–E3.5 |
 | Bracket UI | — | E6.4 |
-| Cron wiring | **Resolved: there is no cron.** Round progression is triggered by the runner's deadline sweep, which enqueues `advanceBracket`. Railway Cron cannot serve this — 5-minute floor, and a cron service must exit. Coarse transitions stay admin/ops-driven. See D30 in `DECISIONS.md`. | Done |
+| Cron wiring | **Resolved: there is no cron.** One sweep in the runner drives everything. Round deadlines enqueue `advanceBracket` (D30); schedule milestones enqueue `tournamentTransition` (D32), so registration opening/closing, simulation start/close, bracket generation and knockout start all fire on their own anchors. Railway Cron cannot serve this — 5-minute floor, and a cron service must exit. Only CANCEL and problem assignment stay manual. See D30 and D32 in `DECISIONS.md`. | Done |
 | Payments / prize pool | Registration deliberately carries no money yet. | E4 |
 | Submission creation, arena, problem reveal | E3 owns the window, not the submission. | E5 |
 

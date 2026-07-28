@@ -33,6 +33,7 @@
     "verify:admin": "tsx --conditions=react-server scripts/verify-admin.ts",
     "verify:llm": "tsx --conditions=react-server scripts/verify-llm.ts",
     "verify:profiles": "tsx --conditions=react-server scripts/verify-profiles.ts",
+    "verify:schedule": "tsx --conditions=react-server scripts/verify-schedule.ts",
     "verify:tournament": "tsx --conditions=react-server scripts/verify-tournament.ts",
     "verify:bracket": "tsx --conditions=react-server scripts/verify-bracket.ts",
     "verify:tournament:e2e": "tsx --conditions=react-server scripts/verify-tournament-e2e.ts",
