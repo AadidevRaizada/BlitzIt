@@ -10,6 +10,13 @@ import {
   SUPPORTED_BRACKET_SIZES,
   type BracketSize,
 } from './config.public';
+export {
+  MIN_BRACKET_SIZE,
+  MAX_BRACKET_SIZE,
+  decideBracketSizing,
+  explainBracketSizing,
+  type BracketSizing,
+} from './config.public';
 
 /**
  * Tournament configuration (E3).

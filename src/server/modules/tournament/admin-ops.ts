@@ -20,6 +20,12 @@ import { describeJob, type JobLifecycleState } from '@/server/jobs/status';
 import { toLifecycleState, type LifecycleState } from './lifecycle';
 import { allowedTransitions, type TournamentTransition } from './lifecycle';
 import { isBracketSize } from './config';
+import { countCompetitionEligibleRegistrations } from './registration';
+import {
+  isSlotPermanentlyEmpty,
+  isStructuralMatch,
+  STRUCTURAL_MATCH_FILTER,
+} from './bye';
 import {
   getPrizePoolDisplay,
   recomputePrizePool,
@@ -83,6 +89,15 @@ export interface TournamentSummary {
   rounds: number;
   matches: number;
   matchesDecided: number;
+  /** Matches won without being played — byes and void slots. */
+  matchesBye: number;
+  /**
+   * Competitors who may actually seed and advance — ACTIVE, paid where a pass
+   * costs money, hold unexpired. This is the number the bracket is sized from,
+   * and it is often smaller than `registrations`. Surfaced so the operator can
+   * see a draw refusal coming instead of meeting it as an error on submit.
+   */
+  eligibleCount: number;
   registrationOpensAt: Date | null;
   registrationClosesAt: Date | null;
   simulationOpensAt: Date | null;
@@ -119,6 +134,8 @@ function summarise(
     rounds: number;
     matches: number;
     matchesDecided: number;
+    matchesBye: number;
+    eligibleCount: number;
   },
 ): TournamentSummary {
   const state = safeLifecycleState(tournament);
@@ -178,6 +195,8 @@ async function countsFor(tournamentId: string, client: DbClient) {
     rounds,
     matches,
     matchesDecided,
+    matchesBye,
+    eligibleCount,
   ] = await Promise.all([
     getPrizePoolDisplay(tournamentId, client),
     client.registration.count({
@@ -195,6 +214,10 @@ async function countsFor(tournamentId: string, client: DbClient) {
     client.round.count({ where: { tournamentId } }),
     client.match.count({ where: { tournamentId } }),
     client.match.count({ where: { tournamentId, status: 'DECIDED' } }),
+    client.match.count({
+      where: { tournamentId, ...STRUCTURAL_MATCH_FILTER },
+    }),
+    countCompetitionEligibleRegistrations(tournamentId, client),
   ]);
 
   return {
@@ -207,6 +230,8 @@ async function countsFor(tournamentId: string, client: DbClient) {
     rounds,
     matches,
     matchesDecided,
+    matchesBye,
+    eligibleCount,
   };
 }
 
@@ -510,6 +535,16 @@ export interface BracketRoundView {
     competitorBId: string | null;
     seedA: number | null;
     seedB: number | null;
+    /**
+     * This slot will never hold anyone — it is an unfilled seed in the opening
+     * round, not a slot awaiting an upstream winner. Consumers need the
+     * distinction because they render identically otherwise: the bracket showed
+     * "TBD" against a top seed's bye, promising a name that was never coming.
+     */
+    slotAEmpty: boolean;
+    slotBEmpty: boolean;
+    /** Won without being played. True for both byes and void matches. */
+    isBye: boolean;
     winReason: WinReason | null;
     status: MatchStatus;
     tieUnresolved: boolean;
@@ -562,8 +597,13 @@ export async function listBracketRounds(
   });
   const usernameById = new Map(users.map((user) => [user.id, user.username]));
 
+  // Only the opening round assigns competitors by seed; every later round is
+  // fed by a winner. That is what separates "empty forever" from "not yet".
+  const firstRoundId = rounds[0]?.id ?? null;
+
   return rounds.map((round) => {
     const revealed = round.opensAt !== null && now >= round.opensAt;
+    const hasFeeder = round.id !== firstRoundId;
     return {
       id: round.id,
       stage: round.stage,
@@ -587,6 +627,17 @@ export async function listBracketRounds(
         competitorBId: match.competitorBId,
         seedA: match.seedA,
         seedB: match.seedB,
+        slotAEmpty: isSlotPermanentlyEmpty({
+          competitorId: match.competitorAId,
+          seed: match.seedA,
+          hasFeeder,
+        }),
+        slotBEmpty: isSlotPermanentlyEmpty({
+          competitorId: match.competitorBId,
+          seed: match.seedB,
+          hasFeeder,
+        }),
+        isBye: isStructuralMatch(match),
         winReason: match.winReason,
         status: match.status,
         tieUnresolved: match.tieUnresolved,

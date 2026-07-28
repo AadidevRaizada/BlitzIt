@@ -16,6 +16,7 @@ import {
 } from './lifecycle';
 import {
   isBracketSize,
+  MIN_BRACKET_SIZE,
   resolveTournamentConfig,
   type TournamentConfig,
 } from './config';
@@ -239,12 +240,18 @@ async function assertGuards(
       if (!tournament.seededAt) {
         throw new ConflictError('the tournament has not been seeded yet');
       }
+      // The floor is the same MIN_BRACKET_SIZE seeding enforces, not 2. Those
+      // disagreed: seeding refused a field below 8, but this guard would have
+      // waved through a hand-edited ranking of 3 and produced a draw that is
+      // mostly byes. The two are now the same number from the same constant.
       const qualified = await tx.ranking.count({
         where: { tournamentId: tournament.id, qualified: true },
       });
-      if (qualified < 2) {
+      if (qualified < MIN_BRACKET_SIZE) {
         throw new ConflictError(
-          `only ${qualified} competitor(s) qualified; a bracket needs at least 2`,
+          `only ${qualified} competitor(s) qualified; a bracket needs at least ` +
+            `${MIN_BRACKET_SIZE} (D6). Byes fill unused slots, but they cannot ` +
+            'substitute for competitors.',
         );
       }
       return;

@@ -609,12 +609,15 @@ export async function assignFinalPlacements(
   const bandStart = new Map<RoundStage, number>();
   for (const stage of stageOrder) {
     if (stage === 'THIRD_PLACE') continue;
-    // Each match in a stage produces exactly one survivor, so the number of
-    // matches IS the number of competitors who outlived that stage. Everyone
-    // knocked out here therefore starts one place below them: QF (4 matches)
-    // -> band 5, SF (2) -> 3, FINAL (1) -> 2.
+    // The number of competitors who outlived a stage is the number of matches
+    // that produced a WINNER — not the number of matches. Those differ: a VOID
+    // match (both slots empty, which an operator can still create by explicitly
+    // oversizing the draw) produces no survivor at all. Counting matches there
+    // inflated every band below it, handing everyone knocked out at that stage
+    // a better placement than they earned. A bye match is fine either way — it
+    // has one competitor and does set a winnerId.
     const survivors = await client.match.count({
-      where: { tournamentId, round: { stage } },
+      where: { tournamentId, round: { stage }, winnerId: { not: null } },
     });
     bandStart.set(stage, survivors + 1);
   }

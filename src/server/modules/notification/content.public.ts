@@ -36,6 +36,8 @@ export const notificationPayloadSchema = z
     amountMinor: z.number().int().optional(),
     deadlineAt: z.string().optional(),
     championName: z.string().optional(),
+    /** Advanced without playing — the slot opposite was empty. */
+    viaBye: z.boolean().optional(),
   })
   .partial();
 
@@ -164,13 +166,22 @@ export function notificationContent(
       };
 
     case 'ADVANCED':
+      // A bye gets its own wording. "Your submission held up" is a lie when
+      // there was no submission and no opponent, and it made a competitor go
+      // looking for a result that does not exist.
       return {
-        subject: `You advanced — ${stageLabel(payload.stage)}`,
-        heading: 'Your submission held up',
+        subject: payload.viaBye
+          ? `You have a bye — ${stageLabel(payload.stage)}`
+          : `You advanced — ${stageLabel(payload.stage)}`,
+        heading: payload.viaBye
+          ? 'You advance on a bye'
+          : 'Your submission held up',
         lines: [
-          payload.opponent
-            ? `You beat ${payload.opponent} in the ${stageLabel(payload.stage)}.`
-            : `You came through the ${stageLabel(payload.stage)}.`,
+          payload.viaBye
+            ? `Your seed drew an empty slot in the ${stageLabel(payload.stage)}, so you go through without playing.`
+            : payload.opponent
+              ? `You beat ${payload.opponent} in the ${stageLabel(payload.stage)}.`
+              : `You came through the ${stageLabel(payload.stage)}.`,
           'The next round opens on schedule.',
         ],
         cta: payload.tournamentId

@@ -3,7 +3,11 @@ import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
-import { autoBracketSize, isBracketSize, type BracketSize } from './config';
+import {
+  decideBracketSizing,
+  explainBracketSizing,
+  type BracketSize,
+} from './config';
 import { listCompetitionEligibleRegistrations } from './registration';
 import { rankByWinRule, type CompetitorResult } from './win-rule';
 
@@ -203,27 +207,16 @@ export async function computeSeeding(
   const ranked = rankSeedingEntries(entries);
 
   const requested = options.bracketSize ?? tournament.bracketSize ?? null;
-  let bracketSize: BracketSize | null;
-  if (requested !== null && requested !== undefined) {
-    if (!isBracketSize(requested)) {
-      throw new ConflictError(
-        `unsupported bracket size ${requested}; supported sizes are 8, 16, 32, 64 (D6)`,
-      );
-    }
-    bracketSize = requested;
-  } else {
-    bracketSize = autoBracketSize(ranked.length);
+  const sizing = decideBracketSizing(ranked.length, requested);
+  if (!sizing.ok) {
+    throw new ConflictError(explainBracketSizing(sizing));
   }
+  const { bracketSize, qualifiedCount } = sizing;
 
-  if (bracketSize === null) {
-    throw new ConflictError(
-      `only ${ranked.length} competitor(s) are eligible; the smallest supported bracket needs 8 (D6)`,
-    );
-  }
-
-  // Top N qualify (D13). An oversized bracket leaves the tail seeds empty,
-  // which bracket generation turns into byes.
-  const qualifiedCount = Math.min(ranked.length, bracketSize);
+  // Everyone eligible qualifies (D13, revised): the draw is sized up to the
+  // field rather than the field cut down to the draw, so `eliminated` is empty
+  // unless the field exceeds the largest supported bracket. Unfilled tail seeds
+  // become byes for the top seeds — see `autoBracketSize`.
   const qualified = ranked.slice(0, qualifiedCount);
   const eliminated = ranked.slice(qualifiedCount);
 

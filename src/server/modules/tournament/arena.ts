@@ -349,7 +349,13 @@ export async function listMyLiveMatches(
       tournament: { select: { id: true, name: true, slug: true } },
       suddenDeathMatch: { select: { id: true, status: true } },
     },
-    orderBy: [{ createdAt: 'desc' }, { bracketPosition: 'asc' }],
+    // Furthest-along round first. `createdAt` used to lead this ordering, which
+    // was degenerate: the entire bracket is inserted in one transaction, so
+    // every match shares a timestamp and the tie-break (`bracketPosition asc`)
+    // decided the stage — arbitrarily. A competitor who received a bye could be
+    // shown their already-decided first-round match instead of the quarter-final
+    // they were actually due to play.
+    orderBy: [{ round: { sequence: 'desc' } }, { bracketPosition: 'asc' }],
   });
 
   const opponentIds = [

@@ -79,8 +79,17 @@ export function BracketTree({
                 {round.stage.replace('_', ' ')}
               </h3>
               <p className="text-muted-foreground text-xs">
-                {round.matches.filter((m) => m.status === 'DECIDED').length}/
-                {round.matches.length} decided
+                {/* Byes are excluded from both halves — they are settled before
+                    the round opens, so counting them made a round with seven
+                    byes read "7/8 decided" before anyone had submitted. Matches
+                    the same rule in the live snapshot. */}
+                {(() => {
+                  const played = round.matches.filter((m) => !m.isBye);
+                  return `${played.filter((m) => m.status === 'DECIDED').length}/${played.length} decided`;
+                })()}
+                {round.matches.some((m) => m.isBye)
+                  ? ` · ${round.matches.filter((m) => m.isBye).length} bye`
+                  : ''}
                 {round.problem ? ` · ${round.problem.title}` : ''}
               </p>
             </header>
@@ -110,9 +119,13 @@ export function BracketTree({
                         {match.tieUnresolved ? (
                           <Badge tone="warning">Tied</Badge>
                         ) : null}
-                        <Badge tone={MATCH_TONE[match.status] ?? 'neutral'}>
-                          {match.status}
-                        </Badge>
+                        {match.isBye ? (
+                          <Badge tone="neutral">Bye</Badge>
+                        ) : (
+                          <Badge tone={MATCH_TONE[match.status] ?? 'neutral'}>
+                            {match.status}
+                          </Badge>
+                        )}
                       </div>
                     </div>
 
@@ -129,6 +142,7 @@ export function BracketTree({
                         match.competitorAId === highlightUserId
                       }
                       decided={match.status === 'DECIDED'}
+                      permanentlyEmpty={match.slotAEmpty}
                     />
                     <Competitor
                       name={match.competitorB}
@@ -143,6 +157,7 @@ export function BracketTree({
                         match.competitorBId === highlightUserId
                       }
                       decided={match.status === 'DECIDED'}
+                      permanentlyEmpty={match.slotBEmpty}
                     />
 
                     {match.status === 'DECIDED' && match.winReason ? (
@@ -168,17 +183,22 @@ function Competitor({
   isWinner,
   isMe,
   decided,
+  permanentlyEmpty,
 }: {
   name: string | null;
   seed: number | null;
   isWinner: boolean;
   isMe: boolean;
   decided: boolean;
+  /** An unfilled seed in the opening round — nobody is coming. */
+  permanentlyEmpty: boolean;
 }) {
   if (!name) {
     return (
       <p className="text-muted-foreground py-0.5 text-xs italic">
-        {decided ? '—' : 'awaiting winner'}
+        {/* "awaiting winner" against an unfilled seed promised a name that
+            never arrives, which made a top seed's bye look like a bug. */}
+        {permanentlyEmpty ? 'no opponent' : decided ? '—' : 'awaiting winner'}
       </p>
     );
   }

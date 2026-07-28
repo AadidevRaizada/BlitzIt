@@ -13,6 +13,7 @@ import type { DbClient } from '@/server/modules/admin/audit';
 import { CURRENT_TERMS_VERSION } from '@/server/modules/compliance';
 import { NotFoundError } from '@/lib/errors';
 import { listBracketRounds, type BracketRoundView } from './admin-ops';
+import { STRUCTURAL_MATCH_FILTER, isStructuralMatch } from './bye';
 import { getPrizePoolDisplay, type PrizePoolDisplay } from './prize-pool';
 import { computeCountdown, type Countdown } from './timers.public';
 
@@ -280,30 +281,41 @@ export async function getLiveSnapshot(
     },
   });
 
-  const [leaderboard, bracket, decidedMatches, tiedMatches, prizePool] =
-    await Promise.all([
-      getLeaderboard(
+  const [
+    leaderboard,
+    bracket,
+    decidedMatches,
+    structuralMatches,
+    tiedMatches,
+    prizePool,
+  ] = await Promise.all([
+    getLeaderboard(
+      tournamentId,
+      { take: options.leaderboardTake ?? LEADERBOARD_DEFAULT_TAKE },
+      client,
+    ),
+    // `revealProblems: false` — the snapshot is public, and a spectator seeing
+    // the final's challenge before it opens would leak it to competitors too.
+    listBracketRounds(tournamentId, { revealProblems: false }, client),
+    round
+      ? client.match.count({
+          where: { roundId: round.id, status: 'DECIDED' },
+        })
+      : Promise.resolve(0),
+    round
+      ? client.match.count({
+          where: { roundId: round.id, ...STRUCTURAL_MATCH_FILTER },
+        })
+      : Promise.resolve(0),
+    client.match.count({
+      where: {
         tournamentId,
-        { take: options.leaderboardTake ?? LEADERBOARD_DEFAULT_TAKE },
-        client,
-      ),
-      // `revealProblems: false` — the snapshot is public, and a spectator seeing
-      // the final's challenge before it opens would leak it to competitors too.
-      listBracketRounds(tournamentId, { revealProblems: false }, client),
-      round
-        ? client.match.count({
-            where: { roundId: round.id, status: 'DECIDED' },
-          })
-        : Promise.resolve(0),
-      client.match.count({
-        where: {
-          tournamentId,
-          tieUnresolved: true,
-          status: { not: 'DECIDED' },
-        },
-      }),
-      getPrizePoolDisplay(tournamentId, client),
-    ]);
+        tieUnresolved: true,
+        status: { not: 'DECIDED' },
+      },
+    }),
+    getPrizePoolDisplay(tournamentId, client),
+  ]);
 
   const revealed = round?.opensAt != null && now >= round.opensAt;
   const currentRound: LiveRoundView | null = round
@@ -315,8 +327,13 @@ export async function getLiveSnapshot(
         deadlineAt: round.deadlineAt?.toISOString() ?? null,
         revealed,
         problemTitle: revealed ? (round.problem?.title ?? null) : null,
-        matchesTotal: round._count.matches,
-        matchesDecided: decidedMatches,
+        // Byes are excluded from BOTH halves of this fraction. They are decided
+        // before the round opens, so counting them made the public progress bar
+        // start part-filled — a 16-draw with 7 byes opened its first round
+        // reading "7/8 decided" while nobody had submitted a line. What a
+        // spectator wants to know is how much of the round is left to WATCH.
+        matchesTotal: round._count.matches - structuralMatches,
+        matchesDecided: decidedMatches - structuralMatches,
       }
     : null;
 
@@ -390,6 +407,12 @@ export interface MyTournamentState {
     opensAt: Date | null;
     deadlineAt: Date | null;
     opponentUsername: string | null;
+    /**
+     * This match was won without being played — the slot opposite was empty.
+     * Nothing to submit, nothing to wait for. Surfaces exist to tell the
+     * competitor that rather than sending them to an arena with no opponent.
+     */
+    byeAwarded: boolean;
   } | null;
   readiness: {
     githubConnected: boolean;
@@ -479,10 +502,14 @@ export async function getMyTournamentState(
           OR: [{ competitorAId: userId }, { competitorBId: userId }],
           round: { status: { not: 'COMPLETED' } },
         },
-        orderBy: [{ createdAt: 'desc' }, { bracketPosition: 'asc' }],
+        // Furthest-along round first — see the same fix in `arena.ts`. Ordering
+        // by `createdAt` was a coin flip, because the bracket is written in a
+        // single transaction.
+        orderBy: [{ round: { sequence: 'desc' } }, { bracketPosition: 'asc' }],
         select: {
           id: true,
           status: true,
+          winReason: true,
           competitorAId: true,
           competitorBId: true,
           round: {
@@ -572,6 +599,7 @@ export async function getMyTournamentState(
           opensAt: match.round.opensAt,
           deadlineAt: match.round.deadlineAt,
           opponentUsername: opponent?.username ?? null,
+          byeAwarded: isStructuralMatch(match),
         }
       : null,
     readiness: {

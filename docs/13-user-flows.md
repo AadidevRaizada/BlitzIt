@@ -37,8 +37,8 @@ Dashboard [6] (registered) → Simulation Arena [8]
 
 ## F3 — Seeding → Bracket (Sat)
 ```
-Admin/cron seedTournament → choose bracketSize (8/16/32/64) by qualifier count
-  → rank by simulationScore → top N qualify (byes if non-power-of-two)
+Admin/cron seedTournament → bracketSize = smallest of 8/16/32/64 that fits the field (min 8)
+  → rank by simulationScore → everyone eligible qualifies; surplus slots become byes for top seeds
   → Ranking.seed + qualified set → SEEDED notification (email + in-app)
   → Competitor sees seed + path on Bracket [11] / Dashboard [6]
 ```

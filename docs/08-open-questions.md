@@ -27,7 +27,7 @@ All previously-open items are locked in [`DECISIONS.md`](./DECISIONS.md):
 | Was open | Resolution | Decision |
 |----------|------------|----------|
 | Prize distribution table | 1st 50% / 2nd 25% / each SF 12.5%; ₹100 per registration to pool; ₹2,000 first-prize cap Week 1 | D12 |
-| Simulation → seeding | Sum of all three rounds; rank desc; top N = bracket size | D13 |
+| Simulation → seeding | Sum of all three rounds; rank desc; all eligible qualify (D6 sizes up to the field) | D13 |
 | Sudden-death format | New 10-min challenge; functional-only → tests passed → earliest submission | D14 |
 | Reachability grace policy | Warm-up + 3 retries (exp. backoff); else functional = 0; store probe evidence | D15 |
 | Public repos only | Yes — public GitHub only in V1 | D16 |

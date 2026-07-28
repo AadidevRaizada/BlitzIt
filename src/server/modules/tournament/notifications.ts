@@ -7,6 +7,7 @@ import {
   type NotificationIntent,
 } from '@/server/modules/notification';
 import { logger } from '@/lib/logger';
+import { isStructuralMatch } from './bye';
 
 /**
  * Tournament → notification triggers (E8.3).
@@ -107,6 +108,8 @@ export async function syncTournamentNotifications(
       matches: {
         select: {
           id: true,
+          status: true,
+          winReason: true,
           competitorAId: true,
           competitorBId: true,
         },
@@ -140,6 +143,8 @@ export async function syncTournamentNotifications(
     },
     select: {
       id: true,
+      status: true,
+      winReason: true,
       winnerId: true,
       loserId: true,
       round: { select: { stage: true } },
@@ -162,13 +167,17 @@ export async function syncTournamentNotifications(
 
   for (const round of openRounds) {
     for (const match of round.matches) {
+      // A bye was settled before the round opened. Telling its winner "your
+      // round is open, here is your deadline" sends them to an arena with no
+      // opponent and implies a submission they do not owe. They are told about
+      // the bye by the ADVANCED notification instead.
+      if (isStructuralMatch(match)) continue;
+
       const pairs: Array<[string | null, string | null]> = [
         [match.competitorAId, match.competitorBId],
         [match.competitorBId, match.competitorAId],
       ];
       for (const [userId, opponentId] of pairs) {
-        // A bye has nobody to notify on one side, and nobody to name on the
-        // other — the notification still goes out, just without an opponent.
         if (!userId) continue;
         intents.push({
           userId,
@@ -200,6 +209,7 @@ export async function syncTournamentNotifications(
           stage: match.round.stage,
           matchId: match.id,
           opponent: match.loserId ? nameById.get(match.loserId) : undefined,
+          viaBye: isStructuralMatch(match) || undefined,
         },
       });
     }

@@ -89,18 +89,21 @@ tournament row serialises genuinely concurrent callers.
 
 ```
 simulation round 1 ─┐
-simulation round 2 ─┼─► sum of overallScore per competitor ─► rank (D5 chain) ─► top N qualify
+simulation round 2 ─┼─► sum of overallScore per competitor ─► rank (D5 chain) ─► all qualify
 simulation round 3 ─┘                                                            seed = 1..N
 ```
 
 - **All three rounds count**, summed — not best-of. A competitor with `[90,90,90]` outranks one
   with `[100,0,0]`.
-- Ties at the qualification cutline fall through the **D5 tie-break order** applied to the
-  aggregate totals; "faster submission" means the earlier *last* submission, i.e. who finished the
-  whole simulation phase first.
+- Ranking determines **seeding**, and seeding determines who receives a **bye**. It no longer
+  determines who qualifies: under the amended D6 everyone eligible enters the draw.
+- Ties fall through the **D5 tie-break order** applied to the aggregate totals; "faster
+  submission" means the earlier *last* submission, i.e. who finished the whole simulation phase
+  first. This still matters at the top of the order, where a better seed wins a bye.
 - Registrants who never submitted still appear, scored 0, so the standings show the whole field.
-- **N** is the bracket size: explicit if the organizer set one, otherwise the largest supported
-  size the field can fill (20 competitors play a full 16, not a 32 padded with byes).
+- **N** is the bracket size: explicit if the organizer set one, otherwise the **smallest**
+  supported size that fits the field (20 competitors play a 32 with 12 byes, not an 8 that would
+  have cut 12 of them). A cutline survives only above 64.
 
 Registrants who tie on **every** aggregate field (the common case: nobody submitted) are ordered
 by **registration time**, then id. `rankByWinRule` is stable, so without an explicit order the
@@ -177,14 +180,30 @@ A seed beyond the qualified field leaves an empty slot; its opponent gets a `BYE
 resolved **immediately at generation** and cascade to a fixed point, so a spectator looking at a
 freshly generated bracket already sees who walked into the next round.
 
-| Field | Bracket | Byes |
-|---|---|---|
-| 8, 16, 32, 64 (exact) | same | 0 |
-| 11 | 16 (organizer-chosen) | 5 |
-| 9 | 64 (deliberately oversized) | cascades through empty matches |
+Byes are **normal**, not exceptional. D6 sizes the draw to the smallest bracket that fits the
+field, so any field that is not an exact power of two produces them:
 
-With automatic sizing byes never occur — they exist for the case where an organizer explicitly
-oversizes the draw.
+| Field | Bracket | Byes | Awarded to |
+|---|---|---|---|
+| 8, 16, 32, 64 (exact) | same | 0 | — |
+| 9 | 16 | 7 | seeds 1–7 |
+| 11 | 16 | 5 | seeds 1–5 |
+| 20 | 32 | 12 | seeds 1–12 |
+| 9 in a 64 (organizer oversized) | 64 | 55 | cascades through empty matches |
+
+Byes land on the top seeds without anything allocating them: `seedOrder` pairs seed *s* with seed
+*n+1−s*, so the unfilled tail seeds are always the worst and their absent opponents always the
+best. Deterministic, and reproducible from the field size alone.
+
+**`VOID` matches cannot arise from automatic sizing.** The chosen bracket is the smallest that
+fits, so more than half its seeds are always occupied, and every first-round pair contains a seed
+from the top half. A void slot is only reachable when an operator explicitly oversizes a draw —
+still supported, and still handled.
+
+A bye needs no submission, no evaluation, no AI pass, no REST testing and no window. Downstream
+systems do not test for it in order to be *correct*: the match is already `DECIDED` before any
+round opens. What they do test for — in exactly one place, `bye.ts` — is whether a match should be
+*counted* as something a human watches, and whether an empty slot is "waiting" or "empty forever".
 
 ---
 

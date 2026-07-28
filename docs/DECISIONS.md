@@ -52,8 +52,29 @@
   5. Higher AI score
   6. **Sudden-death challenge** if still tied.
 
-## D6 — Tournament sizes
-- Bracket supports **Top 8 / 16 / 32 / 64**, chosen by registration volume. **Never hardcoded.**
+## D6 — Tournament sizes (amended)
+- Bracket supports **8 / 16 / 32 / 64**, chosen by registration volume. **Never hardcoded.**
+- **Minimum 8 eligible competitors.** Below that the bracket is **never** generated — not with
+  byes, not with an explicitly-set `bracketSize`. The operator extends registration or cancels.
+- At or above 8, the draw is the **smallest supported size that fits the whole field**:
+
+  | Eligible | Bracket | Byes |
+  |---|---|---|
+  | 8 | 8 | 0 |
+  | 9–16 | 16 | 16 − eligible |
+  | 17–32 | 32 | 32 − eligible |
+  | 33–64 | 64 | 64 − eligible |
+  | 65+ | 64 | 0 (top 64 qualify — the only remaining cutline) |
+
+- Unused slots become **byes**, awarded to the **highest seeds** — seed #1 first, then #2, and so
+  on. This is not allocated by any code: standard seed-order reflection pairs seed 1 with seed N,
+  so the seeds left unfilled are always the worst and their absent opponents always the best. It
+  is therefore deterministic and reproducible from the field size alone.
+- A bye is an ordinary match with an empty slot, decided at generation time. It requires no
+  submission, no evaluation, no AI, no REST testing and no waiting.
+- **Superseded:** the draw used to be the *largest* size the field could fill, which silently cut
+  everyone past the nearest power of two — a field of 15 played an 8 and eliminated 7 people
+  before a match was played.
 
 ## D7 — Round timings (configurable)
 - **Simulation:** 30 min, 20 min, 10 min (three rounds).
@@ -90,10 +111,14 @@
 - `prizeDistribution` JSON: `{ "1": 0.50, "2": 0.25, "SF": 0.125 }` (SF applies to both losing
   semi-finalists). `prizePerRegistrationMinor = 10000`.
 
-## D13 — Simulation → seeding (locked)
+## D13 — Simulation → seeding (amended by D6)
 - All **three** simulation rounds count. Final simulation score = **sum of the three round
-  overall scores**. Rank competitors by total desc; **top N** qualify where N = selected bracket
-  size (8/16/32/64). Ties at the qualification cutline broken by the D5 tie-break order.
+  overall scores**. Rank competitors by total desc.
+- **Everyone eligible qualifies**, because D6 now sizes the bracket up to the field rather than
+  cutting the field down to the bracket. The ranking still determines *seeding*, which determines
+  who receives a bye.
+- A cutline survives in exactly one case: a field above 64, where the top 64 qualify. Ties at that
+  cutline are broken by the D5 tie-break order.
 
 ## D14 — Sudden death (locked)
 - A **new short challenge** (not a shortened previous one). Duration **10 minutes**.

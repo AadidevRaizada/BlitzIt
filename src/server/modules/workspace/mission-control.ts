@@ -16,6 +16,7 @@ export type NextActionKind =
   | 'AWAITING_EVALUATION'
   | 'VIEW_EVALUATION'
   | 'MATCH_LIVE'
+  | 'BYE_AWARDED'
   | 'ELIMINATED'
   | 'TOURNAMENT_FINISHED'
   | 'NOTHING_NOW';
@@ -227,6 +228,21 @@ export function resolveNextAction(input: {
   }
 
   if (competitor.currentMatch) {
+    // Checked before liveness. A bye is already won, so the round being OPEN
+    // says nothing about this competitor — they were previously told to "Check
+    // your match" and sent to an arena with no opponent, no problem statement
+    // and no submit button.
+    if (competitor.currentMatch.byeAwarded) {
+      return action(
+        'BYE_AWARDED',
+        `Bye into ${formatState(competitor.currentMatch.stage)}`,
+        'You advance without playing this round. Rest up — your next match is being decided.',
+        'View bracket',
+        '/bracket',
+        'done',
+      );
+    }
+
     if (
       competitor.currentMatch.status === 'LIVE' ||
       competitor.currentMatch.roundStatus === 'OPEN'
@@ -375,7 +391,9 @@ function resolveCountdown(
   tournament: PublicTournamentCard | null,
   competitor: MyTournamentState | null,
 ): { label: string; targetAt: Date | null } {
-  if (competitor?.currentMatch) {
+  // A bye has no clock. Counting down "time remaining" against a deadline the
+  // competitor cannot act on is theatre, and it implies work they don't owe.
+  if (competitor?.currentMatch && !competitor.currentMatch.byeAwarded) {
     return {
       label:
         competitor.currentMatch.roundStatus === 'OPEN'

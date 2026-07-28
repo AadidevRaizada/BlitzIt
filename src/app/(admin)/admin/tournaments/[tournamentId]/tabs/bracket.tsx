@@ -7,6 +7,7 @@ import {
 import { listAssignableProblems } from '@/server/modules/problem';
 import { requireAdminOrThrow } from '@/server/modules/auth';
 import { BracketTree } from '@/components/features/bracket-tree';
+import { DrawPreview } from '@/components/features/draw-preview';
 import { SuddenDeathControl } from './sudden-death-control';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, StatCard } from '@/components/ui/card';
@@ -46,9 +47,32 @@ export async function BracketTab({ summary }: { summary: TournamentSummary }) {
 
   return (
     <div className="space-y-6">
+      {/* Shown only until the bracket exists. Once it is generated the draw is
+          frozen and the preview would just be restating history. */}
+      {summary.bracketGeneratedAt === null ? (
+        <DrawPreview
+          eligibleCount={summary.eligibleCount}
+          registrations={summary.registrations}
+          requestedSize={summary.bracketSize}
+          thirdPlaceEnabled={summary.thirdPlaceEnabled}
+        />
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Matches" value={summary.matches} />
-        <StatCard label="Decided" value={summary.matchesDecided} />
+        <StatCard
+          label="Matches"
+          value={summary.matches}
+          hint={
+            summary.matchesBye > 0
+              ? `${summary.matchesBye} decided by bye`
+              : 'none by bye'
+          }
+        />
+        <StatCard
+          label="Decided"
+          value={summary.matchesDecided}
+          hint={`${Math.max(0, summary.matchesDecided - summary.matchesBye)} actually played`}
+        />
         <StatCard
           label="Open"
           value={Math.max(0, summary.matches - summary.matchesDecided)}
@@ -154,22 +178,36 @@ export async function BracketTab({ summary }: { summary: TournamentSummary }) {
                             #{match.bracketPosition}
                           </TD>
                           <TD>
-                            <span>{match.competitorA ?? 'TBD'}</span>
+                            {/* "TBD" means a name is coming. An unfilled seed
+                                in the opening round has no name coming, and an
+                                operator reading TBD there went looking for a
+                                seeding fault that did not exist. */}
+                            <span>
+                              {match.competitorA ??
+                                (match.slotAEmpty ? '—' : 'TBD')}
+                            </span>
                             <span className="text-muted-foreground mx-2">
                               vs
                             </span>
-                            <span>{match.competitorB ?? 'TBD'}</span>
+                            <span>
+                              {match.competitorB ??
+                                (match.slotBEmpty ? '—' : 'TBD')}
+                            </span>
                           </TD>
                           <TD>
-                            <Badge
-                              tone={
-                                match.status === 'DECIDED'
-                                  ? 'success'
-                                  : 'neutral'
-                              }
-                            >
-                              {match.status}
-                            </Badge>
+                            {match.isBye ? (
+                              <Badge tone="neutral">Bye</Badge>
+                            ) : (
+                              <Badge
+                                tone={
+                                  match.status === 'DECIDED'
+                                    ? 'success'
+                                    : 'neutral'
+                                }
+                              >
+                                {match.status}
+                              </Badge>
+                            )}
                             {match.tieUnresolved ? (
                               <Badge tone="warning" className="ml-2">
                                 Tie

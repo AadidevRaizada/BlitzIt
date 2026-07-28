@@ -47,7 +47,7 @@ export async function TimelineTab({ summary }: { summary: TournamentSummary }) {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm">
-              Times are entered and stored in UTC (D8)
+              Times are entered and shown in IST; stored in UTC (D8)
             </CardTitle>
           </CardHeader>
           <CardContent>

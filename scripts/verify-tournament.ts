@@ -16,10 +16,12 @@ import {
 } from '../src/server/modules/tournament/lifecycle';
 import {
   autoBracketSize,
+  decideBracketSizing,
   isBracketSize,
   stagesForBracketSize,
   SUPPORTED_BRACKET_SIZES,
 } from '../src/server/modules/tournament/config.public';
+import { buildBracketPlan } from '../src/server/modules/tournament/bracket';
 import { resolveTournamentConfig } from '../src/server/modules/tournament/config';
 
 /**
@@ -341,11 +343,17 @@ function main() {
         isBracketSize(64),
     );
     check('12 is not a supported bracket size', !isBracketSize(12));
+    // The rule INVERTED here: it used to pick the largest bracket the field
+    // could fill, which cut everyone past the nearest power of two. It now
+    // picks the smallest bracket that fits the whole field, so nobody who
+    // qualified is dropped and the surplus slots become byes.
     check(
-      'auto-size picks the largest bracket the field fills',
-      autoBracketSize(20) === 16,
+      'auto-size picks the smallest bracket that fits the field',
+      autoBracketSize(20) === 32,
     );
+    check('a field of 9 plays a 16, not an 8', autoBracketSize(9) === 16);
     check('auto-size is exact on a boundary', autoBracketSize(32) === 32);
+    check('the minimum field plays the minimum draw', autoBracketSize(8) === 8);
     check(
       'auto-size caps at the largest supported bracket',
       autoBracketSize(500) === 64,
@@ -354,6 +362,83 @@ function main() {
       'auto-size refuses a field below the smallest bracket',
       autoBracketSize(7) === null,
     );
+
+    // Sizing as data — the shape the guard and the admin preview both read.
+    const short = decideBracketSizing(2, null);
+    check(
+      'a field of 2 is refused with a shortfall, not an exception',
+      !short.ok && short.reason === 'BELOW_MINIMUM' && short.shortfall === 6,
+    );
+    const explicitTooSmall = decideBracketSizing(2, 8);
+    check(
+      'an explicit bracket size does NOT bypass the minimum',
+      !explicitTooSmall.ok && explicitTooSmall.reason === 'BELOW_MINIMUM',
+    );
+    const nine = decideBracketSizing(9, null);
+    check(
+      'a field of 9 yields a 16-draw with 7 byes and nobody cut',
+      nine.ok &&
+        nine.bracketSize === 16 &&
+        nine.qualifiedCount === 9 &&
+        nine.byeCount === 7 &&
+        nine.cutCount === 0,
+    );
+    const huge = decideBracketSizing(100, null);
+    check(
+      'a field above the maximum is cut to 64 with no byes',
+      huge.ok &&
+        huge.bracketSize === 64 &&
+        huge.byeCount === 0 &&
+        huge.cutCount === 36,
+    );
+
+    // Byes must land on the TOP seeds, deterministically. The reflection order
+    // guarantees it without anything allocating them: the seeds left unfilled
+    // are always the worst, so their absent opponents are always the best.
+    const plan = buildBracketPlan({
+      bracketSize: 16,
+      thirdPlaceEnabled: false,
+      qualifiedCount: 9,
+    });
+    const firstRound = plan.matches.filter((m) => m.stage === 'R16');
+    const byeSeeds = firstRound
+      .filter((m) => (m.seedA === null) !== (m.seedB === null))
+      .map((m) => m.seedA ?? m.seedB)
+      .sort((a, b) => (a ?? 0) - (b ?? 0));
+    check('9-in-16 produces exactly 7 byes', plan.byeCount === 7);
+    check(
+      'byes go to seeds 1..7 — the highest seeds, in order',
+      JSON.stringify(byeSeeds) === JSON.stringify([1, 2, 3, 4, 5, 6, 7]),
+    );
+    check(
+      'no first-round match is void under automatic sizing',
+      firstRound.every((m) => m.seedA !== null || m.seedB !== null),
+    );
+
+    // Every legal automatic field size, end to end.
+    for (let field = 8; field <= 64; field++) {
+      const sizing = decideBracketSizing(field, null);
+      if (!sizing.ok) {
+        check(`field of ${field} sizes cleanly`, false);
+        continue;
+      }
+      const p = buildBracketPlan({
+        bracketSize: sizing.bracketSize,
+        thirdPlaceEnabled: false,
+        qualifiedCount: sizing.qualifiedCount,
+      });
+      const opening = p.matches.filter((m) => m.stage === p.stages[0]);
+      const voids = opening.filter(
+        (m) => m.seedA === null && m.seedB === null,
+      ).length;
+      if (voids > 0 || p.byeCount !== sizing.byeCount) {
+        check(
+          `field of ${field}: ${voids} void(s), ${p.byeCount} byes vs ${sizing.byeCount} predicted`,
+          false,
+        );
+      }
+    }
+    check('every field from 8 to 64 builds a void-free bracket', true);
   }
 
   // ---- 13. Configuration layering ----
