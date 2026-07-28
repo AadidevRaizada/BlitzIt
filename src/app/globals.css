@@ -1,60 +1,114 @@
-@import url('https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400..700&display=swap');
 @import 'tailwindcss';
 
 /*
- * Blitz It design tokens — see docs/design-system.md (authoritative).
- * Tailwind v4, CSS-first. Semantic OKLCH tokens, every surface paired with a
- * -foreground. Brand: #7F5AF0 primary, #00FFA3 secondary, black/white base.
+ * The Circuit — design tokens. Single source of truth for colour, type,
+ * spacing, elevation and motion. Pages and components must pull from here;
+ * one-off hex/oklch literals in component files are a bug.
  *
- * Contrast is verified, not assumed:
- *   #7F5AF0 + white .......... 4.54  AA text
- *   #00FFA3 + BLACK .......... 15.83 AA text   (white on it is 1.33 — never)
- *   #7F5AF0 on dark bg ....... 4.36  UI/large only -> dark mode lightens it
- *   #9E87FF on dark bg ....... 6.94  AA text
+ * Brand: near-black base, ELECTRIC BLUE primary, RED secondary.
+ *   - Blue  = primary action, live state, links, focus, active nav.
+ *   - Red   = earned urgency only. Countdown under pressure, knockout,
+ *             elimination, live-now emphasis. Never decorative.
+ *   - Green = status only (a check passed). Not a brand colour, deliberately
+ *             desaturated so it never reads as the neon mint we removed.
+ *   - There is no violet/indigo in this system. A tertiary neutral action
+ *             colour is a desaturated grey-blue (`--base-*`), never a violet.
+ *
+ * Contrast is verified by scripts/verify-contrast.ts, not assumed.
  */
 
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  /* ---- Brand ---- */
-  --brand-primary: oklch(0.5873 0.2143 289.47); /* #7F5AF0 */
-  --brand-secondary: oklch(0.881 0.205 158.31); /* #00FFA3 */
+  /* ------------------------------------------------------------------ *
+   * Raw ramps. Only semantic tokens below should be consumed by the UI. *
+   * ------------------------------------------------------------------ */
 
-  /* ---- Surfaces ---- */
+  /* Near-black base — cool, slightly lifted off pure black so surfaces read
+     as material rather than as a void. Tracks the #0A0A0C–#0D0D10 range. */
+  --base-1000: oklch(0.118 0.006 265);
+  --base-950: oklch(0.145 0.006 265);
+  --base-900: oklch(0.172 0.007 265);
+  --base-850: oklch(0.208 0.008 265);
+  --base-800: oklch(0.248 0.009 265);
+  --base-700: oklch(0.322 0.011 265);
+  --base-600: oklch(0.425 0.012 265);
+
+  /* Text ramp — 3 steps of hierarchy on dark, plus inverse for light chips. */
+  --ink-100: oklch(0.975 0.002 265);
+  --ink-300: oklch(0.802 0.006 265);
+  --ink-500: oklch(0.638 0.009 265);
+  --ink-900: oklch(0.16 0.006 265);
+
+  /* Electric blue. -400 is the on-dark text-safe step, -500 the core brand,
+     -600 the pressed/deep step for light surfaces. */
+  --blue-300: oklch(0.79 0.135 248);
+  --blue-400: oklch(0.702 0.176 250);
+  --blue-500: oklch(0.618 0.204 252);
+  --blue-600: oklch(0.542 0.212 254);
+
+  /* Red — urgency and elimination. */
+  --red-300: oklch(0.78 0.13 25);
+  --red-400: oklch(0.682 0.203 25);
+  --red-500: oklch(0.602 0.232 25);
+  --red-600: oklch(0.532 0.222 25);
+
+  /* Status-only green and amber. Muted on purpose. */
+  --green-400: oklch(0.752 0.142 158);
+  --green-500: oklch(0.672 0.152 158);
+  /* -600 exists so a solid success fill on the light surface can still carry
+     white text at AA; -500 cannot (2.78:1). */
+  --green-600: oklch(0.508 0.118 158);
+  --amber-400: oklch(0.805 0.152 78);
+  --amber-600: oklch(0.405 0.088 62);
+
+  /* ---- Brand aliases ---- */
+  --brand-primary: var(--blue-500);
+  --brand-secondary: var(--red-500);
+
+  /* ------------------------------------------------------------------ *
+   * Semantic tokens — light (operator/admin surface).                   *
+   * ------------------------------------------------------------------ */
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: var(--ink-900);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: var(--ink-900);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
+  --popover-foreground: var(--ink-900);
 
-  /* ---- Actions ---- */
-  --primary: var(--brand-primary);
+  --surface-deep: oklch(0.977 0.002 265);
+  --surface-raised: oklch(0.988 0.002 265);
+  --surface-elevated: oklch(1 0 0);
+  --hairline: oklch(0.9 0.004 265);
+
+  --primary: var(--blue-600);
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0.005 289.47);
-  --secondary-foreground: oklch(0.21 0.02 289.47);
+  --secondary: oklch(0.968 0.004 265);
+  --secondary-foreground: oklch(0.24 0.02 265);
 
-  --muted: oklch(0.97 0.003 289.47);
-  --muted-foreground: oklch(0.52 0.015 289.47);
-  --accent: oklch(0.96 0.02 289.47);
-  --accent-foreground: oklch(0.24 0.04 289.47);
+  --muted: oklch(0.968 0.003 265);
+  --muted-foreground: oklch(0.492 0.012 265);
+  --accent: oklch(0.958 0.018 252);
+  --accent-foreground: oklch(0.28 0.06 254);
 
-  /* ---- Status. secondary-accent ALWAYS takes a black foreground. ---- */
-  --success: var(--brand-secondary);
-  --success-foreground: oklch(0 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --success: var(--green-600);
+  --success-foreground: oklch(1 0 0);
+  --destructive: var(--red-600);
   --destructive-foreground: oklch(1 0 0);
-  --warning: oklch(0.84 0.16 84);
-  --warning-foreground: oklch(0.24 0.07 46);
+  /* Amber is a light hue, so the light surface takes the DARK step. This keeps
+     `text-warning` legible on white and mirrors how destructive/success work,
+     which in turn lets tinted badges use one class on every surface. */
+  --warning: var(--amber-600);
+  --warning-foreground: oklch(1 0 0);
 
-  /* ---- Lines ---- */
-  --border: oklch(0.922 0.004 289.47);
-  --input: oklch(0.922 0.004 289.47);
-  --ring: var(--brand-primary);
+  --border: oklch(0.912 0.004 265);
+  --input: oklch(0.9 0.005 265);
+  --ring: var(--blue-500);
 
-  /* ---- Elevation (§6) — restrained; hierarchy comes from type + space.
-         Named `elevation-*` so `@theme inline` can map them to `shadow-*`
-         without a self-referential loop. ---- */
+  --glow-primary: 0 0 0 1px oklch(0.618 0.204 252 / 0.28);
+  --glow-live: 0 0 0 1px oklch(0.602 0.232 25 / 0.28);
+
+  /* ---- Elevation. Restrained: hierarchy comes from type and space. ---- */
   --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.05);
   --elevation-sm:
     0 1px 3px 0 oklch(0 0 0 / 0.08), 0 1px 2px -1px oklch(0 0 0 / 0.06);
@@ -62,9 +116,9 @@
     0 4px 12px -2px oklch(0 0 0 / 0.1), 0 2px 4px -2px oklch(0 0 0 / 0.06);
   --elevation-lg:
     0 12px 32px -8px oklch(0 0 0 / 0.16), 0 4px 8px -4px oklch(0 0 0 / 0.08);
-  --shadow-focus: 0 0 0 3px oklch(0.5873 0.2143 289.47 / 0.4);
+  --shadow-focus: 0 0 0 3px oklch(0.618 0.204 252 / 0.4);
 
-  /* ---- Motion (§11) ---- */
+  /* ---- Motion ---- */
   --motion-instant: 80ms;
   --motion-fast: 120ms;
   --motion-base: 200ms;
@@ -74,117 +128,135 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ---------------------------------------------------------------------- *
+ * Dark. Also the base the two product surfaces below build on, so the      *
+ * app, the marketing site and admin-in-dark read as one system.           *
+ * ---------------------------------------------------------------------- */
 .dark {
-  --background: oklch(0.145 0.004 289.47);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0.005 289.47);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 289.47);
-  --popover-foreground: oklch(0.985 0 0);
+  --background: var(--base-950);
+  --foreground: var(--ink-100);
+  --card: var(--base-850);
+  --card-foreground: var(--ink-100);
+  --popover: var(--base-800);
+  --popover-foreground: var(--ink-100);
 
-  /* Lightened so brand text/icons clear AA on dark (6.94 vs 4.36). */
-  --primary: oklch(0.7 0.18 289.47);
-  --primary-foreground: oklch(0.145 0.004 289.47);
-  --secondary: oklch(0.26 0.02 289.47);
-  --secondary-foreground: oklch(0.985 0 0);
+  --surface-deep: var(--base-1000);
+  --surface-raised: var(--base-850);
+  --surface-elevated: var(--base-800);
+  --hairline: oklch(1 0 0 / 0.1);
 
-  --muted: oklch(0.26 0.012 289.47);
-  --muted-foreground: oklch(0.708 0.015 289.47);
-  --accent: oklch(0.3 0.03 289.47);
-  --accent-foreground: oklch(0.985 0 0);
+  --primary: var(--blue-400);
+  --primary-foreground: var(--base-1000);
+  --secondary: var(--base-800);
+  --secondary-foreground: var(--ink-100);
 
-  --success: var(--brand-secondary);
-  --success-foreground: oklch(0 0 0);
-  --destructive: oklch(0.65 0.2 25);
-  --destructive-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.78 0.15 84);
-  --warning-foreground: oklch(0.145 0.004 289.47);
+  --muted: var(--base-850);
+  --muted-foreground: var(--ink-500);
+  --accent: var(--base-800);
+  --accent-foreground: var(--ink-100);
+
+  --success: var(--green-400);
+  --success-foreground: var(--base-1000);
+  --destructive: var(--red-400);
+  --destructive-foreground: var(--base-1000);
+  --warning: var(--amber-400);
+  --warning-foreground: var(--base-1000);
 
   --border: oklch(1 0 0 / 0.1);
   --input: oklch(1 0 0 / 0.14);
-  --ring: oklch(0.7 0.18 289.47);
+  --ring: var(--blue-400);
 
-  /* Elevation reads through surface + border on dark, so shadows recede. */
+  --glow-primary: 0 0 24px -2px oklch(0.702 0.176 250 / 0.45);
+  --glow-live: 0 0 24px -2px oklch(0.682 0.203 25 / 0.45);
+
   --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.3);
   --elevation-sm: 0 1px 3px 0 oklch(0 0 0 / 0.4);
   --elevation-md: 0 4px 12px -2px oklch(0 0 0 / 0.5);
   --elevation-lg: 0 12px 32px -8px oklch(0 0 0 / 0.6);
 }
 
+/* Broadcast — public/marketing. Deepest base, most contrast, most glow.
+   This is the "stadium" surface. */
 [data-surface='broadcast'] {
   color-scheme: dark;
 
-  --background: oklch(0.095 0.018 289.47);
-  --foreground: oklch(0.965 0.01 289.47);
-  --card: oklch(0.145 0.026 289.47);
-  --card-foreground: oklch(0.965 0.01 289.47);
-  --popover: oklch(0.17 0.03 289.47);
-  --popover-foreground: oklch(0.965 0.01 289.47);
+  --background: var(--base-950);
+  --foreground: var(--ink-100);
+  --card: var(--base-850);
+  --card-foreground: var(--ink-100);
+  --popover: var(--base-800);
+  --popover-foreground: var(--ink-100);
 
-  --surface-deep: oklch(0.075 0.018 289.47);
-  --surface-raised: oklch(0.135 0.026 289.47);
-  --surface-elevated: oklch(0.19 0.035 289.47);
-  --hairline: oklch(1 0 0 / 0.16);
-  --glow-primary: 0 0 28px oklch(0.7 0.18 289.47 / 0.34);
-  --glow-live: 0 0 24px oklch(0.881 0.205 158.31 / 0.38);
+  --surface-deep: var(--base-1000);
+  --surface-raised: var(--base-900);
+  --surface-elevated: var(--base-850);
+  --hairline: oklch(1 0 0 / 0.11);
 
-  --primary: oklch(0.7 0.18 289.47);
-  --primary-foreground: oklch(0.095 0.018 289.47);
-  --secondary: var(--brand-secondary);
-  --secondary-foreground: oklch(0 0 0);
-  --muted: oklch(0.22 0.026 289.47);
-  --muted-foreground: oklch(0.76 0.025 289.47);
-  --accent: oklch(0.26 0.055 289.47);
-  --accent-foreground: oklch(0.97 0.01 289.47);
-  --success: var(--brand-secondary);
-  --success-foreground: oklch(0 0 0);
-  --destructive: oklch(0.67 0.22 24);
-  --destructive-foreground: oklch(0.98 0.01 24);
-  --warning: oklch(0.82 0.17 84);
-  --warning-foreground: oklch(0.08 0.02 84);
+  --primary: var(--blue-400);
+  --primary-foreground: var(--base-1000);
+  --secondary: var(--base-800);
+  --secondary-foreground: var(--ink-100);
+  --muted: var(--base-850);
+  --muted-foreground: var(--ink-500);
+  --accent: var(--base-800);
+  --accent-foreground: var(--ink-100);
+  --success: var(--green-400);
+  --success-foreground: var(--base-1000);
+  --destructive: var(--red-400);
+  --destructive-foreground: var(--base-1000);
+  --warning: var(--amber-400);
+  --warning-foreground: var(--base-1000);
   --border: var(--hairline);
-  --input: oklch(1 0 0 / 0.2);
-  --ring: oklch(0.881 0.205 158.31);
+  --input: oklch(1 0 0 / 0.16);
+  --ring: var(--blue-400);
+
+  --glow-primary: 0 0 32px -4px oklch(0.702 0.176 250 / 0.55);
+  --glow-live: 0 0 32px -4px oklch(0.682 0.203 25 / 0.5);
+
   --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.45);
   --elevation-sm: 0 4px 8px -6px oklch(0 0 0 / 0.65);
   --elevation-md: 0 12px 24px -18px oklch(0 0 0 / 0.8);
   --elevation-lg: 0 24px 48px -32px oklch(0 0 0 / 0.9);
 }
 
+/* Workspace — the signed-in app. Same palette, calmer: less glow, tighter
+   elevation, so long sessions of reading data stay comfortable. */
 [data-surface='workspace'] {
   color-scheme: dark;
 
-  --background: oklch(0.105 0.016 289.47);
-  --foreground: oklch(0.955 0.01 289.47);
-  --card: oklch(0.15 0.022 289.47);
-  --card-foreground: oklch(0.955 0.01 289.47);
-  --popover: oklch(0.17 0.03 289.47);
-  --popover-foreground: oklch(0.965 0.01 289.47);
+  --background: var(--base-950);
+  --foreground: var(--ink-100);
+  --card: var(--base-850);
+  --card-foreground: var(--ink-100);
+  --popover: var(--base-800);
+  --popover-foreground: var(--ink-100);
 
-  --surface-deep: oklch(0.075 0.018 289.47);
-  --surface-raised: oklch(0.135 0.026 289.47);
-  --surface-elevated: oklch(0.19 0.035 289.47);
-  --hairline: oklch(1 0 0 / 0.14);
-  --glow-primary: 0 0 20px oklch(0.7 0.18 289.47 / 0.22);
-  --glow-live: 0 0 18px oklch(0.881 0.205 158.31 / 0.26);
+  --surface-deep: var(--base-1000);
+  --surface-raised: var(--base-900);
+  --surface-elevated: var(--base-850);
+  --hairline: oklch(1 0 0 / 0.09);
 
-  --primary: oklch(0.7 0.18 289.47);
-  --primary-foreground: oklch(0.095 0.018 289.47);
-  --secondary: var(--brand-secondary);
-  --secondary-foreground: oklch(0 0 0);
-  --muted: oklch(0.22 0.022 289.47);
-  --muted-foreground: oklch(0.74 0.02 289.47);
-  --accent: oklch(0.25 0.042 289.47);
-  --accent-foreground: oklch(0.97 0.01 289.47);
-  --success: var(--brand-secondary);
-  --success-foreground: oklch(0 0 0);
-  --destructive: oklch(0.67 0.22 24);
-  --destructive-foreground: oklch(0.98 0.01 24);
-  --warning: oklch(0.82 0.17 84);
-  --warning-foreground: oklch(0.08 0.02 84);
-  --border: oklch(1 0 0 / 0.12);
-  --input: oklch(1 0 0 / 0.18);
-  --ring: oklch(0.881 0.205 158.31);
+  --primary: var(--blue-400);
+  --primary-foreground: var(--base-1000);
+  --secondary: var(--base-800);
+  --secondary-foreground: var(--ink-100);
+  --muted: var(--base-850);
+  --muted-foreground: var(--ink-500);
+  --accent: var(--base-800);
+  --accent-foreground: var(--ink-100);
+  --success: var(--green-400);
+  --success-foreground: var(--base-1000);
+  --destructive: var(--red-400);
+  --destructive-foreground: var(--base-1000);
+  --warning: var(--amber-400);
+  --warning-foreground: var(--base-1000);
+  --border: var(--hairline);
+  --input: oklch(1 0 0 / 0.14);
+  --ring: var(--blue-400);
+
+  --glow-primary: 0 0 18px -4px oklch(0.702 0.176 250 / 0.32);
+  --glow-live: 0 0 18px -4px oklch(0.682 0.203 25 / 0.3);
+
   --elevation-xs: 0 1px 2px 0 oklch(0 0 0 / 0.38);
   --elevation-sm: 0 3px 8px -6px oklch(0 0 0 / 0.55);
   --elevation-md: 0 10px 20px -18px oklch(0 0 0 / 0.7);
@@ -223,18 +295,23 @@
   --color-surface-elevated: var(--surface-elevated);
   --color-hairline: var(--hairline);
 
+  /* Two families, max. Display carries the energy; body carries the clarity.
+     Space Grotesk is geometric and monospace-adjacent, and its tabular
+     figures make it the right face for scores and timers too. */
+  --font-display:
+    var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui,
+    sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-pixel: 'Pixelify Sans', 'Courier New', ui-monospace, monospace;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* Radius (§5) — static, so defined here directly rather than in :root. */
+  /* Radius */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 20px;
 
-  /* Typography scale (§3) */
+  /* Typography scale */
   --text-hero: clamp(3rem, 7vw, 5.5rem);
   --text-hero--line-height: 1.02;
   --text-hero--letter-spacing: -0.035em;
@@ -260,12 +337,75 @@
   --text-caption: 0.75rem;
   --text-caption--line-height: 1.4;
   --text-caption--letter-spacing: 0.01em;
+  /* The one sanctioned all-caps treatment: eyebrows and nav. */
+  --text-eyebrow: 0.6875rem;
+  --text-eyebrow--line-height: 1.2;
+  --text-eyebrow--letter-spacing: 0.16em;
 
-  /* Elevation -> Tailwind `shadow-*` utilities (theme-aware via :root/.dark). */
+  /* Elevation -> Tailwind `shadow-*` (theme-aware via the scopes above). */
   --shadow-xs: var(--elevation-xs);
   --shadow-sm: var(--elevation-sm);
   --shadow-md: var(--elevation-md);
   --shadow-lg: var(--elevation-lg);
+
+  /* ---- Motion. Live state must look live; static content must not move. ---- */
+  --animate-live-pulse: live-pulse 2s var(--ease-out-quart) infinite;
+  --animate-live-ping: live-ping 2s var(--ease-out-quart) infinite;
+  --animate-rise: rise var(--motion-slow) var(--ease-out-expo) both;
+  --animate-fade-in: fade-in var(--motion-base) var(--ease-out-quart) both;
+  --animate-sweep: sweep 6s var(--ease-out-quart) infinite;
+
+  @keyframes live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+
+  @keyframes live-ping {
+    0% {
+      opacity: 0.7;
+      transform: scale(1);
+    }
+    70%,
+    100% {
+      opacity: 0;
+      transform: scale(2.6);
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 10px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes sweep {
+    0% {
+      transform: translate3d(-110%, 0, 0);
+    }
+    55%,
+    100% {
+      transform: translate3d(320%, 0, 0);
+    }
+  }
 }
 
 @layer base {
@@ -290,14 +430,58 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Visible focus is non-negotiable (§13). */
+  /* Visible focus is non-negotiable. */
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
   }
 }
 
-/* Accessibility: honour reduced-motion everywhere (§11). */
+@layer components {
+  /*
+   * Staggered reveal for lists (leaderboard rows, tournament cards) so they
+   * arrive in sequence instead of popping in as one block. Applied to the
+   * container; children need no per-element delay classes, which keeps
+   * one-off `[animation-delay:120ms]` values out of the page files.
+   */
+  .stagger > * {
+    animation: var(--animate-rise);
+    animation-delay: calc(var(--stagger-step, 45ms) * var(--i, 0));
+  }
+
+  .stagger > *:nth-child(1) {
+    --i: 0;
+  }
+  .stagger > *:nth-child(2) {
+    --i: 1;
+  }
+  .stagger > *:nth-child(3) {
+    --i: 2;
+  }
+  .stagger > *:nth-child(4) {
+    --i: 3;
+  }
+  .stagger > *:nth-child(5) {
+    --i: 4;
+  }
+  .stagger > *:nth-child(6) {
+    --i: 5;
+  }
+  .stagger > *:nth-child(7) {
+    --i: 6;
+  }
+  .stagger > *:nth-child(8) {
+    --i: 7;
+  }
+  .stagger > *:nth-child(9) {
+    --i: 8;
+  }
+  .stagger > *:nth-child(n + 10) {
+    --i: 9;
+  }
+}
+
+/* Accessibility: honour reduced-motion everywhere. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

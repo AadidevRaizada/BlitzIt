@@ -32,6 +32,7 @@ export function Countdown({
   serverTime,
   phase,
   label,
+  size = 'md',
   className,
 }: {
   /** The instant being counted down to, ISO-8601. Null renders a dash. */
@@ -40,6 +41,11 @@ export function Countdown({
   serverTime: string;
   phase?: TimerPhase;
   label?: string;
+  /**
+   * Visual scale only — it does not change the clock. `hero` is for the one
+   * countdown that anchors a page; `inline` for timers inside rows and cards.
+   */
+  size?: 'inline' | 'md' | 'hero';
   className?: string;
 }) {
   // Measured on mount, not on every tick: a per-tick measurement would drift
@@ -88,15 +94,25 @@ export function Countdown({
       aria-live={urgent ? 'assertive' : 'off'}
     >
       {label ? (
-        <span className="text-muted-foreground text-xs tracking-wide uppercase">
+        <span className="text-eyebrow text-muted-foreground font-semibold uppercase">
           {label}
         </span>
       ) : null}
       <span
         className={cn(
-          'font-mono text-lg font-semibold tabular-nums',
-          urgent && 'text-destructive',
+          // Tabular figures are load-bearing: without them the digits change
+          // width every second and the whole line jitters.
+          'font-display font-bold tabular-nums',
+          size === 'inline' && 'text-base',
+          size === 'md' && 'text-lg',
+          size === 'hero' &&
+            'text-[clamp(2.5rem,6vw,4.25rem)] leading-none tracking-[-0.03em]',
+          // Under a minute the clock turns red and breathes. This is the
+          // clearest case of red being earned: something is about to close.
+          urgent &&
+            'text-destructive motion-safe:animate-[var(--animate-live-pulse)]',
           expired && 'text-muted-foreground',
+          !urgent && !expired && size === 'hero' && 'text-foreground',
         )}
       >
         {formatDuration(remaining)}

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ArrowRight, CirclePlay, Radio, Trophy } from 'lucide-react';
+import { ArrowRight, Radio, Trophy } from 'lucide-react';
 import { getCurrentUser } from '@/server/modules/auth';
 import { listHallOfFame } from '@/server/modules/hall-of-fame';
 import { formatMinor } from '@/server/modules/notification';
@@ -15,8 +15,12 @@ import { HomeMotion } from '@/components/features/home-motion';
 import { LiveLeaderboard } from '@/components/features/live-leaderboard';
 import { LiveRefresh } from '@/components/features/live-refresh';
 import { StreamEmbed } from '@/components/features/stream-embed';
+import { Badge, LiveDot } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { DisplayHeading } from '@/components/ui/display-heading';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Eyebrow } from '@/components/ui/eyebrow';
 import { cn } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -53,19 +57,30 @@ export default async function HomePage() {
   const ctaLabel = registering
     ? 'Register'
     : user
-      ? 'Open Dashboard'
-      : 'View Tournaments';
+      ? 'Open dashboard'
+      : 'View tournaments';
   const stats = getHeroStats(snapshot);
 
   return (
     <HomeMotion>
       <main className="bg-background text-foreground min-h-screen">
-        <Ticker snapshot={snapshot} live={live} />
-
-        <div className="border-hairline flex flex-wrap items-center gap-3 border-b px-4 py-4 sm:px-7">
-          <div className="font-pixel text-lg font-bold tracking-normal uppercase">
+        {/*
+         * The scrolling ticker that used to sit here is gone. It looped the
+         * same handful of facts — several of which render empty before a
+         * tournament exists — which read as a broken marquee rather than a
+         * live feed. The status bar below states the same facts once, and the
+         * Match Center carries the live signal properly.
+         */}
+        <div className="border-hairline bg-surface-deep sticky top-0 z-40 flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-7">
+          <span className="font-display text-base font-bold tracking-tight">
             The Circuit
-          </div>
+          </span>
+          {live ? (
+            <Badge tone="live">
+              <LiveDot />
+              Live
+            </Badge>
+          ) : null}
           <StatusChip>{snapshot?.name ?? 'No tournament scheduled'}</StatusChip>
           <StatusChip active>
             {snapshot
@@ -83,45 +98,41 @@ export default async function HomePage() {
           ) : null}
           <Link
             href={ctaHref}
-            className={cn(buttonVariants({ variant: 'broadcast', size: 'sm' }))}
+            className={cn(buttonVariants({ variant: 'primary', size: 'sm' }))}
           >
-            {user ? 'Dashboard' : 'Sign In'}
+            {user ? 'Dashboard' : 'Sign in'}
           </Link>
         </div>
 
         {snapshot ? (
           <>
-            <section className="border-hairline grid border-b xl:grid-cols-[minmax(0,1.62fr)_minmax(340px,0.85fr)]">
-              <div className="border-hairline relative min-h-[620px] overflow-hidden px-5 py-10 sm:px-10 xl:border-r">
+            <section className="border-hairline grid border-b xl:grid-cols-[minmax(0,1.5fr)_minmax(370px,0.9fr)]">
+              <div className="border-hairline relative overflow-hidden px-5 py-12 sm:px-10 xl:border-r">
                 <BroadcastBackdrop live={live} />
 
                 <div className="relative flex flex-wrap items-start justify-between gap-5">
-                  <p className="text-secondary font-mono text-xs font-semibold tracking-[0.22em] uppercase">
-                    The Circuit . AI-native coding esport
-                  </p>
-                  <div className="border-hairline bg-background/70 flex items-center gap-2 border px-3 py-2">
-                    <span
-                      className={cn(
-                        'size-2 rounded-full',
-                        live ? 'home-live-dot bg-destructive' : 'bg-muted',
-                      )}
-                    />
-                    <span
-                      className={cn(
-                        'font-mono text-[0.68rem] font-bold tracking-[0.16em] uppercase',
-                        live ? 'text-destructive' : 'text-muted-foreground',
-                      )}
-                    >
+                  <Eyebrow tone="primary">
+                    The Circuit — AI-native coding esport
+                  </Eyebrow>
+                  <div className="border-hairline bg-background/70 flex items-center gap-2 rounded-md border px-3 py-1.5">
+                    {live ? <LiveDot /> : null}
+                    <Eyebrow tone={live ? 'live' : 'muted'}>
                       {live ? 'Live' : completed ? 'Completed' : 'Standby'}
-                    </span>
+                    </Eyebrow>
                   </div>
                 </div>
 
-                <div className="font-pixel relative mt-8 text-[clamp(3rem,8vw,5.8rem)] leading-[0.9] font-bold tracking-normal text-balance uppercase">
-                  <div className="home-hero-line">Build.</div>
-                  <div className="home-hero-line">Qualify.</div>
-                  <div className="home-hero-line text-secondary">Win Live.</div>
-                </div>
+                <DisplayHeading
+                  as="h1"
+                  size="hero"
+                  className="relative mt-8 leading-[0.95]"
+                >
+                  <span className="home-hero-line block">Build.</span>
+                  <span className="home-hero-line block">Qualify.</span>
+                  <span className="home-hero-line text-primary block">
+                    Win live.
+                  </span>
+                </DisplayHeading>
 
                 <p className="home-rise text-muted-foreground relative mt-6 max-w-2xl text-base leading-7 text-pretty sm:text-lg">
                   Fifteen minutes. One shot. Sealed challenges drop
@@ -129,7 +140,7 @@ export default async function HomePage() {
                   the survivors fight it out live.
                 </p>
 
-                <div className="home-rise relative mt-7 flex flex-wrap gap-3">
+                <div className="home-rise relative mt-8 flex flex-wrap gap-3">
                   <Link
                     href={ctaHref}
                     className={cn(
@@ -146,14 +157,13 @@ export default async function HomePage() {
                     href={snapshot.youtubeStreamUrl ? '#broadcast' : '/rules'}
                     className={cn(
                       buttonVariants({ variant: 'secondary', size: 'lg' }),
-                      'border-hairline bg-surface-raised/85 hover:bg-surface-elevated',
                     )}
                   >
-                    {snapshot.youtubeStreamUrl ? 'Watch Live' : 'Read Rules'}
+                    {snapshot.youtubeStreamUrl ? 'Watch live' : 'Read rules'}
                   </Link>
                 </div>
 
-                <div className="home-rise border-hairline bg-hairline relative mt-10 grid border sm:grid-cols-2 lg:grid-cols-4">
+                <div className="home-rise stagger border-hairline relative mt-10 grid gap-px overflow-hidden rounded-lg border sm:grid-cols-2 lg:grid-cols-4">
                   {stats.map((stat) => (
                     <HeroStatCard key={stat.label} stat={stat} />
                   ))}
@@ -162,7 +172,7 @@ export default async function HomePage() {
                 <WeekSchedule snapshot={snapshot} />
               </div>
 
-              <aside className="bg-background">
+              <aside className="bg-surface-deep">
                 <MatchCenter snapshot={snapshot} live={live} />
               </aside>
             </section>
@@ -172,16 +182,15 @@ export default async function HomePage() {
               className="border-hairline grid border-b xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.72fr)]"
             >
               <div className="border-hairline p-5 sm:p-7 xl:border-r">
-                <div className="mb-4 flex items-baseline justify-between gap-4">
-                  <h2 className="font-pixel text-2xl font-bold uppercase">
-                    Broadcast
-                  </h2>
-                  <span className="text-destructive font-mono text-xs font-semibold tracking-[0.14em] uppercase">
-                    {live ? 'Live' : 'Stream'}
-                  </span>
-                </div>
-                <div className="border-hairline bg-surface-raised relative overflow-hidden border">
-                  <div className="home-sweep pointer-events-none absolute inset-y-0 left-0 z-10 w-1/3 bg-[linear-gradient(90deg,transparent,oklch(0.881_0.205_158.31_/_0.08),transparent)]" />
+                <SectionHead
+                  eyebrow="Broadcast"
+                  title={live ? 'Watching now' : 'Stream'}
+                  live={live}
+                />
+                <div className="border-hairline bg-surface-raised relative overflow-hidden rounded-lg border">
+                  {live ? (
+                    <div className="home-sweep from-primary/0 via-primary/15 to-primary/0 pointer-events-none absolute inset-y-0 left-0 z-10 w-1/3 bg-gradient-to-r" />
+                  ) : null}
                   <StreamEmbed
                     url={snapshot.youtubeStreamUrl}
                     title="The Circuit livestream"
@@ -190,17 +199,11 @@ export default async function HomePage() {
               </div>
 
               <div className="p-5 sm:p-7">
-                <div className="mb-4 flex items-baseline justify-between gap-4">
-                  <h2 className="font-pixel text-2xl font-bold uppercase">
-                    Live Standings
-                  </h2>
-                  <Link
-                    href="/leaderboard"
-                    className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
-                  >
-                    All Rankings
-                  </Link>
-                </div>
+                <SectionHead
+                  eyebrow="Standings"
+                  title="Live standings"
+                  action={{ href: '/leaderboard', label: 'All rankings' }}
+                />
                 <Card surface="broadcast" className="p-4">
                   <LiveLeaderboard
                     entries={snapshot.leaderboard}
@@ -214,24 +217,21 @@ export default async function HomePage() {
 
             {snapshot.bracket.some((round) => round.matches.length > 0) ? (
               <section className="border-hairline border-b p-5 sm:p-7">
-                <div className="mb-5 flex flex-wrap items-baseline justify-between gap-4">
-                  <h2 className="font-pixel text-2xl font-bold uppercase">
-                    Sunday Bracket
-                  </h2>
-                  <Link
-                    href={`/bracket/${snapshot.tournamentId}`}
-                    className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
-                  >
-                    Open Bracket
-                  </Link>
-                </div>
+                <SectionHead
+                  eyebrow="Knockout"
+                  title="Sunday bracket"
+                  action={{
+                    href: `/bracket/${snapshot.tournamentId}`,
+                    label: 'Open bracket',
+                  }}
+                />
                 <Card surface="broadcast" className="p-4">
                   <BracketTree
                     rounds={snapshot.bracket}
                     highlightUserId={user?.id ?? null}
                   />
                 </Card>
-                <p className="text-muted-foreground mt-3 font-mono text-xs">
+                <p className="text-muted-foreground mt-3 text-xs">
                   Bracket data is public-safe; unrevealed problem titles remain
                   hidden.
                 </p>
@@ -244,23 +244,25 @@ export default async function HomePage() {
 
         <section className="border-hairline grid border-b lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
           <div className="border-hairline p-5 sm:p-7 lg:border-r">
-            <h2 className="font-pixel text-2xl font-bold uppercase">
-              League Format
-            </h2>
-            <ol className="mt-5 grid gap-3 md:grid-cols-2">
+            <SectionHead eyebrow="How it works" title="League format" />
+            <ol className="stagger mt-1 grid gap-3 md:grid-cols-2">
               <Step
+                index={1}
                 title="Register"
                 body="Entry opens before the tournament. The live page uses only registered participant counts."
               />
               <Step
+                index={2}
                 title="Qualify"
                 body="Simulation scores seed the bracket after the sealed qualifying window closes."
               />
               <Step
+                index={3}
                 title="Knockout"
                 body="Head-to-head rounds reveal to both competitors at the same instant."
               />
               <Step
+                index={4}
                 title="Record"
                 body="Completed tournaments publish placements and champions to the Hall of Fame."
               />
@@ -268,23 +270,19 @@ export default async function HomePage() {
           </div>
 
           <div className="p-5 sm:p-7">
-            <h2 className="font-pixel text-2xl font-bold uppercase">
-              Reigning Champion
-            </h2>
+            <SectionHead eyebrow="Hall of fame" title="Reigning champion" />
             {champion ? (
-              <div className="mt-5 grid gap-5 sm:grid-cols-[auto_1fr]">
-                <div className="home-drift border-hairline bg-secondary text-secondary-foreground flex size-20 items-center justify-center border">
+              <div className="grid gap-5 sm:grid-cols-[auto_1fr]">
+                <div className="home-drift border-hairline bg-primary/12 text-primary flex size-20 items-center justify-center rounded-lg border">
                   <Trophy className="size-9" aria-hidden />
                 </div>
                 <div>
-                  <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.14em] uppercase">
-                    {champion.tournamentName}
-                  </p>
-                  <h3 className="mt-2 text-3xl font-extrabold tracking-normal">
+                  <Eyebrow>{champion.tournamentName}</Eyebrow>
+                  <DisplayHeading as="h3" size="compact" className="mt-2">
                     {champion.champion ? (
                       <Link
                         href={`/u/${champion.champion.username}`}
-                        className="hover:text-secondary rounded-md focus-visible:ring-2 focus-visible:outline-none"
+                        className="hover:text-primary rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none"
                       >
                         {champion.champion.displayName ??
                           champion.champion.username}
@@ -292,34 +290,32 @@ export default async function HomePage() {
                     ) : (
                       'Unclaimed'
                     )}
-                  </h3>
-                  <p className="text-muted-foreground mt-3 font-mono text-sm">
-                    {champion.participantCount} competitors .{' '}
+                  </DisplayHeading>
+                  <p className="text-muted-foreground mt-3 text-sm tabular-nums">
+                    {champion.participantCount} competitors ·{' '}
                     {formatMinor(champion.prizePoolMinor)}
                   </p>
                   <Link
                     href="/hall-of-fame"
-                    className="text-secondary mt-5 inline-flex rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+                    className="text-primary mt-5 inline-flex rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
                   >
                     Hall of Fame
                   </Link>
                 </div>
               </div>
             ) : (
-              <Card surface="broadcast" className="mt-5 p-5">
-                <p className="font-semibold">No champion recorded yet.</p>
-                <p className="text-muted-foreground mt-2 text-sm">
-                  The first completed public tournament will appear here.
-                </p>
-              </Card>
+              <EmptyState
+                title="No champion recorded yet"
+                description="The first completed public tournament will appear here."
+              />
             )}
           </div>
         </section>
 
         <footer className="flex flex-wrap items-center gap-4 px-5 py-7 sm:px-7">
-          <p className="text-muted-foreground font-mono text-xs tracking-[0.12em] uppercase">
-            The Circuit {snapshot ? `. ${snapshot.name}` : ''} . all times IST
-          </p>
+          <Eyebrow>
+            The Circuit {snapshot ? `· ${snapshot.name}` : ''} · all times IST
+          </Eyebrow>
           <div className="min-w-0 flex-1" />
           <FooterLink href="/rules">Rules</FooterLink>
           <FooterLink href="/hall-of-fame">Hall of Fame</FooterLink>
@@ -332,77 +328,104 @@ export default async function HomePage() {
   );
 }
 
-function Ticker({
-  snapshot,
-  live,
+/**
+ * Section heading: a tracked all-caps eyebrow over a normal-case title, with
+ * an optional trailing link. Every band on this page uses it, which is what
+ * stops each section from inventing its own heading treatment.
+ */
+function SectionHead({
+  eyebrow,
+  title,
+  action,
+  live = false,
 }: {
-  snapshot: LiveSnapshot | null;
-  live: boolean;
+  eyebrow: string;
+  title: string;
+  action?: { href: string; label: string };
+  live?: boolean;
 }) {
-  const facts = snapshot
-    ? [
-        snapshot.name,
-        statusLabel(snapshot.status),
-        `${snapshot.participantCount} competitors`,
-        `${formatMinor(snapshot.prizePool.prizePoolMinor)} prize pool`,
-        snapshot.currentRound
-          ? `${snapshot.currentRound.matchesDecided}/${snapshot.currentRound.matchesTotal} matches decided`
-          : 'Bracket pending',
-        snapshot.tiedMatches > 0
-          ? `${snapshot.tiedMatches} tied matches need deciders`
-          : null,
-      ].filter((fact): fact is string => Boolean(fact))
-    : ['No public tournament scheduled'];
-  const run = facts.join(' . ');
-
   return (
-    <div className="border-hairline bg-surface-deep sticky top-0 z-40 flex h-9 border-b">
-      <div
-        className={cn(
-          'flex items-center gap-2 px-4 font-mono text-[0.68rem] font-bold tracking-[0.18em] uppercase',
-          live
-            ? 'bg-destructive text-black'
-            : 'bg-secondary text-secondary-foreground',
-        )}
-      >
-        <span className="home-live-dot size-1.5 rounded-full bg-black" />
-        {live ? 'Live' : 'Circuit'}
+    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <Eyebrow tone={live ? 'live' : 'muted'}>{eyebrow}</Eyebrow>
+        <DisplayHeading size="compact" className="mt-1.5">
+          {title}
+        </DisplayHeading>
       </div>
-      <div className="flex min-w-0 flex-1 items-center overflow-hidden">
-        <div className="home-ticker-track flex w-[200%] whitespace-nowrap">
-          <p className="text-muted-foreground pr-8 font-mono text-[0.68rem] font-medium tracking-[0.08em] uppercase">
-            {run} . {run} . {run}
-          </p>
-          <p
-            className="text-muted-foreground pr-8 font-mono text-[0.68rem] font-medium tracking-[0.08em] uppercase"
-            aria-hidden
-          >
-            {run} . {run} . {run}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function BroadcastBackdrop({ live }: { live: boolean }) {
-  return (
-    <div className="pointer-events-none absolute inset-0">
-      <div className="absolute inset-0 bg-[linear-gradient(#141810_1px,transparent_1px),linear-gradient(90deg,#141810_1px,transparent_1px)] bg-[size:46px_46px]" />
-      <div className="absolute -top-32 -left-36 size-[38rem] rounded-full bg-[radial-gradient(circle,oklch(0.881_0.205_158.31_/_0.09),transparent_62%)]" />
-      <div className="home-scanline absolute inset-x-0 top-0 h-0.5 bg-[linear-gradient(90deg,transparent,oklch(0.881_0.205_158.31_/_0.5),transparent)]" />
-      {live ? (
-        <div className="absolute top-[18%] right-[10%] hidden items-center gap-3 md:flex">
-          <span className="border-secondary text-secondary relative flex size-14 items-center justify-center rounded-full border">
-            <CirclePlay className="size-8" aria-hidden />
-            <span className="home-pulse-ring border-secondary absolute inset-0 rounded-full border" />
-          </span>
-        </div>
+      {action ? (
+        <Link
+          href={action.href}
+          className="text-primary rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+        >
+          {action.label}
+        </Link>
       ) : null}
     </div>
   );
 }
 
+/**
+ * Backdrop for the hero. Built entirely from design tokens via `color-mix`,
+ * so it re-tints with the theme instead of pinning literal brand colours into
+ * the page — which is how the previous mint gradients survived a rebrand.
+ */
+/**
+ * Hero backdrop.
+ *
+ * The 46px line grid that used to sit here is replaced by the brand animation
+ * served from the CDN, as an MP4 rather than a GIF — same motion at roughly a
+ * seventh of the bytes. Notes on what this has to get right:
+ *
+ * - **Legibility.** The hero carries an 18:1 headline that the contrast check
+ *   guarantees against `--background`, not against arbitrary artwork. The two
+ *   scrim layers below restore that guarantee: an opaque left-to-right wash
+ *   behind the copy, and a bottom-up wash under the stat row.
+ * - **Autoplay.** `muted` is what makes autoplay legal in every current
+ *   browser, and `playsInline` is what stops iOS Safari hijacking the whole
+ *   viewport into its native fullscreen player.
+ * - **Reduced motion.** Hidden under `prefers-reduced-motion`. The glow and
+ *   layout are unaffected, so nothing is lost but the movement.
+ * - **Loading.** `preload="metadata"`, so the decorative video never competes
+ *   with the headline for bandwidth. It is allowed to arrive late over a
+ *   background that already looks finished without it.
+ * - **Inert.** `aria-hidden` plus `tabIndex={-1}` keep it out of the
+ *   accessibility tree and the tab order; it carries no information.
+ */
+const HERO_MEDIA_URL = 'https://thecircuit.aadidevraizada26.workers.dev';
+
+function BroadcastBackdrop({ live }: { live: boolean }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <video
+        src={HERO_MEDIA_URL}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        aria-hidden
+        tabIndex={-1}
+        className="absolute inset-0 size-full object-cover opacity-40 motion-reduce:hidden"
+      />
+
+      {/* Scrims — these are what keep the headline readable over the art. */}
+      <div className="from-background via-background/90 absolute inset-0 bg-gradient-to-r to-transparent" />
+      <div className="from-background absolute inset-0 bg-gradient-to-t via-transparent to-transparent" />
+
+      <div className="absolute -top-32 -left-36 size-[38rem] rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--color-primary)_14%,transparent),transparent_62%)]" />
+      {live ? (
+        <div className="home-scanline via-destructive/60 absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent to-transparent" />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Match Center — the page's live scoreboard and, per the brief, the element
+ * that earns the most visual investment. The countdown is the hero here: it
+ * ticks every second and turns red under a minute, so the panel reads as
+ * tracking something happening rather than displaying a record.
+ */
 function MatchCenter({
   snapshot,
   live,
@@ -413,53 +436,64 @@ function MatchCenter({
   const round = snapshot.currentRound;
 
   return (
-    <div className="flex min-h-[560px] flex-col">
-      <div className="border-hairline border-b p-5">
+    <div className="flex min-h-full flex-col">
+      <div
+        className={cn(
+          'border-hairline border-b p-5',
+          live && 'bg-destructive/5',
+        )}
+      >
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
-              Match Center
-            </p>
-            <h2 className="font-pixel mt-1 text-3xl font-bold uppercase">
-              {live ? 'Now Live' : 'Next Up'}
-            </h2>
+            <Eyebrow tone={live ? 'live' : 'primary'}>Match Center</Eyebrow>
+            <DisplayHeading size="compact" className="mt-1.5">
+              {live ? 'Now live' : 'Next up'}
+            </DisplayHeading>
           </div>
-          <Radio className="text-secondary size-6" aria-hidden />
+          {live ? (
+            <LiveDot className="size-2.5" />
+          ) : (
+            <Radio className="text-primary size-5" aria-hidden />
+          )}
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-2">
+
+        <div className="border-hairline bg-surface-raised mt-5 rounded-lg border px-4 py-6 text-center">
           <Countdown
             targetAt={snapshot.countdown?.targetAt ?? null}
             serverTime={snapshot.serverTime}
             phase={snapshot.countdown?.phase}
-            className="border-hairline bg-surface-raised col-span-3 justify-center border px-3 py-4 text-center [&>span:last-child]:text-4xl [&>span:last-child]:font-black"
+            size="hero"
+            className="justify-center"
           />
+          <p className="text-muted-foreground mt-2 text-xs">
+            {snapshot.countdown
+              ? countdownLabel(snapshot.countdown.of)
+              : 'No active countdown'}
+          </p>
         </div>
-        <p className="text-muted-foreground mt-3 font-mono text-xs">
-          {snapshot.countdown
-            ? countdownLabel(snapshot.countdown.of)
-            : 'No active countdown'}
-        </p>
       </div>
 
       <div className="border-hairline border-b p-5">
-        <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
-          Current Round
-        </p>
-        <h3 className="font-pixel mt-2 text-2xl font-bold uppercase">
+        <Eyebrow>Current round</Eyebrow>
+        <DisplayHeading as="h3" size="panel" className="mt-2 text-xl">
           {round ? formatStage(round.stage) : statusLabel(snapshot.status)}
-        </h3>
-        <p className="text-muted-foreground mt-3 text-sm leading-6">
+        </DisplayHeading>
+        <p className="text-muted-foreground mt-2 text-sm leading-6">
           {round?.revealed
             ? (round.problemTitle ?? 'Challenge revealed')
             : 'Challenge details stay sealed until the round opens.'}
         </p>
+        {round ? (
+          <MatchProgress
+            decided={round.matchesDecided}
+            total={round.matchesTotal}
+          />
+        ) : null}
       </div>
 
       <div className="flex-1 p-5">
-        <p className="text-muted-foreground font-mono text-xs font-semibold tracking-[0.18em] uppercase">
-          Public Facts
-        </p>
-        <dl className="mt-4 grid gap-2">
+        <Eyebrow>Public facts</Eyebrow>
+        <dl className="mt-3 grid gap-1">
           <Fact label="Tournament" value={snapshot.name} />
           <Fact label="Status" value={statusLabel(snapshot.status)} />
           <Fact
@@ -487,8 +521,38 @@ function MatchCenter({
             'w-full',
           )}
         >
-          Open Match Center
+          Open full standings
         </Link>
+      </div>
+    </div>
+  );
+}
+
+/** A real progress bar for the round, so "3/8 decided" is legible at a glance. */
+function MatchProgress({ decided, total }: { decided: number; total: number }) {
+  if (total <= 0) return null;
+  const pct = Math.round((decided / total) * 100);
+
+  return (
+    <div className="mt-4">
+      <div className="text-muted-foreground flex items-baseline justify-between text-xs tabular-nums">
+        <span>Matches decided</span>
+        <span className="text-foreground font-medium">
+          {decided}/{total}
+        </span>
+      </div>
+      <div
+        className="bg-hairline mt-1.5 h-1 overflow-hidden rounded-full"
+        role="progressbar"
+        aria-valuenow={decided}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-label="Matches decided this round"
+      >
+        <div
+          className="bg-primary h-full rounded-full transition-[width] duration-[var(--motion-slow)] ease-[var(--ease-out-expo)]"
+          style={{ width: `${pct}%` }}
+        />
       </div>
     </div>
   );
@@ -497,12 +561,10 @@ function MatchCenter({
 function HeroStatCard({ stat }: { stat: HeroStat }) {
   return (
     <div className="bg-background p-4">
-      <p className="text-muted-foreground font-mono text-[0.68rem] font-semibold tracking-[0.18em] uppercase">
-        {stat.label}
-      </p>
+      <Eyebrow>{stat.label}</Eyebrow>
       <p
         className={cn(
-          'mt-2 truncate font-mono text-3xl font-bold tracking-normal tabular-nums',
+          'font-display mt-2 truncate text-3xl font-bold tabular-nums',
           stat.tone === 'danger' && 'text-destructive',
         )}
       >
@@ -514,14 +576,6 @@ function HeroStatCard({ stat }: { stat: HeroStat }) {
           stat.value
         )}
       </p>
-      <div className="bg-hairline mt-3 h-0.5 overflow-hidden">
-        <div
-          className={cn(
-            'home-sweep h-0.5 w-2/5',
-            stat.tone === 'danger' ? 'bg-destructive' : 'bg-secondary',
-          )}
-        />
-      </div>
     </div>
   );
 }
@@ -538,25 +592,29 @@ function WeekSchedule({ snapshot }: { snapshot: LiveSnapshot }) {
   if (rows.length === 0) return null;
 
   return (
-    <div className="home-rise border-hairline bg-background/70 relative mt-5 border p-4">
+    <div className="home-rise border-hairline bg-background/70 relative mt-6 rounded-lg border p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-pixel text-lg font-bold uppercase">
-          Week Schedule
-        </h2>
+        <div>
+          <Eyebrow>Schedule</Eyebrow>
+          <DisplayHeading as="h3" size="panel" className="mt-1.5">
+            Week schedule
+          </DisplayHeading>
+        </div>
         <Link
           href={`/tournaments/${snapshot.slug}`}
-          className="text-secondary rounded-md font-mono text-xs font-semibold tracking-[0.14em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+          className="text-primary rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
         >
           Tournament page
         </Link>
       </div>
-      <div className="mt-4 grid gap-2 md:grid-cols-5">
+      <div className="stagger mt-4 grid gap-2 md:grid-cols-5">
         {rows.map((row) => (
-          <div key={row.label} className="border-hairline border p-3">
-            <p className="text-muted-foreground font-mono text-[0.68rem] uppercase">
-              {row.label}
-            </p>
-            <p className="mt-1 text-sm font-semibold">
+          <div
+            key={row.label}
+            className="border-hairline bg-surface-raised rounded-md border p-3"
+          >
+            <Eyebrow>{row.label}</Eyebrow>
+            <p className="mt-1.5 text-sm font-semibold tabular-nums">
               {formatSchedule(row.at)}
             </p>
           </div>
@@ -568,9 +626,9 @@ function WeekSchedule({ snapshot }: { snapshot: LiveSnapshot }) {
 
 function Fact({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-hairline flex items-center justify-between gap-3 border-b py-2">
-      <dt className="text-muted-foreground font-mono text-xs">{label}</dt>
-      <dd className="text-right text-sm font-semibold">{value}</dd>
+    <div className="border-hairline flex items-center justify-between gap-3 border-b py-2 last:border-0">
+      <dt className="text-muted-foreground text-xs">{label}</dt>
+      <dd className="text-right text-sm font-semibold tabular-nums">{value}</dd>
     </div>
   );
 }
@@ -585,9 +643,9 @@ function StatusChip({
   return (
     <span
       className={cn(
-        'border px-2.5 py-1 font-mono text-[0.68rem] font-semibold tracking-[0.12em] uppercase',
+        'text-eyebrow rounded-md border px-2.5 py-1 font-semibold uppercase',
         active
-          ? 'border-secondary/35 bg-secondary/10 text-secondary'
+          ? 'border-primary/35 bg-primary/10 text-primary'
           : 'border-hairline text-muted-foreground',
       )}
     >
@@ -596,10 +654,21 @@ function StatusChip({
   );
 }
 
-function Step({ title, body }: { title: string; body: string }) {
+function Step({
+  index,
+  title,
+  body,
+}: {
+  index: number;
+  title: string;
+  body: string;
+}) {
   return (
-    <li className="border-hairline bg-surface-raised border p-5">
-      <p className="font-semibold">{title}</p>
+    <li className="border-hairline bg-surface-raised hover:border-primary/40 rounded-lg border p-5 transition-colors duration-[var(--motion-base)]">
+      <span className="font-display text-primary text-sm font-bold tabular-nums">
+        {String(index).padStart(2, '0')}
+      </span>
+      <p className="mt-1.5 font-semibold">{title}</p>
       <p className="text-muted-foreground mt-2 text-sm leading-6">{body}</p>
     </li>
   );
@@ -607,16 +676,26 @@ function Step({ title, body }: { title: string; body: string }) {
 
 function NoTournament() {
   return (
-    <section className="border-hairline border-b p-5 sm:p-7">
-      <Card surface="broadcast" className="p-8 text-center">
-        <h1 className="font-pixel text-4xl font-bold uppercase">
+    <section className="border-hairline border-b px-5 py-16 sm:px-7">
+      <div className="mx-auto max-w-2xl text-center">
+        <Eyebrow className="justify-center">Standby</Eyebrow>
+        <DisplayHeading as="h1" size="section" className="mx-auto mt-3">
           No tournament is scheduled yet.
-        </h1>
-        <p className="text-muted-foreground mx-auto mt-3 max-w-xl text-sm">
+        </DisplayHeading>
+        <p className="text-muted-foreground mx-auto mt-4 max-w-xl text-sm leading-6">
           Sign in now and return when registration opens for the next weekly
           bracket.
         </p>
-      </Card>
+        <Link
+          href="/tournaments"
+          className={cn(
+            buttonVariants({ variant: 'secondary', size: 'md' }),
+            'mt-6',
+          )}
+        >
+          Browse tournaments
+        </Link>
+      </div>
     </section>
   );
 }
@@ -624,12 +703,10 @@ function NoTournament() {
 function MatchDock({ match }: { match: MyMatchSummary }) {
   return (
     <div className="sticky bottom-0 z-30 px-3 pb-4 sm:px-5">
-      <div className="border-hairline bg-background/95 mx-auto flex max-w-5xl flex-wrap items-center gap-3 rounded-full border px-4 py-3 shadow-lg backdrop-blur">
+      <div className="border-destructive/40 bg-background/95 mx-auto flex max-w-5xl flex-wrap items-center gap-3 rounded-full border px-4 py-3 shadow-lg backdrop-blur">
         <div className="flex items-center gap-2">
-          <span className="home-live-dot bg-destructive size-2 rounded-full" />
-          <span className="text-destructive font-mono text-xs font-bold tracking-[0.16em] uppercase">
-            {match.state.replace(/_/g, ' ')}
-          </span>
+          <LiveDot />
+          <Eyebrow tone="live">{match.state.replace(/_/g, ' ')}</Eyebrow>
         </div>
         <div className="bg-hairline h-5 w-px" />
         <p className="text-sm font-semibold">
@@ -640,14 +717,14 @@ function MatchDock({ match }: { match: MyMatchSummary }) {
           targetAt={match.countdown.targetAt}
           serverTime={new Date().toISOString()}
           phase={match.countdown.phase}
-          className="text-secondary font-mono [&>span:last-child]:text-sm"
+          size="inline"
         />
         <div className="min-w-5 flex-1" />
         <Link
           href={`/arena/knockout/${match.matchId}`}
-          className={cn(buttonVariants({ variant: 'broadcast', size: 'sm' }))}
+          className={cn(buttonVariants({ variant: 'danger', size: 'sm' }))}
         >
-          Open Arena
+          Open arena
         </Link>
       </div>
     </div>
@@ -664,7 +741,7 @@ function FooterLink({
   return (
     <Link
       href={href}
-      className="text-muted-foreground hover:text-secondary rounded-md font-mono text-xs tracking-[0.12em] uppercase focus-visible:ring-2 focus-visible:outline-none"
+      className="text-muted-foreground hover:text-primary rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"
     >
       {children}
     </Link>

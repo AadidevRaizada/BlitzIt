@@ -120,10 +120,12 @@ function LeaderboardRow({
     <tr
       className={cn(
         'border-border/60 border-b last:border-0',
-        mine &&
-          (broadcast
-            ? 'bg-secondary text-secondary-foreground'
-            : 'bg-primary/5'),
+        'hover:bg-primary/5 transition-colors duration-[var(--motion-fast)]',
+        // Your own row is marked with a tint and a rule rather than a solid
+        // blue slab: a fully inverted row fights the rest of the table for
+        // attention and makes the ranking harder to scan, which is the one
+        // thing a leaderboard must be good at.
+        mine && 'bg-primary/10 shadow-[inset_2px_0_0_0_var(--color-primary)]',
       )}
     >
       <td
@@ -139,20 +141,13 @@ function LeaderboardRow({
           href={`/u/${entry.username}`}
           className={cn(
             'font-medium hover:underline',
-            mine && broadcast
-              ? 'text-secondary-foreground'
-              : 'hover:text-primary',
+            mine ? 'text-foreground' : 'hover:text-primary',
           )}
         >
           {entry.displayName ?? entry.username}
         </Link>
         {mine ? (
-          <span
-            className={cn(
-              'ml-1.5 text-xs font-medium',
-              broadcast ? 'text-secondary-foreground' : 'text-primary',
-            )}
-          >
+          <span className={cn('ml-1.5 text-xs font-medium', 'text-primary')}>
             (you)
           </span>
         ) : null}

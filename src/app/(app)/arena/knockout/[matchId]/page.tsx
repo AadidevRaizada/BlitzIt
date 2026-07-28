@@ -90,7 +90,7 @@ export default async function KnockoutArenaPage({
           </div>
           <Link
             href={`/bracket/${arena.tournament.id}`}
-            className="text-primary hover:text-secondary focus-visible:ring-ring rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
+            className="text-primary focus-visible:ring-ring rounded-md text-sm font-semibold hover:brightness-125 focus-visible:ring-2 focus-visible:outline-none"
           >
             Full bracket
           </Link>
@@ -195,7 +195,7 @@ export default async function KnockoutArenaPage({
       ) : null}
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold tracking-wide uppercase">
+        <h2 className="text-eyebrow text-muted-foreground font-semibold uppercase">
           Challenge
         </h2>
         {arena.revealed && arena.problem ? (
@@ -221,7 +221,7 @@ export default async function KnockoutArenaPage({
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold tracking-wide uppercase">
+          <h2 className="text-eyebrow text-muted-foreground font-semibold uppercase">
             {existing ? 'Your entry' : 'Submit your entry'}
           </h2>
           <div className="flex items-center gap-2">

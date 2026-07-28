@@ -33,21 +33,10 @@ export function HomeMotion({ children }: { children: React.ReactNode }) {
           280,
         );
 
-      animate('.home-ticker-track', {
-        translateX: ['0%', '-50%'],
-        loop: true,
-        ease: 'linear',
-        duration: 38000,
-      });
-
-      animate('.home-live-dot', {
-        opacity: [1, 0.12],
-        loop: true,
-        alternate: true,
-        duration: 600,
-        ease: 'steps(1)',
-      });
-
+      // The ticker marquee and the blinking `.home-live-dot` used to be driven
+      // from here. The ticker is gone, and the live dot is now a CSS-animated
+      // component (`<LiveDot />`) so it pulses identically everywhere rather
+      // than only on this one page.
       animate('.home-sweep', {
         translateX: ['-120%', '420%'],
         loop: true,
@@ -60,14 +49,6 @@ export function HomeMotion({ children }: { children: React.ReactNode }) {
         loop: true,
         ease: 'linear',
         duration: 9000,
-      });
-
-      animate('.home-pulse-ring', {
-        scale: [0.9, 1.9],
-        opacity: [0.55, 0],
-        loop: true,
-        ease: 'out(3)',
-        duration: 2600,
       });
 
       animate('.home-drift', {

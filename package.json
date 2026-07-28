@@ -18,6 +18,7 @@
     "prisma:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "tsx prisma/seed.ts",
+    "verify:contrast": "tsx scripts/verify-contrast.ts",
     "verify:runner": "tsx --conditions=react-server scripts/verify-runner.ts",
     "verify:queue": "tsx --conditions=react-server scripts/verify-queue.ts",
     "verify:auth": "tsx --conditions=react-server scripts/verify-auth.ts",

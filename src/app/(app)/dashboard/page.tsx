@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Bell,
   CheckCircle2,
+  Circle,
   ClipboardList,
   FileText,
   Gauge,
@@ -19,13 +20,15 @@ import {
   type PublicTournamentCard,
 } from '@/server/modules/tournament';
 import { resolveMissionControl } from '@/server/modules/workspace';
-import { formatMinor } from '@/server/modules/notification';
 import { Countdown } from '@/components/features/countdown';
 import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { buttonVariants } from '@/components/ui/button';
 import { Card, StatCard } from '@/components/ui/card';
 import { PageHeader, SectionTitle } from '@/components/ui/page-header';
-import { EmptyState } from '@/components/ui/table';
+import { DisplayHeading } from '@/components/ui/display-heading';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Eyebrow } from '@/components/ui/eyebrow';
+import { EntryPrice, Reward } from '@/components/ui/reward';
 import { cn } from '@/lib/utils';
 
 export const metadata = { title: 'Dashboard - The Circuit' };
@@ -102,9 +105,9 @@ export default async function DashboardPage({
                 <Badge tone={ACTION_TONE[mission.nextAction.priority]}>
                   {mission.nextAction.kind.replace(/_/g, ' ').toLowerCase()}
                 </Badge>
-                <h2 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">
+                <DisplayHeading size="compact" className="mt-3">
                   {mission.nextAction.title}
-                </h2>
+                </DisplayHeading>
                 <p className="text-muted-foreground mt-2 text-sm leading-6">
                   {mission.nextAction.body}
                 </p>
@@ -121,47 +124,16 @@ export default async function DashboardPage({
             </div>
 
             <div className="border-hairline mt-6 border-t pt-5">
-              <p className="text-muted-foreground font-pixel text-xs tracking-wide uppercase">
-                {mission.countdown.label}
-              </p>
+              <Eyebrow>{mission.countdown.label}</Eyebrow>
               <Countdown
                 targetAt={mission.countdown.targetAt?.toISOString() ?? null}
                 serverTime={serverTime}
-                className="mt-1"
+                className="mt-1.5"
               />
             </div>
           </Card>
 
-          <Card className="p-5">
-            <SectionTitle>Readiness</SectionTitle>
-            {mission.checklist.length > 0 ? (
-              <ul className="mt-4 grid gap-2 text-sm">
-                {mission.checklist.map((item) => (
-                  <li
-                    key={item.key}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <span>{item.label}</span>
-                    <span className="inline-flex items-center gap-1">
-                      {item.complete ? (
-                        <CheckCircle2
-                          className="text-success size-4"
-                          aria-hidden
-                        />
-                      ) : null}
-                      <Badge tone={item.complete ? 'success' : 'neutral'}>
-                        {item.complete ? 'Done' : 'Open'}
-                      </Badge>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-muted-foreground mt-3 text-sm">
-                Register for a tournament to unlock the readiness checklist.
-              </p>
-            )}
-          </Card>
+          <ReadinessCard checklist={mission.checklist} />
 
           <OverviewGrid
             tournament={mission.tournament}
@@ -188,6 +160,101 @@ export default async function DashboardPage({
   );
 }
 
+/**
+ * The readiness checklist — kept as a mechanic, refined visually.
+ *
+ * The change that matters is the progress summary at the top: the old version
+ * was a flat list of pills, so "how close am I to being able to compete?"
+ * needed counting. Now the answer is one line and one bar, and the remaining
+ * open items are the only rows carrying any colour.
+ */
+function ReadinessCard({
+  checklist,
+}: {
+  checklist: ReturnType<typeof resolveMissionControl>['checklist'];
+}) {
+  const done = checklist.filter((item) => item.complete).length;
+  const total = checklist.length;
+  const ready = total > 0 && done === total;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-baseline justify-between gap-3">
+        <SectionTitle>Readiness</SectionTitle>
+        {total > 0 ? (
+          <span
+            className={cn(
+              'font-display text-sm font-bold tabular-nums',
+              ready ? 'text-success' : 'text-muted-foreground',
+            )}
+          >
+            {done}/{total}
+          </span>
+        ) : null}
+      </div>
+
+      {total > 0 ? (
+        <>
+          <div
+            className="bg-muted mt-3 h-1 overflow-hidden rounded-full"
+            role="progressbar"
+            aria-valuenow={done}
+            aria-valuemin={0}
+            aria-valuemax={total}
+            aria-label="Readiness checklist progress"
+          >
+            <div
+              className={cn(
+                'h-full rounded-full transition-[width] duration-[var(--motion-slow)] ease-[var(--ease-out-expo)]',
+                ready ? 'bg-success' : 'bg-primary',
+              )}
+              style={{ width: `${Math.round((done / total) * 100)}%` }}
+            />
+          </div>
+
+          <ul className="mt-4 grid gap-1 text-sm">
+            {checklist.map((item) => (
+              <li
+                key={item.key}
+                className={cn(
+                  'flex items-center justify-between gap-3 rounded-md px-2 py-1.5',
+                  'transition-colors duration-[var(--motion-fast)]',
+                  // Only the outstanding items get a lift; completed rows
+                  // recede so the eye lands on what is left to do.
+                  item.complete ? 'text-muted-foreground' : 'bg-primary/5',
+                )}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {item.complete ? (
+                    <CheckCircle2
+                      className="text-success size-4 shrink-0"
+                      aria-hidden
+                    />
+                  ) : (
+                    <Circle
+                      className="text-muted-foreground size-4 shrink-0"
+                      aria-hidden
+                    />
+                  )}
+                  {item.label}
+                </span>
+                <Badge tone={item.complete ? 'success' : 'active'}>
+                  {item.complete ? 'Done' : 'Open'}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <EmptyState
+          title="Checklist locked"
+          description="Register for a tournament to unlock the readiness checklist."
+        />
+      )}
+    </Card>
+  );
+}
+
 function OverviewGrid({
   tournament,
   state,
@@ -195,17 +262,33 @@ function OverviewGrid({
   tournament: PublicTournamentCard;
   state: MyTournamentState | null;
 }) {
+  const live =
+    tournament.status === 'SIMULATION' || tournament.status === 'LIVE';
+  const eliminated = Boolean(state?.eliminatedAtStage);
+  const paid = state?.payment?.status === 'PAID';
+
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:col-span-2 lg:grid-cols-4">
+    // A single bordered board rather than four floating boxes: one outer
+    // border, hairline dividers between cells. The four numbers belong to the
+    // same story, so they should look like one instrument panel.
+    <div className="border-border bg-hairline grid gap-px overflow-hidden rounded-lg border sm:grid-cols-2 lg:col-span-2 lg:grid-cols-4">
       <StatCard
         label="Current tournament"
         value={tournament.name}
         hint={formatState(tournament.status)}
+        tone={live ? 'live' : 'default'}
+        className="rounded-none border-0"
       />
       <StatCard
         label="Prize pool"
-        value={formatMinor(tournament.prizePool.prizePoolMinor)}
+        value={
+          <Reward
+            amountMinor={tournament.prizePool.prizePoolMinor}
+            currency={tournament.currency}
+          />
+        }
         hint={`${tournament.prizePool.paidEntries} eligible entries`}
+        className="rounded-none border-0"
       />
       <StatCard
         label="Standing"
@@ -216,22 +299,31 @@ function OverviewGrid({
               ? `seed #${state.seed}`
               : 'pending'
         }
+        tone={eliminated ? 'live' : state?.qualified ? 'success' : 'default'}
         hint={
-          state?.eliminatedAtStage
-            ? `out / ${formatState(state.eliminatedAtStage)}`
+          eliminated
+            ? `out / ${formatState(state?.eliminatedAtStage ?? '')}`
             : state?.qualified
               ? 'qualified'
               : 'not seeded'
         }
+        className="rounded-none border-0"
       />
       <StatCard
         label="Payment"
         value={state?.payment?.status.toLowerCase() ?? 'free'}
+        tone={paid ? 'success' : 'default'}
         hint={
-          state?.payment
-            ? formatMinor(state.payment.amountMinor)
-            : 'no paid order'
+          state?.payment ? (
+            <EntryPrice
+              amountMinor={state.payment.amountMinor}
+              currency={tournament.currency}
+            />
+          ) : (
+            'no paid order'
+          )
         }
+        className="rounded-none border-0"
       />
     </div>
   );

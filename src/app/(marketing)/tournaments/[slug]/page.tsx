@@ -55,7 +55,7 @@ export default async function TournamentPage({
             <Badge tone={tournament.status === 'LIVE' ? 'live' : 'info'}>
               {formatStage(tournament.status)}
             </Badge>
-            <h1 className="font-pixel mt-4 text-4xl font-bold tracking-normal uppercase sm:text-6xl">
+            <h1 className="font-display mt-4 text-4xl font-bold sm:text-6xl">
               {tournament.name}
             </h1>
             <p className="text-muted-foreground mt-4 max-w-2xl text-sm leading-6">
@@ -244,9 +244,7 @@ export default async function TournamentPage({
 
         <aside className="space-y-5 lg:sticky lg:top-20 lg:self-start">
           <Card surface="broadcast" className="p-5">
-            <h2 className="font-pixel text-2xl font-bold uppercase">
-              Register
-            </h2>
+            <h2 className="font-display text-2xl font-bold">Register</h2>
             <div className="mt-4">
               <RegisterControl
                 tournamentId={tournament.id}
@@ -284,7 +282,7 @@ export default async function TournamentPage({
               </ul>
               <Link
                 href="/settings"
-                className="text-secondary mt-4 inline-flex text-sm underline"
+                className="text-primary mt-4 inline-flex text-sm underline"
               >
                 Edit profile
               </Link>
@@ -305,7 +303,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className="font-pixel text-2xl font-bold uppercase">{title}</h2>
+      <h2 className="font-display text-2xl font-bold">{title}</h2>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -323,7 +321,7 @@ function Info({ label, value }: { label: string; value: string }) {
 function TimelineRow({ label, date }: { label: string; date: Date | null }) {
   return (
     <div className="border-hairline flex items-center gap-3 border p-3">
-      <CalendarDays className="text-secondary size-4" aria-hidden />
+      <CalendarDays className="text-primary size-4" aria-hidden />
       <div>
         <p className="text-sm font-medium">{label}</p>
         <p className="text-muted-foreground text-xs">
@@ -337,10 +335,7 @@ function TimelineRow({ label, date }: { label: string; date: Date | null }) {
 function Rule({ children }: { children: React.ReactNode }) {
   return (
     <li className="flex gap-3">
-      <CheckCircle2
-        className="text-secondary mt-1 size-4 shrink-0"
-        aria-hidden
-      />
+      <CheckCircle2 className="text-primary mt-1 size-4 shrink-0" aria-hidden />
       <span>{children}</span>
     </li>
   );

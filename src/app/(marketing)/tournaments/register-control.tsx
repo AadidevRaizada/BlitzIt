@@ -272,15 +272,15 @@ export function RegisterControl({
           I accept the tournament rules, sealed reveal timing, evaluation
           policy, terms, privacy policy, and refund policy.
           <span className="mt-1 block">
-            <Link href="/terms" className="text-secondary underline">
+            <Link href="/terms" className="text-primary underline">
               Terms
             </Link>
             {' · '}
-            <Link href="/privacy" className="text-secondary underline">
+            <Link href="/privacy" className="text-primary underline">
               Privacy
             </Link>
             {' · '}
-            <Link href="/refunds" className="text-secondary underline">
+            <Link href="/refunds" className="text-primary underline">
               Refunds
             </Link>
           </span>
@@ -289,7 +289,7 @@ export function RegisterControl({
 
       {step === 'payment' ? (
         <div className="border-hairline flex items-center gap-3 border p-3 text-sm">
-          <CreditCard className="text-secondary size-5" aria-hidden />
+          <CreditCard className="text-primary size-5" aria-hidden />
           <div>
             <p className="font-medium">
               {paidEntry

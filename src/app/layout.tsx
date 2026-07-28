@@ -1,16 +1,28 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Inter, Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { PostHogProvider } from '@/components/providers/posthog-provider';
 import { Toaster } from '@/components/ui/sonner';
 
-// Weights per docs/design-system.md §3. Exposed as --font-inter, which
-// globals.css maps into the Tailwind `--font-sans` stack.
+// Two families, max — see globals.css.
+//
+// Body/UI face. Exposed as --font-inter, which globals.css maps into the
+// Tailwind `--font-sans` stack.
 const inter = Inter({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700', '800'],
   variable: '--font-inter',
+  display: 'swap',
+});
+
+// Display face for headlines, scores and timers. Geometric and
+// monospace-adjacent, with tabular figures so numbers do not jitter as they
+// tick. Self-hosted by next/font, so there is no third-party font request.
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['500', '600', '700'],
+  variable: '--font-space-grotesk',
   display: 'swap',
 });
 
@@ -25,7 +37,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body
+        className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}
+      >
         <ThemeProvider>
           <PostHogProvider>{children}</PostHogProvider>
           <Toaster />

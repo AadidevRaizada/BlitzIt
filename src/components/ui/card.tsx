@@ -1,28 +1,50 @@
 import { cn } from '@/lib/utils';
 
 /**
- * Card — design-system §8. `--card` surface, 1px border, `--radius-lg`,
- * padding 4–6. Elevation on hover only when the card is interactive.
+ * Card.
+ *
+ * A card must sit one visible elevation step off the page — a lighter fill
+ * plus a hairline, never a dashed outline. The old treatment was black-on-black
+ * with a border, so cards dissolved into the background and every surface read
+ * as flat.
+ *
+ * `emphasis` is how a list conveys priority without changing layout: a live
+ * tournament and a finished one are the same component, but they must not
+ * carry the same weight. `live` earns the red ring and glow; `muted` recedes.
  */
 export function Card({
   className,
   interactive = false,
   surface = 'default',
+  emphasis = 'default',
   ...props
 }: React.HTMLAttributes<HTMLDivElement> & {
   interactive?: boolean;
   surface?: 'default' | 'broadcast';
+  emphasis?: 'default' | 'live' | 'primary' | 'muted';
 }) {
   return (
     <div
       className={cn(
+        'rounded-lg border',
+        'transition-[background-color,border-color,box-shadow,transform]',
+        'duration-[var(--motion-base)] ease-[var(--ease-out-quart)]',
         surface === 'broadcast'
-          ? 'bg-surface-raised text-card-foreground border-hairline rounded-lg border'
-          : 'bg-card text-card-foreground border-border rounded-lg border',
+          ? 'bg-surface-raised text-card-foreground border-hairline'
+          : 'bg-card text-card-foreground border-border',
+
+        emphasis === 'live' &&
+          'border-destructive/45 shadow-[var(--glow-live)]',
+        emphasis === 'primary' && 'border-primary/45',
+        emphasis === 'muted' && 'bg-transparent opacity-75',
+
         interactive &&
-          (surface === 'broadcast'
-            ? 'focus-within:ring-ring hover:bg-surface-elevated transition-[background-color,transform] duration-200 focus-within:ring-2 motion-safe:hover:-translate-y-0.5'
-            : 'focus-within:ring-ring transition-shadow focus-within:ring-2 hover:shadow-sm'),
+          cn(
+            'focus-within:ring-ring focus-within:ring-2',
+            'hover:border-primary/40 hover:shadow-md',
+            surface === 'broadcast' && 'hover:bg-surface-elevated',
+            'motion-safe:hover:-translate-y-0.5',
+          ),
         className,
       )}
       {...props}
@@ -43,7 +65,10 @@ export function CardTitle({
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
     <h3
-      className={cn('leading-tight font-semibold tracking-tight', className)}
+      className={cn(
+        'font-display leading-tight font-semibold tracking-tight',
+        className,
+      )}
       {...props}
     />
   );
@@ -81,26 +106,48 @@ export function CardFooter({
 }
 
 /**
- * Stat card — label (caption, muted) over a tabular value, per §8. Tabular
- * numerals matter here: these sit in grids where digits must line up.
+ * Stat card — an eyebrow label over a big tabular number.
+ *
+ * Tabular figures are not cosmetic here: these sit in grids and several of
+ * them tick live, so proportional digits would make the whole row jitter on
+ * every update.
  */
 export function StatCard({
   label,
   value,
   hint,
+  tone = 'default',
   className,
 }: {
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  /** `live` tints the value red. Reserve it for a value that is moving. */
+  tone?: 'default' | 'live' | 'primary' | 'success';
   className?: string;
 }) {
   return (
     <div
-      className={cn('bg-card border-border rounded-lg border p-4', className)}
+      className={cn(
+        'bg-card border-border rounded-lg border p-4',
+        'transition-colors duration-[var(--motion-base)]',
+        tone === 'live' && 'border-destructive/40',
+        className,
+      )}
     >
-      <p className="text-muted-foreground text-xs font-medium">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="text-eyebrow text-muted-foreground font-semibold uppercase">
+        {label}
+      </p>
+      <p
+        className={cn(
+          'font-display mt-1.5 text-2xl font-bold tabular-nums',
+          tone === 'live' && 'text-destructive',
+          tone === 'primary' && 'text-primary',
+          tone === 'success' && 'text-success',
+        )}
+      >
+        {value}
+      </p>
       {hint ? (
         <p className="text-muted-foreground mt-0.5 text-xs">{hint}</p>
       ) : null}

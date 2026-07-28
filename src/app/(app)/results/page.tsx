@@ -33,7 +33,7 @@ export default async function ResultsPage() {
 
       {badges.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="text-sm font-semibold tracking-wide uppercase">
+          <h2 className="text-eyebrow text-muted-foreground font-semibold uppercase">
             Badges
           </h2>
           <ul className="flex flex-wrap gap-2">

@@ -40,7 +40,7 @@ export default async function SettingsPage() {
         </p>
         <a
           href="/api/me/export"
-          className="text-secondary inline-flex text-sm font-medium underline"
+          className="text-primary inline-flex text-sm font-medium underline"
         >
           Download my data
         </a>

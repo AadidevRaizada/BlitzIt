@@ -87,7 +87,7 @@ export function ProductNav({ user }: { user: ProductNavUser | null }) {
           className="border-hairline focus-visible:ring-ring flex h-20 items-center justify-center border-b px-3 focus-visible:ring-2 focus-visible:outline-none"
           aria-label="The Circuit home"
         >
-          <span className="bg-secondary text-secondary-foreground flex size-12 items-center justify-center rounded-md shadow-[var(--glow-live)]">
+          <span className="bg-primary text-primary-foreground flex size-12 items-center justify-center rounded-md shadow-[var(--glow-live)]">
             <Radio className="size-6" aria-hidden />
           </span>
         </Link>
@@ -103,7 +103,7 @@ export function ProductNav({ user }: { user: ProductNavUser | null }) {
         ) : (
           <Link
             href="/login?next=/dashboard"
-            className="font-pixel border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 border-t px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+            className="font-display border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 border-t px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
           >
             <UserRound className="size-6" aria-hidden />
             <span>Login</span>
@@ -120,7 +120,7 @@ export function ProductFooter() {
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-[116px]">
         <div>
           <div className="flex items-center gap-2 font-extrabold">
-            <Trophy className="text-secondary size-5" aria-hidden />
+            <Trophy className="text-primary size-5" aria-hidden />
             The Circuit
           </div>
           <p className="text-muted-foreground mt-3 max-w-xl text-sm">
@@ -150,7 +150,7 @@ function BrandMark() {
       href="/"
       className="focus-visible:ring-ring inline-flex items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none"
     >
-      <span className="bg-secondary text-secondary-foreground flex size-8 items-center justify-center rounded-md">
+      <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
         <Radio className="size-4" aria-hidden />
       </span>
       <span className="text-lg font-extrabold">The Circuit</span>
@@ -177,9 +177,13 @@ function PrimaryNavLink({
       href={item.href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'font-pixel text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring font-bold uppercase focus-visible:ring-2 focus-visible:outline-none',
+        'font-display text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring font-bold uppercase focus-visible:ring-2 focus-visible:outline-none',
+        'transition-colors duration-[var(--motion-fast)]',
+        // Active nav is blue, per the accent policy. The rule used to be
+        // `var(--secondary)`, which is now a neutral grey — it would have gone
+        // invisible in the rebrand.
         active &&
-          'bg-surface-raised text-foreground shadow-[inset_3px_0_0_var(--secondary)]',
+          'bg-surface-raised text-primary shadow-[inset_3px_0_0_var(--color-primary)]',
         compact
           ? 'inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 text-[0.68rem]'
           : 'flex min-h-18 flex-col items-center justify-center gap-2 px-2 text-center text-[0.68rem]',
@@ -214,7 +218,7 @@ function UserMenu({
     >
       <summary
         className={cn(
-          'font-pixel text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex cursor-pointer list-none items-center font-bold uppercase focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden',
+          'font-display text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex cursor-pointer list-none items-center font-bold uppercase focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden',
           active && 'bg-surface-raised text-foreground',
           mobile
             ? 'min-h-9 gap-2 rounded-md px-2 text-[0.68rem]'
@@ -224,7 +228,7 @@ function UserMenu({
         <span className="relative">
           <UserRound className={mobile ? 'size-4' : 'size-6'} aria-hidden />
           {user.unread > 0 ? (
-            <span className="bg-secondary text-secondary-foreground absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-black tabular-nums">
+            <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-black tabular-nums">
               {user.unread > 99 ? '99+' : user.unread}
             </span>
           ) : null}
@@ -263,7 +267,7 @@ function UserMenu({
               ) : null}
               {item.label}
               {item.href === '/notifications' && user.unread > 0 ? (
-                <span className="bg-secondary text-secondary-foreground rounded-full px-1.5 py-0.5 text-[10px] leading-none font-black tabular-nums">
+                <span className="bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 text-[10px] leading-none font-black tabular-nums">
                   {user.unread > 99 ? '99+' : user.unread}
                 </span>
               ) : null}

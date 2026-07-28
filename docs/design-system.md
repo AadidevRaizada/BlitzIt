@@ -21,7 +21,7 @@ The single most important rule in this document:
 | References | Broadcast/esports event sites led by countdowns, standings, brackets and live state | Linear, Raycast, GitHub, Stripe Dashboard, Vercel |
 | Motion | Expressive but content-first; every loop/reveal has a reduced-motion path | Functional only: state feedback, <=150ms |
 | Density | Banded, high-contrast, spectator-friendly | Dense but readable, compact controls |
-| Colour | Dark broadcast scope with Blitz It purple and live green accents | Accent reserved for action + state |
+| Colour | Near-black broadcast scope, electric blue primary, red reserved for live/urgent | Same palette, calmer: less glow, tighter elevation |
 
 Marketing is dark-first through `data-surface="broadcast"` on the `(marketing)` layout. It must not force `.dark`, because the authenticated app and admin theme switch remain independent. Broadcast tokens are additive: `--surface-deep`, `--surface-raised`, `--surface-elevated`, `--hairline`, `--glow-primary`, and `--glow-live`.
 
@@ -37,49 +37,85 @@ The app and admin registers remain dense productivity tools. Admin was signed of
 ## 2. Colour
 
 ### Brand
-| Token | Hex | OKLCH | Use |
+
+Near-black base, **electric blue** primary, **red** secondary. There is no violet/indigo and no
+mint green in this system; both were removed because they made the product read as a generic SaaS
+admin panel and made it visually indistinguishable from Gwava.
+
+| Role | Token | OKLCH | Use |
 |---|---|---|---|
-| Primary accent | `#7F5AF0` | `oklch(0.5873 0.2143 289.47)` | Primary actions, focus, brand |
-| Secondary accent | `#00FFA3` | `oklch(0.8810 0.2050 158.31)` | Success, live/active state, highlights |
-| Base | `#000000` / `#FFFFFF` | — | Foundation of both themes |
+| Primary accent | `--blue-500` (light) / `--blue-400` (dark) | `oklch(0.618 0.204 252)` / `oklch(0.702 0.176 250)` | Primary actions, links, focus, active nav, **live/active state** |
+| Secondary accent | `--red-500` / `--red-400` | `oklch(0.602 0.232 25)` / `oklch(0.682 0.203 25)` | **Earned urgency only** — countdown under pressure, knockout, elimination, live-now |
+| Base | `--base-1000` … `--base-600` | `oklch(0.118 0.006 265)` … | Near-black surface ramp (`#0A0A0C`–`#0D0D10` range) |
+| Text | `--ink-100 / -300 / -500` | — | Three steps of hierarchy on dark |
+| Status green | `--green-400` / `--green-600` | — | **Status only** ("a check passed"). Never brand, never decorative |
+| Status amber | `--amber-400` / `--amber-600` | — | Warning. Light surface takes the *dark* step (amber is a light hue) |
+
+**Red is the scarcest resource in this system.** If nothing is happening right now, nothing on the
+page should be red. A static red pill on a page where nothing is live is the fake-liveness problem
+the redesign exists to remove.
 
 ### Accessibility — verified, not assumed
-Measured WCAG contrast (see the token table before changing anything):
 
-| Pair | Ratio | Verdict |
-|---|---|---|
-| `#7F5AF0` + white text | **4.54** | ✅ AA text |
-| `#00FFA3` + **black** text | **15.83** | ✅ AA text |
-| `#00FFA3` + white text | 1.33 | ❌ **never do this** |
-| `#7F5AF0` on dark bg | 4.36 | ⚠️ UI/large only |
-| Dark-mode primary `#9E87FF` on dark bg | **6.94** | ✅ AA text |
-| Broadcast foreground on `--background` | **18.64** | AA text |
-| Broadcast muted foreground on `--background` | **9.57** | AA text |
-| Broadcast primary `oklch(0.70 0.18 289.47)` on `--background` | **7.22** | AA text |
-| `#00FFA3` on broadcast black | **15.58** | AA text |
+Contrast is **computed from the shipped token values**, not asserted in a comment. Run:
 
-**Two hard rules:**
-1. `--secondary-accent` **always** pairs with a black foreground.
-2. Dark mode lightens the primary to `oklch(0.70 0.18 289.47)` for text/icon use — the base
-   `#7F5AF0` is only AA-large on dark and must not carry body text there.
+```bash
+npm run verify:contrast
+```
 
-Every background token has a matching `-foreground` token. Never hand-pick a colour in a
-component; use a semantic pair.
+`scripts/verify-contrast.ts` converts each OKLCH token to sRGB, computes WCAG ratios for 23 pairs
+(body text, tinted badges, solid fills, focus rings, both surfaces) and exits non-zero if any pair
+drops below its floor — 4.5 for text, 3.0 for UI/large. All 23 currently pass. Changing a colour
+token without re-running this is how the last palette drifted out of compliance.
+
+**Hard rules:**
+1. Every background token has a matching `-foreground` token. Never hand-pick a colour in a
+   component; use a semantic pair.
+2. On the light (admin) surface, `--warning`, `--success` and `--destructive` resolve to the *dark*
+   step of their ramp so `text-warning` etc. stay legible on white. This is what lets a tinted
+   badge use one class on every surface.
 
 ### Semantic tokens
 `background · foreground · card · popover · primary · secondary · muted · accent · destructive ·
 success · warning · border · input · ring` — each with a `-foreground` counterpart where it can
 host content. Full values live in `globals.css`.
 
-**Surfaces (dark, the app's default feel):** `--background` `#0A0A0B` → `--card` slightly raised →
-`--popover` highest. Elevation comes from surface + border, not shadow.
+**Surfaces:** `--surface-deep` → `--background` → `--card` / `--surface-raised` →
+`--surface-elevated`. A card must sit **one visible step** off the page (lighter fill + hairline).
+Elevation comes from surface + border, not shadow — and never from a dashed outline.
 
 ---
 
 ## 3. Typography
 
-**Inter**, weights **400 / 500 / 600 / 700 / 800**. `font-feature-settings: 'cv11','ss01'` for
-disambiguated glyphs; tabular numerals (`tnum`) for scores, timers, leaderboards, prize amounts.
+**Two families, max.**
+
+| Family | Token | Role |
+|---|---|---|
+| **Space Grotesk** (500/600/700) | `--font-display` → `font-display` | Headlines, section titles, scores, timers, prize figures. Geometric and monospace-adjacent — this is where the energy lives. |
+| **Inter** (400–800) | `--font-sans` → `font-sans` | Body copy, form labels, table data, nav. This is where the professionalism lives. |
+
+Both are self-hosted through `next/font`; there is **no** third-party font request. The previous
+`@import url('https://fonts.googleapis.com/...')` for Pixelify Sans is gone, along with the pixel
+face itself — a game-jam display font was the single loudest signal that this was a side project.
+
+`font-feature-settings: 'cv11','ss01'` for disambiguated glyphs. **Tabular numerals are mandatory**
+for anything that changes: scores, timers, leaderboards, prize amounts. A countdown in
+proportional figures re-flows its own width every second.
+
+### Case system — the one rule that was missing
+
+The old UI mixed ALL-CAPS + tracked headings with sentence-case headings with no rule for which
+applied where. Now:
+
+| Treatment | Where | How |
+|---|---|---|
+| **ALL CAPS + tracked** | Section eyebrows and nav **only** | `<Eyebrow />`, `<SectionTitle />`, table `<TH>`, `--text-eyebrow` |
+| **Normal case** | Everything else, **including every headline** | `<DisplayHeading />` |
+
+`<DisplayHeading />` must never be given an `uppercase` class. If a label needs to shout, it is an
+eyebrow — reach for `<Eyebrow />` rather than adding tracking to a heading by hand. Both share the
+`--text-eyebrow` token so the two cannot drift apart.
 
 | Role | Size | Line height | Weight | Tracking | Use |
 |---|---|---|---|---|---|
@@ -230,13 +266,38 @@ Stroke `1.5–2`. Icons are decorative by default (`aria-hidden`); icon-only con
 | `--motion-slow` | 320ms | `cubic-bezier(0.2,0,0,1)` | Dialogs, drawers, page transitions |
 | `--motion-reveal` | 600–900ms | `cubic-bezier(0.16,1,0.3,1)` | **Marketing scroll reveals only** |
 
+Named animations (Tailwind `--animate-*`, defined in `globals.css`):
+
+| Token | Use |
+|---|---|
+| `--animate-live-pulse` / `--animate-live-ping` | The `<LiveDot />` heartbeat: solid core + expanding ring |
+| `--animate-rise` | Staggered list/card entrance |
+| `--animate-fade-in` | Plain reveal |
+| `--animate-sweep` | The broadcast panel sweep, live only |
+
+`.stagger` on a container gives its children a sequenced entrance without per-element
+`[animation-delay:120ms]` classes in page files.
+
 Rules:
 - Animate **transform and opacity only** — never width/height/top/left (layout thrash).
 - Enter with intent (fade + 4–8px rise); exit fast (fade only).
 - Loading: **skeletons** matching final layout for content; spinners only inside buttons.
 - **`prefers-reduced-motion: reduce` must disable transforms and reveals** — non-negotiable.
-- Nothing loops forever except a genuine indeterminate progress indicator.
+  Everything animated is `motion-safe:`-gated *and* covered by the global reduced-motion rule.
+- Nothing loops forever except a genuine indeterminate progress indicator **or a genuinely live
+  state**. Motion is a claim that something is happening; if nothing is, it must be still.
 - Live data (leaderboard/bracket via SSE) updates with a brief highlight, never a jarring reflow.
+- **Countdowns must visibly tick.** A static `00:00` reads as broken, not tense.
+
+### Empty states
+
+There is exactly **one** `EmptyState`, in `@/components/ui/empty-state`
+(`@/components/ui/table` re-exports it for legacy imports).
+
+An empty state must be **quieter than a populated one**: small, muted, left-aligned, no dashed
+border, no heavy fill, no hero button. The goal is "nothing here *yet*, but everything around it
+works" — not "this whole product is a shell". Where a section has nothing to show and nothing to
+explain, prefer not rendering it at all over rendering an empty box.
 
 ---
 

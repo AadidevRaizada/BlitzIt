@@ -25,7 +25,7 @@ function PolicyPage({
 }) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-16 sm:px-7">
-      <h1 className="font-pixel text-4xl font-bold uppercase">{title}</h1>
+      <h1 className="font-display text-4xl font-bold">{title}</h1>
       <div className="text-muted-foreground mt-6 space-y-4 text-sm leading-6">
         {children}
       </div>

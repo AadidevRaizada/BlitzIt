@@ -11,6 +11,7 @@ import { LiveLeaderboard } from '@/components/features/live-leaderboard';
 import { LiveRefresh } from '@/components/features/live-refresh';
 import { Card } from '@/components/ui/card';
 import { DisplayHeading } from '@/components/ui/display-heading';
+import { Eyebrow } from '@/components/ui/eyebrow';
 import { Section } from '@/components/ui/section';
 import { cn } from '@/lib/utils';
 
@@ -66,13 +67,11 @@ export default async function LeaderboardPage({
       <Section className="bg-surface-deep">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
-            <p className="text-secondary text-sm font-bold">
-              Current standings
-            </p>
+            <Eyebrow tone="primary">Current standings</Eyebrow>
             <DisplayHeading as="h1" className="mt-3">
               Leaderboard
             </DisplayHeading>
-            <p className="text-muted-foreground mt-4 max-w-2xl text-lg">
+            <p className="text-muted-foreground mt-3 max-w-2xl text-lg">
               {summary.name}
             </p>
           </div>
@@ -83,7 +82,7 @@ export default async function LeaderboardPage({
             />
             <Link
               href={`/bracket/${tournamentId}`}
-              className="text-primary hover:text-secondary focus-visible:ring-ring rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
+              className="text-primary focus-visible:ring-ring rounded-md text-sm font-semibold hover:brightness-125 focus-visible:ring-2 focus-visible:outline-none"
             >
               Bracket
             </Link>
@@ -102,9 +101,10 @@ export default async function LeaderboardPage({
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'focus-visible:ring-ring rounded-md px-3 py-2 text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none',
+                  'transition-colors duration-[var(--motion-fast)]',
                   active
-                    ? 'bg-secondary text-secondary-foreground'
-                    : 'border-hairline bg-surface-raised hover:bg-surface-elevated border',
+                    ? 'bg-primary text-primary-foreground shadow-[var(--glow-primary)]'
+                    : 'border-hairline bg-surface-raised hover:bg-surface-elevated hover:border-primary/40 border',
                 )}
               >
                 {option.label}

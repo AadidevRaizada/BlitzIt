@@ -47,7 +47,7 @@ export function TH({
     <th
       scope="col"
       className={cn(
-        'px-3 py-2 text-xs font-medium tracking-wide uppercase',
+        'text-eyebrow px-3 py-2 font-medium uppercase',
         numeric && 'text-right',
         className,
       )}
@@ -93,25 +93,11 @@ export function TD({
   );
 }
 
-/** Consistent empty state for every list — never a bare blank panel. */
-export function EmptyState({
-  title,
-  hint,
-  action,
-}: {
-  title: string;
-  hint?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="border-border rounded-lg border border-dashed p-8 text-center">
-      <p className="font-medium">{title}</p>
-      {hint ? (
-        <p className="text-muted-foreground mx-auto mt-1 max-w-md text-sm">
-          {hint}
-        </p>
-      ) : null}
-      {action ? <div className="mt-4">{action}</div> : null}
-    </div>
-  );
-}
+/**
+ * Re-exported so the ~20 existing `from '@/components/ui/table'` imports keep
+ * working. There is exactly one EmptyState implementation, in
+ * `@/components/ui/empty-state` — this used to be a second, louder one (dashed
+ * border, centred, `p-8`), which is why emptiness was the most prominent thing
+ * on every page. New code should import from the canonical module.
+ */
+export { EmptyState } from '@/components/ui/empty-state';

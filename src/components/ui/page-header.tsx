@@ -30,7 +30,9 @@ export function PageHeader({
       ) : null}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight">
+            {title}
+          </h1>
           {description ? (
             <div className="text-muted-foreground text-sm">{description}</div>
           ) : null}
@@ -43,7 +45,14 @@ export function PageHeader({
   );
 }
 
-/** Section heading inside a page. Quiet, uppercase, consistent everywhere. */
+/**
+ * Section heading inside a page — a section eyebrow, so all-caps + tracking is
+ * the sanctioned treatment here. It shares the `--text-eyebrow` token with
+ * `<Eyebrow />` so the two cannot drift apart.
+ *
+ * Five pages had this exact class string pasted inline instead of using this
+ * component; those now call it, which is the point of it existing.
+ */
 export function SectionTitle({
   children,
   className,
@@ -55,7 +64,7 @@ export function SectionTitle({
 }) {
   return (
     <div className={cn('flex items-center justify-between gap-3', className)}>
-      <h2 className="text-sm font-semibold tracking-wide uppercase">
+      <h2 className="text-eyebrow text-muted-foreground font-semibold uppercase">
         {children}
       </h2>
       {actions}

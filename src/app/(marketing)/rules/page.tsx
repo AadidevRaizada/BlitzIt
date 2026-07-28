@@ -32,7 +32,7 @@ export default function RulesPage() {
   return (
     <main>
       <Section className="bg-surface-deep">
-        <p className="text-secondary text-sm font-bold">Competition rules</p>
+        <p className="text-primary text-sm font-bold">Competition rules</p>
         <DisplayHeading as="h1" className="mt-3">
           Measured first. Reviewed when it matters.
         </DisplayHeading>
@@ -48,7 +48,7 @@ export default function RulesPage() {
         <div className="grid gap-4 md:grid-cols-4">
           {score.map((item) => (
             <Card key={item.label} surface="broadcast" className="p-5">
-              <p className="text-secondary text-4xl font-extrabold tabular-nums">
+              <p className="text-primary text-4xl font-extrabold tabular-nums">
                 {item.value}
               </p>
               <h2 className="mt-6 font-bold">{item.label}</h2>
@@ -82,7 +82,7 @@ export default function RulesPage() {
 
       <Section className="bg-background">
         <Card surface="broadcast" className="p-6">
-          <CheckCircle2 className="text-secondary size-7" aria-hidden />
+          <CheckCircle2 className="text-primary size-7" aria-hidden />
           <h2 className="mt-5 text-2xl font-extrabold tracking-[-0.03em]">
             What competitors can expect
           </h2>
@@ -109,7 +109,7 @@ function Rule({
 }) {
   return (
     <Card surface="broadcast" className="p-5">
-      <div className="text-secondary">{icon}</div>
+      <div className="text-primary">{icon}</div>
       <h2 className="mt-5 text-xl font-bold">{title}</h2>
       <p className="text-muted-foreground mt-3 text-sm leading-6">{body}</p>
     </Card>

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { Github } from 'lucide-react';
 import { toast } from 'sonner';
 import { signIn } from '@/lib/auth-client';
+import { Button } from '@/components/ui/button';
 
 type Provider = 'github' | 'google';
 
@@ -11,7 +13,15 @@ const LABELS: Record<Provider, string> = {
   google: 'Continue with Google',
 };
 
-/** OAuth sign-in buttons. Only providers configured on the server are shown. */
+/**
+ * OAuth sign-in. Only providers configured on the server are shown.
+ *
+ * GitHub is the primary path and gets the filled button — this is a developer
+ * competition, so it is the account virtually every competitor already has,
+ * and it is the same identity the submission flow reads from. Any other
+ * provider renders as a secondary option so there is one obvious way in
+ * rather than a row of equal-weight choices.
+ */
 export function LoginButtons({
   providers,
   callbackURL,
@@ -31,18 +41,37 @@ export function LoginButtons({
     }
   }
 
+  const primary = providers.includes('github') ? 'github' : providers[0];
+  const others = providers.filter((provider) => provider !== primary);
+
   return (
     <div className="flex flex-col gap-3">
-      {providers.map((provider) => (
-        <button
+      {primary ? (
+        <Button
+          variant="broadcast"
+          size="broadcast"
+          onClick={() => handleSignIn(primary)}
+          disabled={pending !== null}
+          aria-busy={pending === primary}
+          className="w-full"
+        >
+          {primary === 'github' ? <Github className="size-4" /> : null}
+          {pending === primary ? 'Redirecting…' : LABELS[primary]}
+        </Button>
+      ) : null}
+
+      {others.map((provider) => (
+        <Button
           key={provider}
-          type="button"
+          variant="secondary"
+          size="lg"
           onClick={() => handleSignIn(provider)}
           disabled={pending !== null}
-          className="border-border bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-md border px-4 py-2 text-sm font-medium transition-colors disabled:opacity-60"
+          aria-busy={pending === provider}
+          className="w-full"
         >
           {pending === provider ? 'Redirecting…' : LABELS[provider]}
-        </button>
+        </Button>
       ))}
     </div>
   );

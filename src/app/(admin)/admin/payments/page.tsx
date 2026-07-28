@@ -147,7 +147,7 @@ export default async function AdminPaymentsPage({
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-wide uppercase">
+        <h2 className="text-eyebrow text-muted-foreground font-semibold uppercase">
           Webhook history
         </h2>
         {webhooks.length === 0 ? (

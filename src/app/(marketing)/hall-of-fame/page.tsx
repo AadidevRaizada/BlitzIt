@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { Medal, Trophy } from 'lucide-react';
 import { listHallOfFame } from '@/server/modules/hall-of-fame';
-import { formatMinor } from '@/server/modules/notification';
 import { Card } from '@/components/ui/card';
+import { Reward } from '@/components/ui/reward';
 import { DisplayHeading } from '@/components/ui/display-heading';
+import { Eyebrow } from '@/components/ui/eyebrow';
 import { Section } from '@/components/ui/section';
 import { EmptyState } from '@/components/ui/table';
 
@@ -16,7 +17,7 @@ export default async function HallOfFamePage() {
   return (
     <main>
       <Section className="bg-surface-deep">
-        <p className="text-secondary text-sm font-bold">Permanent record</p>
+        <Eyebrow tone="primary">Permanent record</Eyebrow>
         <DisplayHeading as="h1" className="mt-3">
           Hall of Fame
         </DisplayHeading>
@@ -30,28 +31,40 @@ export default async function HallOfFamePage() {
         {entries.length === 0 ? (
           <EmptyState
             title="No champions yet"
-            hint="The first tournament to finish will be recorded here."
+            description="The first tournament to finish will be recorded here."
           />
         ) : (
-          <ol className="space-y-5">
+          <ol className="stagger space-y-5">
             {entries.map((entry, index) => (
               <li key={entry.tournamentId}>
-                <Card surface="broadcast" className="overflow-hidden">
+                <Card
+                  surface="broadcast"
+                  interactive
+                  className="overflow-hidden"
+                >
                   <div className="grid gap-0 lg:grid-cols-[1.15fr_1fr]">
-                    <div className="bg-surface-elevated p-6">
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-muted-foreground text-sm tabular-nums">
+                    {/* The champion half is the point of the card, so it gets
+                        the raised fill and the only accent on the row. */}
+                    <div className="bg-surface-elevated relative overflow-hidden p-6">
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,color-mix(in_oklab,var(--color-primary)_16%,transparent),transparent_65%)]" />
+                      <div className="relative flex items-center justify-between gap-4">
+                        <span className="font-display text-muted-foreground text-sm font-bold tabular-nums">
                           #{index + 1}
                         </span>
                         <span className="text-muted-foreground text-xs tabular-nums">
                           {entry.publishedAt.toISOString().slice(0, 10)}
                         </span>
                       </div>
-                      <Trophy className="text-secondary mt-14 size-10" />
-                      <p className="text-muted-foreground mt-4 text-sm">
-                        Champion
-                      </p>
-                      <h2 className="mt-2 text-4xl font-extrabold tracking-[-0.035em]">
+                      <Trophy
+                        className="text-primary relative mt-10 size-10"
+                        aria-hidden
+                      />
+                      <Eyebrow className="relative mt-4">Champion</Eyebrow>
+                      <DisplayHeading
+                        as="h2"
+                        size="compact"
+                        className="relative mt-2"
+                      >
                         <Person
                           username={entry.champion?.username ?? null}
                           name={
@@ -60,21 +73,26 @@ export default async function HallOfFamePage() {
                             null
                           }
                         />
-                      </h2>
+                      </DisplayHeading>
                       {entry.champion?.city ? (
-                        <p className="text-muted-foreground mt-2">
+                        <p className="text-muted-foreground relative mt-2 text-sm">
                           {entry.champion.city}
                         </p>
                       ) : null}
                     </div>
 
                     <div className="p-6">
-                      <h3 className="text-xl font-bold">
+                      <Eyebrow>Tournament</Eyebrow>
+                      <DisplayHeading
+                        as="h3"
+                        size="panel"
+                        className="mt-1.5 text-xl"
+                      >
                         {entry.tournamentName}
-                      </h3>
+                      </DisplayHeading>
                       <p className="text-muted-foreground mt-2 text-sm tabular-nums">
-                        {entry.participantCount} competitors,{' '}
-                        {formatMinor(entry.prizePoolMinor)} prize pool
+                        {entry.participantCount} competitors ·{' '}
+                        <Reward amountMinor={entry.prizePoolMinor} /> prize pool
                       </p>
 
                       <div className="mt-8 grid gap-3 sm:grid-cols-2">
@@ -100,7 +118,7 @@ export default async function HallOfFamePage() {
 
                       <Link
                         href={`/bracket/${entry.tournamentId}`}
-                        className="text-primary hover:text-secondary focus-visible:ring-ring mt-8 inline-flex rounded-md text-sm font-semibold focus-visible:ring-2 focus-visible:outline-none"
+                        className="text-primary focus-visible:ring-ring mt-8 inline-flex rounded-md text-sm font-semibold hover:brightness-125 focus-visible:ring-2 focus-visible:outline-none"
                       >
                         See bracket
                       </Link>
@@ -126,9 +144,9 @@ function Place({
   username: string | null;
 }) {
   return (
-    <div className="border-hairline bg-surface-deep min-h-28 border p-4">
-      <Medal className="text-primary size-5" aria-hidden />
-      <p className="text-muted-foreground mt-4 text-sm">{rank}</p>
+    <div className="border-hairline bg-surface-deep hover:border-primary/40 min-h-28 rounded-md border p-4 transition-colors duration-[var(--motion-base)]">
+      <Medal className="text-muted-foreground size-5" aria-hidden />
+      <Eyebrow className="mt-4">{rank}</Eyebrow>
       <p className="mt-1 font-semibold">
         <Person username={username} name={name} />
       </p>
