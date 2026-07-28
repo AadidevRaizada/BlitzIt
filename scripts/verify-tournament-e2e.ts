@@ -1704,22 +1704,32 @@ async function seedingRegressions() {
   );
 
   // REGRESSION (Codex): with the tournament column null, the CONFIGURED bracket
-  // size must still win. Auto-sizing 10 competitors would pick 8; an explicit
-  // configured 16 must be honoured instead (leaving 6 byes).
+  // size must still win.
+  //
+  // The auto-sized expectation INVERTED with the D6 amendment. A field of 10
+  // used to pick 8 — cutting two competitors who had qualified — and now picks
+  // 16, the smallest draw that fits all ten, leaving 6 byes for the top seeds.
+  // The override is therefore checked against 32, which auto-sizing would never
+  // choose for this field, so the two cases stay distinguishable.
   check(
-    'auto-sizing picks 8 for a field of 10 when nothing is configured',
-    first.bracketSize === 8,
-    `${first.bracketSize}`,
+    'auto-sizing picks 16 for a field of 10, fitting the whole field',
+    first.bracketSize === 16 && first.qualifiedCount === 10,
+    `size=${first.bracketSize} qualified=${first.qualifiedCount}`,
+  );
+  check(
+    'nobody is cut when the draw is sized up to the field',
+    first.eliminated.length === 0,
+    `${first.eliminated.length} eliminated`,
   );
 
   await db.tournament.update({
     where: { id: tournament.id },
     data: { bracketSize: null, seededAt: null },
   });
-  const configured = await computeSeeding(tournament.id, { bracketSize: 16 });
+  const configured = await computeSeeding(tournament.id, { bracketSize: 32 });
   check(
     'REGRESSION: an explicitly configured bracket size overrides auto-sizing',
-    configured.bracketSize === 16 && configured.qualifiedCount === 10,
+    configured.bracketSize === 32 && configured.qualifiedCount === 10,
     `size=${configured.bracketSize} qualified=${configured.qualifiedCount}`,
   );
 
