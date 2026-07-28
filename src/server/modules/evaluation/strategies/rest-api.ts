@@ -18,7 +18,7 @@ import type {
  */
 
 /** Shape of a hidden test's `spec`, authored with the problem. */
-const httpAssertionSchema = z.object({
+export const httpAssertionSchema = z.object({
   method: z.string().default('GET'),
   path: z.string().default('/'),
   headers: z.record(z.string()).optional(),
@@ -34,7 +34,7 @@ const httpAssertionSchema = z.object({
   }),
 });
 
-const contractSpecSchema = z
+export const contractSpecSchema = z
   .object({
     /** Path used for warm-up/performance sampling. */
     healthPath: z.string().default('/'),

@@ -147,6 +147,40 @@ async function assertGuards(
       if (eligible === 0) {
         throw new ConflictError('no registered competitors');
       }
+
+      // EVERY simulation round needs a problem before the phase starts, not
+      // just the one being opened now.
+      //
+      // This is the guard whose absence deadlocked `2026-w1`. Round 1 had a
+      // problem and opened fine; rounds 2 and 3 did not, so when round 1 ended
+      // `progressSimulation` could not open round 2 (`openRound` correctly
+      // refuses a round with no problem). They stayed PENDING with a NULL
+      // `deadlineAt` forever, and CLOSE_SIMULATION's "every round must have
+      // finished" check treats PENDING-with-no-deadline as unfinished. The
+      // phase could then neither advance nor close, and there is no admin
+      // action that recovers it — `assignProblemToRound` cannot retrofit a
+      // problem onto rounds that the phase has already moved past.
+      //
+      // Checking here turns that unrecoverable mid-phase deadlock into an
+      // actionable error raised before anything goes live.
+      //
+      // Only rounds that already exist are checked. A tournament that closed
+      // registration before rounds were created there has none yet; the effect
+      // creates them and `openRound` still refuses round 1, which rolls the
+      // whole transition back rather than half-starting the phase.
+      const rounds = await tx.round.findMany({
+        where: { tournamentId: tournament.id, type: 'SIMULATION' },
+        select: { sequence: true, problemId: true },
+        orderBy: { sequence: 'asc' },
+      });
+      const unassigned = rounds.filter((round) => round.problemId === null);
+      if (unassigned.length > 0) {
+        throw new ConflictError(
+          `${unassigned.length} simulation round(s) have no problem assigned ` +
+            `(round ${unassigned.map((r) => r.sequence).join(', ')}); ` +
+            'assign a published problem to every simulation round before starting',
+        );
+      }
       return;
     }
 
