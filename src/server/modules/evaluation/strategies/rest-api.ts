@@ -289,9 +289,18 @@ export const restApiStrategy: EvaluationStrategy = {
   },
 };
 
-function evaluateAssertion(
+/**
+ * Exported for `verify:challenge`, which drives authored specs against a local
+ * reference implementation to prove the EXPECTATIONS are right before a problem
+ * is ever published. It cannot use `runFunctional` for that: `safeFetch` blocks
+ * loopback addresses by design (T1), and no test is worth an SSRF hole. Sharing
+ * this function instead of reimplementing it is the point — a second copy of the
+ * assertion rules would drift from the judge, and then the harness would be
+ * certifying specs against semantics the tournament does not use.
+ */
+export function evaluateAssertion(
   assertion: z.infer<typeof httpAssertionSchema>,
-  response: Awaited<ReturnType<typeof safeFetch>>,
+  response: { status: number; body: string; durationMs: number },
 ): string[] {
   const failures: string[] = [];
   const { expect } = assertion;

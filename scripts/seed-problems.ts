@@ -1,26 +1,43 @@
 import './load-env';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, type Prisma } from '../src/generated/prisma/client';
+import { PrismaClient } from '../src/generated/prisma/client';
+import { knockoutProblems } from './problems/knockout';
+import { SCORING_NOTE, type ProblemSeed } from './problems/shared';
 
 /**
- * Seeds the three Week-1 REST_API simulation problems and their hidden tests.
+ * Seeds the REST_API challenge catalogue and its hidden tests.
  *
  * Run:  npm run seed:problems
  *
- * Idempotent: problems are upserted by slug and their hidden tests are
- * replaced wholesale, so re-running after editing a spec is safe.
+ * Two catalogues live here:
  *
- * ── How these were designed ───────────────────────────────────────────────
+ * - **The three qualifier problems below**, inline and `PUBLISHED`. Stateless by
+ *   design; see the notes that follow.
+ * - **The knockout catalogue** in `./problems/knockout.ts`, eight
+ *   session-stateful problems seeded as `DRAFT`. Designed and reviewed in
+ *   `docs/21-challenge-library.md`, which is the document to read before editing
+ *   any of them.
+ *
+ * Idempotent: problems are upserted by slug and their hidden tests are replaced
+ * wholesale, so re-running after editing a spec is safe. `visibility` is written
+ * on create only — re-seeding never un-publishes a reviewed problem, nor
+ * publishes a draft behind an operator's back.
+ *
+ * ── How the three qualifier problems were designed ────────────────────────
  *
  * The evaluator (src/server/modules/evaluation/strategies/rest-api.ts) grades
  * a running deployment purely over HTTP. Nothing is cloned, built or executed.
  * That shapes every choice below:
  *
- * 1. **Stateless and deterministic.** No problem requires a database or any
- *    persistence between requests. Competitors ship to whatever free tier they
- *    can reach in minutes, and serverless instances do not share memory — a
- *    problem needing cross-request state would grade the hosting lottery
- *    rather than the engineering.
+ * 1. **Stateless and deterministic.** These three require no database and no
+ *    persistence between requests, which is what makes them safe for a large
+ *    qualifier field on unknown hosting.
+ *
+ *    This is a property of the QUALIFIERS, not a rule for the whole platform.
+ *    The knockout catalogue is deliberately stateful: the evaluator sends hidden
+ *    tests strictly sequentially against one deployment, so state created during
+ *    a run is fair game, and storage stays the competitor's own choice. Nothing
+ *    is ever pre-loaded. See §1.1 of `docs/21-challenge-library.md`.
  *
  * 2. **Every rule is stated exactly.** Hidden tests compare with
  *    `JSON.stringify(actual) === JSON.stringify(expected)`, so rounding,
@@ -55,46 +72,11 @@ if (!connectionString) throw new Error('DATABASE_URL is not set');
 
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
-type HiddenTestSeed = {
-  name: string;
-  weight: number;
-  timeoutMs?: number;
-  /** Matches `httpAssertionSchema` in the REST_API strategy. */
-  spec: Prisma.InputJsonObject;
-};
-
-type ProblemSeed = {
-  slug: string;
-  title: string;
-  difficulty: string;
-  statementMarkdown: string;
-  contractSpec: Prisma.InputJsonObject;
-  tests: HiddenTestSeed[];
-};
-
-const SCORING_NOTE = `
-## How this is scored
-
-| Dimension | Weight | What it measures |
-|---|---|---|
-| Functional | 60% | Hidden HTTP tests against your deployment |
-| Performance | 15% | p95 latency of \`GET /health\`, sampled sequentially |
-| Security & reliability | 10% | HTTPS, security headers on \`/\`, no 5xx, no leaked stack traces |
-| AI review | 15% | Code organisation, documentation, engineering judgement |
-
-Notes that cost people marks every week:
-
-- \`GET /\` must **not** return a 5xx and must not leak a stack trace.
-- Security headers on \`/\` are graded. \`X-Powered-By\` being present is a
-  deduction — most frameworks set it for you, so remove it.
-- Return \`Content-Type: application/json\` on every JSON response.
-- Unhandled errors must become a clean \`400\`/\`500\` JSON body, never a crash.
-`.trim();
-
-const problems: ProblemSeed[] = [
+const qualifierProblems: ProblemSeed[] = [
   // ───────────────────────────── Round 1 · 30 min ─────────────────────────
   {
     slug: 'fare-split',
+    visibility: 'PUBLISHED',
     title: 'Fare Split',
     difficulty: 'Medium',
     contractSpec: { healthPath: '/health', performanceSamples: 6 },
@@ -360,6 +342,7 @@ ${SCORING_NOTE}
   // ───────────────────────────── Round 2 · 20 min ─────────────────────────
   {
     slug: 'log-triage',
+    visibility: 'PUBLISHED',
     title: 'Log Triage',
     difficulty: 'Medium',
     contractSpec: { healthPath: '/health', performanceSamples: 6 },
@@ -622,6 +605,7 @@ ${SCORING_NOTE}
   // ───────────────────────────── Round 3 · 10 min ─────────────────────────
   {
     slug: 'url-canonical',
+    visibility: 'PUBLISHED',
     title: 'URL Canonicaliser',
     difficulty: 'Easy',
     contractSpec: { healthPath: '/health', performanceSamples: 6 },
@@ -834,8 +818,23 @@ ${SCORING_NOTE}
   },
 ];
 
+/**
+ * Both catalogues, seeded in one pass. Order matters only for the log: the
+ * qualifiers are the three published problems an operator already knows, and the
+ * knockout catalogue follows as drafts awaiting review.
+ */
+const allProblems: ProblemSeed[] = [...qualifierProblems, ...knockoutProblems];
+
 async function main() {
-  for (const seed of problems) {
+  const slugs = new Set<string>();
+  for (const seed of allProblems) {
+    if (slugs.has(seed.slug)) {
+      throw new Error(`duplicate problem slug in the catalogue: ${seed.slug}`);
+    }
+    slugs.add(seed.slug);
+  }
+
+  for (const seed of allProblems) {
     const problem = await db.problem.upsert({
       where: { slug: seed.slug },
       update: {
@@ -845,7 +844,9 @@ async function main() {
         category: 'REST_API',
         evaluationStrategy: 'REST_API',
         contractSpec: seed.contractSpec,
-        visibility: 'PUBLISHED',
+        // Deliberately NOT written on update. Re-running the seed to fix a typo
+        // in a statement must not un-publish a problem an operator has already
+        // reviewed and published, nor silently publish a draft.
       },
       create: {
         slug: seed.slug,
@@ -855,7 +856,7 @@ async function main() {
         category: 'REST_API',
         evaluationStrategy: 'REST_API',
         contractSpec: seed.contractSpec,
-        visibility: 'PUBLISHED',
+        visibility: seed.visibility,
       },
     });
 
@@ -877,11 +878,12 @@ async function main() {
 
     const weight = seed.tests.reduce((sum, test) => sum + test.weight, 0);
     console.log(
-      `${problem.slug.padEnd(16)} ${String(seed.tests.length).padStart(2)} tests, total weight ${weight}`,
+      `${problem.slug.padEnd(24)} ${problem.visibility.padEnd(9)} ` +
+        `${String(seed.tests.length).padStart(2)} tests, total weight ${weight}`,
     );
   }
 
-  console.log(`\nSeeded ${problems.length} REST_API problems.`);
+  console.log(`\nSeeded ${allProblems.length} REST_API problems.`);
   console.log('Assign one to each simulation round in /admin before starting.');
 }
 
