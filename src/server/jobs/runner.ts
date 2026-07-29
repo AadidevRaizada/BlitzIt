@@ -227,6 +227,40 @@ class Runner {
         }
         const backoff = backoffForAttempt(job.name, job.attempts);
         await queue.fail(job.id, message, backoff, this.instanceId);
+
+        // A business guard refusing is an EXPECTED outcome, not a fault.
+        //
+        // `assertGuards` throws `ConflictError` to say "this is not sensible
+        // right now" — too few registrations, evaluations still draining, a
+        // round not finished, a problem not yet attached. The reconciler is
+        // built to stop short on exactly this and try again next sweep, so
+        // paging on it turns normal operation into an incident: `2026-w1` sat
+        // one competitor short of its minimum for 17 hours and produced a
+        // Sentry exception every five minutes, ~200 of them, none actionable.
+        //
+        // It stays fully visible without Sentry. `queue.fail` above records the
+        // message on the job (`lastError`, `attempts`), which is what
+        // `getLifecycleDiagnostics` reads to explain the hold-up verbatim on the
+        // admin panel, and the transition's `OpsEvent` is untouched. The warn
+        // log keeps it in the stream. What changes is only that it no longer
+        // claims to be an unhandled error.
+        //
+        // Matched on the error CLASS, not the message: every guard refusal is
+        // expected by construction, and string-matching one of them would leave
+        // the others still paging while being fragile to a reworded guard.
+        if (error instanceof AppError && error.code === 'CONFLICT') {
+          logger.warn(
+            {
+              jobId: job.id,
+              name: job.name,
+              attempts: job.attempts,
+              err: message,
+            },
+            'job refused by a business guard; recorded and will be retried',
+          );
+          return;
+        }
+
         captureException(error, { where: 'runner.run', jobId: job.id });
       }
     } finally {
