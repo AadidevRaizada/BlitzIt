@@ -320,3 +320,54 @@ export async function notifyRegistrationConfirmed(
   );
   return dispatchNotificationEmails(createdKeys);
 }
+
+/**
+ * Notify every registered competitor that a tournament has been cancelled (D34).
+ *
+ * Called post-commit after CANCEL transition with reason INSUFFICIENT_REGISTRATIONS.
+ * Mirrors the structure of TOURNAMENT_COMPLETE notifications — sweeps registered users
+ * once and raises one intent per user, deduplicated by scopeId + type so retry is safe.
+ */
+export async function notifyTournamentCancelled(
+  tournamentId: string,
+  client: DbClient = db,
+): Promise<{ tournamentId: string; notified: number; emailsQueued: number }> {
+  const tournament = await client.tournament.findUnique({
+    where: { id: tournamentId },
+    select: { id: true, name: true, slug: true, status: true },
+  });
+  if (!tournament || tournament.status !== 'CANCELLED') {
+    return { tournamentId, notified: 0, emailsQueued: 0 };
+  }
+
+  const registrations = await client.registration.findMany({
+    where: { tournamentId, status: 'ACTIVE' },
+    select: { userId: true },
+    distinct: ['userId'],
+  });
+
+  if (registrations.length === 0) {
+    return { tournamentId, notified: 0, emailsQueued: 0 };
+  }
+
+  const intents: NotificationIntent[] = registrations.map((reg) => ({
+    userId: reg.userId,
+    type: 'TOURNAMENT_CANCELLED',
+    scopeId: tournamentId,
+    tournamentId,
+    payload: {
+      tournamentName: tournament.name,
+      tournamentSlug: tournament.slug,
+      tournamentId: tournament.id,
+    },
+  }));
+
+  const { created, createdKeys } = await raiseNotifications(intents, client);
+  const emailsQueued = await dispatchNotificationEmails(createdKeys);
+
+  logger.info(
+    { tournamentId, notified: created, emailsQueued },
+    'tournament cancellation notifications sent',
+  );
+  return { tournamentId, notified: created, emailsQueued };
+}

@@ -7,6 +7,7 @@ import { reconcileTournamentProcessor } from './reconcile-tournament';
 import { seedTournamentProcessor } from './seed-tournament';
 import { advanceBracketProcessor } from './advance-bracket';
 import { sendEmailProcessor } from './send-email';
+import { cancelTournamentCleanupProcessor } from './cancel-tournament-cleanup';
 
 /**
  * Processor registry. Maps a job name to its handler. Register new processors
@@ -20,4 +21,5 @@ export const processors: Partial<Record<JobName, JobProcessor>> = {
   seedTournament: seedTournamentProcessor,
   advanceBracket: advanceBracketProcessor,
   sendEmail: sendEmailProcessor,
+  cancelTournamentCleanup: cancelTournamentCleanupProcessor,
 };

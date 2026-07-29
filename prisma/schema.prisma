@@ -182,6 +182,8 @@ enum NotificationType {
   ADVANCED
   /// E8 — raised for every participant once a tournament finishes.
   TOURNAMENT_COMPLETE
+  /// D34 — raised when a tournament is auto-cancelled due to insufficient registrations.
+  TOURNAMENT_CANCELLED
 }
 
 enum NotificationChannel {

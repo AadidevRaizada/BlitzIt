@@ -6,6 +6,7 @@ import {
   AUTOMATED_STATUSES,
   reconciliationPath,
 } from '@/server/modules/tournament/schedule.public';
+import { AUTOMATION_ACTOR } from '@/server/modules/auth/roles';
 
 /**
  * Deadline sweep — the trigger that makes the tournament run itself.
@@ -61,14 +62,25 @@ export const PROGRESSION_BUCKET_MS = 60_000;
  * The bucket does not delay the first attempt: the sweep enqueues on its next
  * tick after the anchor passes, so latency is still bounded by
  * `SWEEP_INTERVAL_MS`. What it controls is the RETRY cadence when a guard keeps
- * refusing — and some refusals are permanent from the schedule's point of view.
- * A tournament whose registration window closes with 3 competitors when the
- * minimum is 8 will fail `CLOSE_REGISTRATION` every time it is attempted. At a
- * one-minute bucket that is a failed job every minute, all night. Five minutes
- * keeps the operator's job list readable while staying far below the scale a
- * schedule milestone is measured in.
+ * refusing — waiting for evaluations to drain, or for an operator to attach a
+ * problem to a round. Five minutes keeps the operator's job list readable while
+ * staying far below the scale a schedule milestone is measured in.
+ *
+ * The example this constant was originally written for — a window closing with 3
+ * competitors against a minimum of 8, failing every attempt all night — is no
+ * longer reachable from the schedule: D34 makes that outcome a cancellation
+ * rather than an indefinite retry.
  */
 export const LIFECYCLE_BUCKET_MS = 300_000;
+
+/**
+ * How long a cancelled tournament stays visible before it is archived (D34).
+ *
+ * Long enough for the cancellation email to land and a refund to settle, so the
+ * first thing a competitor does after reading "cancelled" is not hunting for a
+ * tournament page that has already vanished.
+ */
+export const ARCHIVE_GRACE_MS = 24 * 60 * 60_000;
 
 /**
  * Enqueue an advancement pass for a round whose deadline has passed.
@@ -249,19 +261,143 @@ export async function sweepDueTransitions(
 }
 
 /**
- * The whole sweep: expired round windows AND due lifecycle transitions.
+ * Enqueue cleanup jobs for cancelled tournaments (D34).
  *
- * One tick drives both on purpose. They are the same concern — "something in
- * the database became due and nothing has noticed" — and a second timer would
- * be a second thing to boot, monitor and get wrong. This is what the runner
- * calls.
+ * When a tournament reaches CANCELLED, a follow-up cleanup job handles:
+ * - Notifying every registered competitor
+ * - Refunding all paid entry fees
+ *
+ * After the cleanup completes, the tournament auto-archives 24 hours later
+ * (via the archival sweep below). This gives refunds time to clear.
+ */
+/**
+ * Enqueue the notify-and-refund follow-up for a cancelled tournament (D34).
+ *
+ * Shared by the reconciler, which calls it the instant a cancellation commits,
+ * and by the sweep below, which is the safety net. Both use the same stable key
+ * so the two paths can never produce two jobs.
+ */
+export async function enqueueCancellationCleanup(
+  tournamentId: string,
+): Promise<void> {
+  await queue.enqueue(
+    'cancelTournamentCleanup',
+    { tournamentId },
+    {
+      // Stable, unbucketed: `enqueue` upserts with `update: {}`, so once this
+      // job exists — queued, running or DONE — enqueueing again is a no-op.
+      // Retries belong to the runner's retry policy, not to the caller.
+      idempotencyKey: `cancel-cleanup:${tournamentId}`,
+      // Ahead of routine progression: this one owes people money.
+      priority: 10,
+    },
+  );
+}
+
+async function sweepCancelledTournaments(): Promise<number> {
+  // Selected by STATE, not by a recency window. An earlier version asked for
+  // tournaments cancelled in the last 30 minutes, which quietly made refunds
+  // conditional on the process being alive during that window: a deploy or
+  // crash spanning it meant nobody was ever told and nobody was ever repaid.
+  // "Cancelled and not yet archived" is a bounded set (archival closes it 24h
+  // later) and cannot lose a tournament to downtime.
+  const cancelled = await db.tournament.findMany({
+    where: { status: 'CANCELLED', archivedAt: null },
+    select: { id: true, cancelledAt: true },
+  });
+
+  let enqueued = 0;
+  for (const tournament of cancelled) {
+    try {
+      await enqueueCancellationCleanup(tournament.id);
+      enqueued++;
+    } catch (error) {
+      logger.error(
+        { err: error, tournamentId: tournament.id },
+        'failed to enqueue tournament cancellation cleanup',
+      );
+    }
+  }
+
+  return enqueued;
+}
+
+/**
+ * Auto-archive cancelled tournaments after a 24-hour grace period (D34).
+ *
+ * This gives time for notifications to arrive and refunds to process.
+ * Archived tournaments are hidden from public listings.
+ */
+async function sweepDueArchival(now: Date = new Date()): Promise<number> {
+  const due = await db.tournament.findMany({
+    where: {
+      status: 'CANCELLED',
+      cancelledAt: { lte: new Date(now.getTime() - ARCHIVE_GRACE_MS) },
+      archivedAt: null,
+    },
+    select: { id: true },
+  });
+  if (due.length === 0) return 0;
+
+  // Archiving hides a tournament from every public surface, so it must not
+  // happen while the tournament still owes somebody money. The grace period is
+  // 24h to give refunds time to settle; if they have NOT settled, the right
+  // move is to keep the tournament visible — and keep it in the admin's list of
+  // things that are wrong — rather than tidy it away and let a failed refund
+  // become invisible. It archives on a later tick once cleanup reports DONE.
+  const cleanupDone = await db.evaluationJob.findMany({
+    where: {
+      name: 'cancelTournamentCleanup',
+      status: 'DONE',
+      idempotencyKey: { in: due.map((t) => `cancel-cleanup:${t.id}`) },
+    },
+    select: { idempotencyKey: true },
+  });
+  const settled = new Set(cleanupDone.map((j) => j.idempotencyKey));
+
+  const { setTournamentArchived } =
+    await import('@/server/modules/tournament/admin-ops');
+
+  let count = 0;
+  for (const tournament of due) {
+    if (!settled.has(`cancel-cleanup:${tournament.id}`)) {
+      logger.info(
+        { tournamentId: tournament.id },
+        'archival deferred: cancellation cleanup has not completed',
+      );
+      continue;
+    }
+    try {
+      await setTournamentArchived(tournament.id, true, AUTOMATION_ACTOR);
+      count++;
+    } catch (error) {
+      logger.error(
+        { err: error, tournamentId: tournament.id },
+        'failed to archive cancelled tournament',
+      );
+    }
+  }
+
+  if (count > 0) {
+    logger.info({ archived: count }, 'auto-archived cancelled tournaments');
+  }
+  return count;
+}
+
+/**
+ * The whole sweep: expired round windows, due lifecycle transitions, cancellation cleanup, and archival.
+ *
+ * All independent, and one failing must not suppress the others. They are all
+ * part of the same concern: "something in the database became due and nothing
+ * has noticed". One timer drives all on purpose.
  */
 export async function sweepDueWork(now: Date = new Date()): Promise<{
   rounds: number;
   transitions: number;
+  cleanups: number;
+  archives: number;
 }> {
-  // Independent, and one failing must not suppress the other.
-  const [rounds, transitions] = await Promise.all([
+  const [rounds, transitions, cleanups, archives] = await Promise.all([
     sweepExpiredRounds().catch((error) => {
       logger.error({ err: error }, 'round deadline sweep failed');
       return 0;
@@ -270,6 +406,14 @@ export async function sweepDueWork(now: Date = new Date()): Promise<{
       logger.error({ err: error }, 'lifecycle schedule sweep failed');
       return 0;
     }),
+    sweepCancelledTournaments().catch((error) => {
+      logger.error({ err: error }, 'cancellation cleanup sweep failed');
+      return 0;
+    }),
+    sweepDueArchival(now).catch((error) => {
+      logger.error({ err: error }, 'archival sweep failed');
+      return 0;
+    }),
   ]);
-  return { rounds, transitions };
+  return { rounds, transitions, cleanups, archives };
 }

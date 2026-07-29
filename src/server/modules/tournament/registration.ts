@@ -5,6 +5,8 @@ import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors';
+import { logger } from '@/lib/logger';
+import { AUTOMATION_ACTOR } from '@/server/modules/auth/roles';
 import { resolveTournamentConfig } from './config';
 import { recomputePrizePool } from './prize-pool';
 
@@ -377,4 +379,56 @@ export async function reconcileParticipantCount(
     await recomputePrizePool(tournamentId, tx);
     return { before: tournament.participantCount, after: actual };
   });
+}
+
+/**
+ * Refund every paid entry for a cancelled tournament (D34).
+ *
+ * A thin loop over the EXISTING per-payment refund, deliberately: no second
+ * refund implementation, no bulk gateway call, no new money-moving code. Each
+ * `refundPaymentForAdmin` claims an idempotent refund intent, so a payment that
+ * has already been refunded is a no-op and this whole function is safe to run
+ * again — which the cleanup job's retry policy depends on.
+ *
+ * One competitor's refund failing must not strand the rest, so failures are
+ * counted and reported rather than thrown. The caller decides whether the
+ * remainder justifies a retry.
+ */
+export async function refundRegistrationPayments(
+  tournamentId: string,
+  reason: string,
+  client: DbClient = db,
+): Promise<{ refunded: number; failed: number; failures: string[] }> {
+  const { refundPaymentForAdmin } =
+    await import('@/server/modules/payment/payments');
+
+  // Only PAID payments are refundable, which also makes a free tournament a
+  // natural no-op — it has no Payment rows to match.
+  const registrations = await client.registration.findMany({
+    where: { tournamentId, payment: { status: 'PAID' } },
+    select: { paymentId: true },
+  });
+
+  let refunded = 0;
+  const failures: string[] = [];
+
+  for (const { paymentId } of registrations) {
+    if (!paymentId) continue;
+    try {
+      await refundPaymentForAdmin(paymentId, AUTOMATION_ACTOR, reason);
+      refunded++;
+    } catch (error) {
+      // Named, not swallowed. An operator asking "why is this tournament still
+      // unarchived" must be able to read the answer, and the whole point of the
+      // admin diagnostics is that nobody opens psql to find out.
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${paymentId}: ${message}`);
+      logger.error(
+        { err: error, tournamentId, paymentId },
+        'entry fee refund failed',
+      );
+    }
+  }
+
+  return { refunded, failed: failures.length, failures };
 }

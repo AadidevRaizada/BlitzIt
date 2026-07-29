@@ -10,6 +10,22 @@ export function isAdmin(user: Pick<User, 'role'>): boolean {
   return user.role === 'ADMIN';
 }
 
+/**
+ * The actor for work the platform does to itself (D34) — auto-cancellation
+ * refunds, auto-archival. Not a `User` row and deliberately not one: nobody can
+ * sign in as it, and it exists only to satisfy the admin-gated module functions
+ * that automation legitimately needs to call.
+ *
+ * Safe to write to audit trails: `AuditLog.actorId` and `OpsEvent.runBy` are
+ * both plain nullable strings with no foreign key to `User`, so this id lands in
+ * the log as an origin marker. The `system:` prefix keeps it impossible to
+ * confuse with a real uuid actor when reading an audit row.
+ */
+export const AUTOMATION_ACTOR = {
+  id: 'system:automation',
+  role: 'ADMIN',
+} as const satisfies Pick<User, 'id' | 'role'>;
+
 export function hasRole(user: Pick<User, 'role'>, role: Role): boolean {
   return user.role === role;
 }

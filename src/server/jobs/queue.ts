@@ -25,7 +25,10 @@ export type JobName =
   // E8 — deliver one notification over email. The queue is the only path from
   // a notification intent to a send, so no business module ever waits on a
   // mail provider.
-  | 'sendEmail';
+  | 'sendEmail'
+  // D34 — post-cancel cleanup for auto-cancelled tournaments: notify all
+  // registrants and initiate refunds for paid entries.
+  | 'cancelTournamentCleanup';
 
 export interface EnqueueOptions {
   /** Idempotency key — duplicate enqueues with the same key collapse to one job. */

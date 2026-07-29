@@ -68,6 +68,7 @@ export {
   InvalidTransitionError,
   TOURNAMENT_TRANSITIONS,
   TERMINAL_STATES,
+  INSUFFICIENT_REGISTRATIONS,
   type LifecycleState,
   type TournamentTransition,
   type BracketShape,
@@ -108,9 +109,11 @@ export {
   withdrawRegistration,
   countActiveSeatReservations,
   countCompetitionEligibleRegistrations,
+  competitionEligibleRegistrationWhere,
   isRegistered,
   assertRegistered,
   reconcileParticipantCount,
+  refundRegistrationPayments,
   type RegistrationResult,
   type RegisterCompetitorOptions,
 } from './registration';
@@ -265,6 +268,7 @@ export {
 export {
   syncTournamentNotifications,
   notifyRegistrationConfirmed,
+  notifyTournamentCancelled,
   type NotificationSyncResult,
 } from './notifications';
 

@@ -567,3 +567,66 @@ Verified by `npm run verify:schedule`.
   no-backward-edits invariant (D33).
 - ❌ Automatic publishing of drafts (D32) — reverted by D33; publishing is the operator's one
   deliberate act.
+
+---
+
+## D34 — Tournaments with insufficient registrations auto-cancel
+
+D32 and D33 left one edge case: a tournament whose schedule closes registration but has too few
+competitors to proceed (`eligible < minRegistrations`) has no legal exit. `CLOSE_REGISTRATION`'s
+guard throws forever, the reconciliation sweep retries every 5 minutes indefinitely, and the only
+recovery is an admin manually extending the schedule or cancelling. This is a permanent stuck state,
+not a blocked-until-unblocked one.
+
+**Decision: insufficient registrations is a first-class lifecycle outcome, not a guard failure.**
+
+When the reconciler finds `CLOSE_REGISTRATION` due but `eligible < minRegistrations`, it does not
+attempt the transition it knows will be refused. It applies `CANCEL` with reason
+`INSUFFICIENT_REGISTRATIONS` instead, and stops — every remaining step in the path was computed for
+a tournament that was going to carry on, and none of them are legal now. That cancellation then owes
+the people who did enter two things:
+
+1. **Notification.** Every registrant is told, by email as well as in-app. `TOURNAMENT_CANCELLED` is
+   not an in-app-only type: email is the only channel that reaches somebody who is not going to open
+   the site again precisely because the event they were coming for is off.
+2. **Refund.** Every paid entry is refunded through the existing per-payment flow
+   (`refundPaymentForAdmin`) in a thin loop. No second refund implementation, no bulk gateway call.
+
+Then, and only then, **archival** after a 24-hour grace period.
+
+**The guard is retained, and this is the subtle part.** Moving the eligibility decision into the
+reconciler does not make `assertGuards`' check redundant, because the reconciler is not the only way
+in. The admin's "Close registration" button calls `applyTransition` with `force: false` and has
+nothing else between it and a field too small to seed; deleting the guard let an operator close a
+one-competitor tournament and march it to `GENERATE_BRACKET`, which then refuses on
+`MIN_BRACKET_SIZE` mid-phase — the unrecoverable shape D33 was written to eliminate. So: **the
+schedule decides whether to try, the guard decides whether it is sensible.** `force` still overrides
+the guard for an operator who means it.
+
+**Archival waits for settlement, not just for the clock.** Archiving hides a tournament from every
+public surface, so it must not happen while the tournament still owes somebody money. If the cleanup
+job has not reported `DONE` when the grace period expires, the tournament stays listed — and stays in
+the admin's list of things that are wrong, with the gateway's own error attached — rather than being
+tidied away with a failed refund inside it.
+
+**Two invariants make recovery always possible:**
+
+1. **Timing is elastic.** An admin extending `registrationClosesAt` before cancellation moves the
+   milestone into the future, so `reconciliationPath` stops proposing `CLOSE_REGISTRATION` at all and
+   the clock resets by itself. A tournament that gathers enough competitors simply proceeds.
+2. **Cancellation is terminal.** A cancelled tournament never resumes, and editing timestamps
+   afterwards does not resurrect it. Run another tournament instead; there is deliberately no
+   resurrection path.
+
+**No new scheduler, no cron, no second timer.** The reconciler enqueues the cleanup job the instant a
+cancellation commits, and the existing 30s sweep (D33) independently looks for cancelled tournaments
+and enqueues the same job under the same stable key — the first for latency, the second as the safety
+net covering an admin-initiated cancel or a crash between the commit and the enqueue. The sweep also
+carries archival. Selection is by **state** (`CANCELLED` and not archived), never by a recency
+window: an earlier draft asked for tournaments cancelled in the last 30 minutes, which quietly made
+refunds conditional on the process being alive during that window.
+
+This supersedes the "CANCEL is manual" line in D32. Admin-initiated cancellation is unchanged, and
+now gets the same notify/refund/archive aftermath.
+
+Verified by `npm run verify:cancellation`.

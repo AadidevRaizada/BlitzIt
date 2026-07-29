@@ -2,12 +2,17 @@ import 'server-only';
 import { db } from '@/server/db';
 import {
   applyTransition,
+  INSUFFICIENT_REGISTRATIONS,
   InvalidTransitionError,
   reconciliationPath,
   targetStatusFor,
+  type TournamentTransition,
 } from '@/server/modules/tournament';
+import { countCompetitionEligibleRegistrations } from '@/server/modules/tournament/registration';
+import { resolveTournamentConfig } from '@/server/modules/tournament/config';
 import { AppError } from '@/lib/errors';
 import type { ClaimedJob } from '../queue';
+import { enqueueCancellationCleanup } from '../progress-sweep';
 import { logger } from '@/lib/logger';
 
 /**
@@ -65,15 +70,6 @@ export async function reconcileTournamentProcessor(
 
   const tournament = await db.tournament.findUnique({
     where: { id: tournamentId },
-    select: {
-      status: true,
-      currentStage: true,
-      registrationOpensAt: true,
-      registrationClosesAt: true,
-      simulationOpensAt: true,
-      simulationClosesAt: true,
-      liveStartsAt: true,
-    },
   });
   if (!tournament) {
     log.warn('tournament no longer exists; nothing to reconcile');
@@ -89,16 +85,58 @@ export async function reconcileTournamentProcessor(
     'reconciling tournament onto its schedule',
   );
 
-  for (const transition of path) {
+  for (const planned of path) {
+    let transition: TournamentTransition = planned;
+    let reason: string | null = null;
+
+    // D34 — a registration window that closes under-subscribed is a RESULT, not
+    // a fault. Rather than attempt CLOSE_REGISTRATION and let its guard refuse
+    // forever, decide here: too few eligible competitors means the tournament
+    // cancels. The guard in `state.ts` still stands behind the manual path.
+    if (planned === 'CLOSE_REGISTRATION') {
+      const config = resolveTournamentConfig(tournament);
+      const eligible = await countCompetitionEligibleRegistrations(
+        tournamentId,
+        db,
+      );
+      if (eligible < config.minRegistrations) {
+        log.info(
+          { eligible, required: config.minRegistrations },
+          'registration closed under the minimum; cancelling instead of retrying forever',
+        );
+        transition = 'CANCEL';
+        reason = INSUFFICIENT_REGISTRATIONS;
+      }
+    }
+
     try {
       const result = await applyTransition(tournamentId, transition, {
         runBy: 'schedule',
         actorId: null,
+        reason,
       });
       log.info(
         { transition, from: result.from, to: result.to },
         'reconciliation applied a transition',
       );
+
+      if (transition === 'CANCEL') {
+        // Enqueue the follow-up here rather than waiting for the sweep to
+        // notice. The sweep still looks for cancelled tournaments every tick and
+        // is the safety net that covers an admin-initiated cancel, or a crash
+        // between this commit and this enqueue — but it queries concurrently
+        // with the transition sweep, so on the very tick a tournament cancels it
+        // has already looked and found nothing. Relying on it alone left
+        // competitors un-notified and un-refunded for a whole tick for no
+        // reason. Same stable key, so the two paths collapse to one job.
+        await enqueueCancellationCleanup(tournamentId);
+
+        // CANCELLED is terminal (D34). Every remaining step in the path was
+        // computed for a tournament that was going to close registration and
+        // carry on; none of them are legal now. Stop rather than let the next
+        // one throw and be logged as "someone else moved it".
+        return;
+      }
     } catch (error) {
       if (error instanceof InvalidTransitionError) {
         // Someone else moved it. Not a fault — the next pass re-reads.

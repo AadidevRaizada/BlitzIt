@@ -234,6 +234,18 @@ export function notificationContent(
         cta: { label: 'Hall of Fame', path: '/hall-of-fame' },
       };
 
+    case 'TOURNAMENT_CANCELLED':
+      return {
+        subject: `${tournament} has been cancelled`,
+        heading: 'Tournament cancelled',
+        lines: [
+          `${tournament} did not attract enough competitors and has been cancelled.`,
+          'Any entry fees have been refunded to your original payment method.',
+          'We will email you when the refund clears your account.',
+        ],
+        cta: { label: 'Browse tournaments', path: '/tournaments' },
+      };
+
     case 'PAYOUT_SENT':
       return {
         subject: 'Your prize is on its way',

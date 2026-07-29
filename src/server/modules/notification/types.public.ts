@@ -70,6 +70,11 @@ export const CHANNEL_POLICY: Readonly<
   ADVANCED: ['EMAIL', 'IN_APP'],
   ELIMINATED: ['EMAIL', 'IN_APP'],
   TOURNAMENT_COMPLETE: ['EMAIL', 'IN_APP'],
+  // A tournament someone entered is not happening, and their money is coming
+  // back. Email is not optional for this one — it is the only channel that
+  // reaches someone who is not going to open the site again precisely because
+  // the event they were coming for is off.
+  TOURNAMENT_CANCELLED: ['EMAIL', 'IN_APP'],
   PAYOUT_SENT: ['EMAIL', 'IN_APP'],
   PRIZE_POOL_UPDATE: ['IN_APP'],
 };
@@ -99,6 +104,7 @@ export const NOTIFICATION_LABEL: Readonly<Record<NotificationType, string>> = {
   ADVANCED: 'Advanced',
   ELIMINATED: 'Eliminated',
   TOURNAMENT_COMPLETE: 'Tournament complete',
+  TOURNAMENT_CANCELLED: 'Tournament cancelled',
   PAYOUT_SENT: 'Payout sent',
   PRIZE_POOL_UPDATE: 'Prize pool',
 };

@@ -69,6 +69,13 @@ knows nothing but the tournament id.
 An illegal transition fails for everyone, including an admin with `force: true`. That is what
 makes the persisted state trustworthy.
 
+The minimum-registrations guard is worth a note, because D34 changed who trips it. The **schedule**
+no longer does: when the reconciler sees `CLOSE_REGISTRATION` come due on a field below the minimum,
+it cancels the tournament instead of attempting a transition it knows will be refused. The guard
+remains for every other way in — above all the admin's "Close registration" button, which calls
+`applyTransition` with `force: false` and has nothing else standing between it and a field too small
+to seed. **The schedule decides whether to try; the guard decides whether it is sensible.**
+
 ### Idempotency
 
 Every transition writes an `OpsEvent` keyed deterministically:
@@ -351,7 +358,7 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 | **Sudden death** (D5.6, D14) | A tie surviving all five tie-breaks sets `Match.tieUnresolved`, leaves the match `JUDGING`, and logs loudly. Resolving it needs a new short challenge + round, which is the bracket epic's job. | E6.3 ✅ |
 | Admin UI (tournaments/problems/dashboard) | E3 delivers the engine and its server actions; screens are a separate deliverable. | E3.3–E3.5 |
 | Bracket UI | — | E6.4 |
-| Cron wiring | **Resolved: there is no cron.** One sweep in the runner drives everything. Round deadlines enqueue `advanceBracket` (D30); schedule milestones enqueue `tournamentTransition` (D32), so registration opening/closing, simulation start/close, bracket generation and knockout start all fire on their own anchors. Railway Cron cannot serve this — 5-minute floor, and a cron service must exit. Only CANCEL and problem assignment stay manual. See D30 and D32 in `DECISIONS.md`. | Done |
+| Cron wiring | **Resolved: there is no cron.** One sweep in the runner drives everything. Round deadlines enqueue `advanceBracket` (D30); schedule milestones enqueue `tournamentTransition` (D32), so registration opening/closing, simulation start/close, bracket generation and knockout start all fire on their own anchors. Railway Cron cannot serve this — 5-minute floor, and a cron service must exit. The same sweep also carries cancellation cleanup and auto-archival (D34). Only problem assignment stays manual — CANCEL is now automatic when a registration window closes under its minimum (D34), though an operator can still cancel by hand. See D30, D32 and D34 in `DECISIONS.md`. | Done |
 | Payments / prize pool | Registration deliberately carries no money yet. | E4 |
 | Submission creation, arena, problem reveal | E3 owns the window, not the submission. | E5 |
 
@@ -362,6 +369,7 @@ Evaluation ──────► evaluation only        (stage-agnostic; receive
 | Suite | Covers |
 |---|---|
 | `verify:tournament` | Every lifecycle edge; the exhaustive legal/illegal matrix per state; cancellation; stage lists per bracket size; state encoding; configuration layering and degradation |
+| `verify:cancellation` (D34) | The minimum-registrations guard still refusing a manual close, and `force` still overriding it; a schedule-driven cancellation with its reason recorded and the remaining path abandoned; a tournament that met its minimum closing normally; every registrant notified and every paid entry refunded, exactly once across repeated sweeps; a free tournament reporting no refunds rather than zero; the archival grace period, and archival **deferred** while a refund is outstanding with the reason readable from the admin diagnostics; cancellation being terminal against both a replayed and a fresh transition |
 | `verify:bracket` | Seed order; structure at 8/16/32/64 with and without third place; better-seed-wins property; determinism; byes incl. an oversized draw; every D5 tie-break step; window gating; seeding aggregation |
 | `verify:live-arena` (E7) | Timer arithmetic at every boundary incl. clock-skew correction; arena state derivation; the reveal gate before `opensAt`; per-match windows deriving identically from one round; opponent progress withheld while the window is open; a late submission refused by the server; JUDGING past the timer; the deadlock → decider → result path from the competitor's side; the live snapshot's contents, its exclusions and its version stability; the feature flag's resolution order |
 | `verify:tournament:e2e` | CRUD; the whole lifecycle against the database; refusal of invalid transitions; idempotent replay; registration limits, withdrawal and a concurrent re-registration race; submission windows and simulation-round progression; seeding from real evaluations plus determinism on a fully tied field; bracket generation and byes; automatic advancement; tie-break, walkover and third place; completion and placements; cancellation and `force`; the transition job and its stage-scoped keys; **restart recovery in a separate process** |

@@ -87,6 +87,16 @@ export const TERMINAL_STATES: readonly LifecycleState[] = [
   'CANCELLED',
 ] as const;
 
+/**
+ * `Tournament.cancellationReason` for an automatic cancellation (D34).
+ *
+ * A constant rather than a literal because three places must agree on it: the
+ * reconciler writes it, the cleanup sweep reads it to decide what to refund
+ * against, and the admin panel matches on it to render a sentence instead of a
+ * SCREAMING_CASE token. Operator-entered reasons are free text and stay so.
+ */
+export const INSUFFICIENT_REGISTRATIONS = 'INSUFFICIENT_REGISTRATIONS';
+
 /** Compose the flattened state from the two persisted columns. */
 export function toLifecycleState(
   status: TournamentStatus,

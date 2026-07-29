@@ -128,6 +128,17 @@ async function assertGuards(
 ): Promise<void> {
   switch (transition) {
     case 'CLOSE_REGISTRATION': {
+      // This guard STAYS, even though the reconciler now avoids ever tripping it
+      // (D34: a schedule-driven close that would fail here becomes a CANCEL
+      // instead). The two are not redundant — this is the backstop for every
+      // OTHER way in, above all the admin's "Close registration" button, which
+      // calls `applyTransition` with `force: false` and has nothing else
+      // standing between it and a field too small to seed. Removing this let an
+      // operator close a one-competitor tournament and march it to
+      // GENERATE_BRACKET, which then refuses on MIN_BRACKET_SIZE mid-phase —
+      // exactly the unrecoverable shape the START_SIMULATION comment below
+      // describes. The schedule decides *whether to try*; this decides
+      // *whether it is sensible*.
       const eligible = await countCompetitionEligibleRegistrations(
         tournament.id,
         tx,

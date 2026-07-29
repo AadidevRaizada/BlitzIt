@@ -2,7 +2,10 @@ import 'server-only';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import type { TournamentStatus } from '@/generated/prisma/client';
-import { LIFECYCLE_BUCKET_MS } from '@/server/jobs/progress-sweep';
+import {
+  ARCHIVE_GRACE_MS,
+  LIFECYCLE_BUCKET_MS,
+} from '@/server/jobs/progress-sweep';
 import {
   nextScheduledStep,
   reconciliationPath,
@@ -30,6 +33,36 @@ import {
  * again, and what to do about it.
  */
 
+/**
+ * What happened after an automatic cancellation (D34) — the honest version.
+ *
+ * The panel used to assert "notifications sent, refunds initiated" the moment a
+ * tournament went CANCELLED, which was a claim about work that had not run yet
+ * and might still fail. Everything here is read from the rows that record the
+ * work actually happening, so a refund stuck at the gateway looks stuck.
+ */
+export interface CancellationDiagnostics {
+  reason: string | null;
+  cancelledAt: Date | null;
+  /** When auto-archival becomes due. Null once archived. */
+  archiveAt: Date | null;
+  archivedAt: Date | null;
+  /** State of the notify+refund job. NOT_STARTED = the sweep has yet to enqueue it. */
+  cleanup: 'NOT_STARTED' | 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED';
+  /** Verbatim from the cleanup job's last failure. */
+  cleanupError: string | null;
+  /**
+   * Entry-fee payments by disposition. Null for a free tournament, which has no
+   * payments and therefore nothing to refund — distinct from "zero refunded".
+   */
+  refunds: {
+    awaitingRefund: number;
+    inFlight: number;
+    refunded: number;
+    failed: number;
+  } | null;
+}
+
 export interface LifecycleDiagnostics {
   status: TournamentStatus;
   /** Where the schedule says it should be. Equal to `status` when converged. */
@@ -48,6 +81,8 @@ export interface LifecycleDiagnostics {
   retryEveryMs: number;
   /** What the operator should actually do. Null when nothing is wrong. */
   recommendation: string | null;
+  /** Present only for a CANCELLED tournament (D34). */
+  cancellation: CancellationDiagnostics | null;
 }
 
 /**
@@ -90,6 +125,63 @@ function recommend(reason: string | null, drifted: boolean): string | null {
   return 'Resolve the condition above, or use the override buttons if you need to force progress.';
 }
 
+/** Read what the cancellation follow-up work has actually managed to do. */
+async function cancellationDiagnostics(
+  tournamentId: string,
+  tournament: {
+    cancelledAt: Date | null;
+    cancellationReason: string | null;
+    archivedAt: Date | null;
+  },
+  client: DbClient,
+): Promise<CancellationDiagnostics> {
+  const [job, payments] = await Promise.all([
+    client.evaluationJob.findUnique({
+      where: { idempotencyKey: `cancel-cleanup:${tournamentId}` },
+      select: { status: true, lastError: true },
+    }),
+    client.payment.groupBy({
+      by: ['status'],
+      where: { tournamentId },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const count = (status: string) =>
+    payments.find((p) => p.status === status)?._count._all ?? 0;
+
+  const cleanup: CancellationDiagnostics['cleanup'] = !job
+    ? 'NOT_STARTED'
+    : job.status === 'DONE'
+      ? 'DONE'
+      : job.status === 'FAILED'
+        ? 'FAILED'
+        : job.status === 'QUEUED'
+          ? 'QUEUED'
+          : 'RUNNING';
+
+  return {
+    reason: tournament.cancellationReason,
+    cancelledAt: tournament.cancelledAt,
+    archiveAt:
+      tournament.cancelledAt && !tournament.archivedAt
+        ? new Date(tournament.cancelledAt.getTime() + ARCHIVE_GRACE_MS)
+        : null,
+    archivedAt: tournament.archivedAt,
+    cleanup,
+    cleanupError: job && job.status !== 'DONE' ? (job.lastError ?? null) : null,
+    refunds:
+      payments.length === 0
+        ? null
+        : {
+            awaitingRefund: count('PAID'),
+            inFlight: count('PENDING_REFUND'),
+            refunded: count('REFUNDED'),
+            failed: count('REFUND_FAILED'),
+          },
+  };
+}
+
 export async function getLifecycleDiagnostics(
   tournamentId: string,
   client: DbClient = db,
@@ -104,6 +196,9 @@ export async function getLifecycleDiagnostics(
       simulationOpensAt: true,
       simulationClosesAt: true,
       liveStartsAt: true,
+      cancelledAt: true,
+      cancellationReason: true,
+      archivedAt: true,
     },
   });
   if (!tournament) return null;
@@ -138,5 +233,9 @@ export async function getLifecycleDiagnostics(
     attempts: lastJob?.attempts ?? 0,
     retryEveryMs: LIFECYCLE_BUCKET_MS,
     recommendation: recommend(blockedReason, pendingPath.length > 0),
+    cancellation:
+      tournament.status === 'CANCELLED'
+        ? await cancellationDiagnostics(tournamentId, tournament, client)
+        : null,
   };
 }

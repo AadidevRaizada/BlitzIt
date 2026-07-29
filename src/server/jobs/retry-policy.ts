@@ -40,6 +40,14 @@ export const JOB_RETRY_POLICIES: Record<JobName, JobRetryPolicy> = {
     baseBackoffMs: 30_000,
     maxBackoffMs: 10 * 60_000,
   },
+  // D34: post-cancel cleanup (notify + refund). Retries allow for transient
+  // failures in email delivery or payment gateway. Each retry is independent:
+  // already-refunded payments no-op safely, and notifications dedupe by scopeId.
+  cancelTournamentCleanup: {
+    maxAttempts: 5,
+    baseBackoffMs: 60_000,
+    maxBackoffMs: 30 * 60_000,
+  },
 };
 
 export function retryPolicyFor(name: JobName): JobRetryPolicy {
