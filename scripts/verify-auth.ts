@@ -314,6 +314,44 @@ async function main() {
     `DELETE FROM auth_user WHERE email LIKE '%@blitzit.test'`,
   );
 
+  // ── The route handler contract ────────────────────────────────────────────
+  //
+  // `auth` is a lazy Proxy. `toNextJsHandler` picks what to call with
+  // `"handler" in auth ? auth.handler(req) : auth(req)`, and `in` consults the
+  // `has` trap — not `get`. When `has` was missing, this was false, Better Auth
+  // called the proxy itself, the target was not callable, and EVERY
+  // `/api/auth/*` request 500'd with "a is not a function": sign-out, session
+  // reads and the OAuth callback. Nothing at the call site hints at it, which is
+  // why it is pinned here.
+  console.log('\n--- Next.js route handler contract ---');
+  const { auth } = await import('../src/server/auth');
+  const { toNextJsHandler } = await import('better-auth/next-js');
+
+  // Without a `has` trap on the proxy this is false and every /api/auth/*
+  // request throws.
+  check(
+    'REGRESSION: `"handler" in auth` is true, so toNextJsHandler calls auth.handler',
+    'handler' in auth,
+  );
+  check(
+    'auth.handler resolves to a callable',
+    typeof auth.handler === 'function',
+  );
+
+  const handlers = toNextJsHandler(auth);
+  const response = await handlers.POST(
+    new Request('http://localhost/api/auth/sign-out', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    }),
+  );
+  // No session cookie is sent, so the only wrong answer is a 500 — that is the
+  // shape the bug produced.
+  check(
+    `a signed-out POST /sign-out is answered, not a 500 (got ${response.status})`,
+    response.status < 500,
+  );
+
   console.log(
     failures === 0
       ? '\nAll auth checks passed.'

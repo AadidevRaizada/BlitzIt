@@ -207,11 +207,43 @@ function getAuth() {
   return authInstance;
 }
 
+/**
+ * Lazily-constructed auth instance, so `next build` can import route modules
+ * without runtime-only secrets being present.
+ *
+ * The `has` trap is load-bearing, not defensive. `toNextJsHandler` decides what
+ * to call with:
+ *
+ *     "handler" in auth ? auth.handler(request) : auth(request)
+ *
+ * `in` consults `has`, NOT `get`. With only a `get` trap the check fell through
+ * to the target — a plain `{}` — and was false, so Better Auth invoked the proxy
+ * itself as a function. The target is not callable, so every request to
+ * `/api/auth/*` died with `TypeError: a is not a function`: sign-out, session
+ * reads, and the OAuth callback alike. That is the whole "sign-in and sign-out
+ * are stuck" bug, and it is invisible from the call site.
+ *
+ * `getAuth()` is memoised, so answering `has` costs nothing after the first call.
+ */
 export const auth = new Proxy({} as ReturnType<typeof createAuth>, {
   get(_target, prop) {
     const instance = getAuth();
     const value = Reflect.get(instance, prop, instance);
     return typeof value === 'function' ? value.bind(instance) : value;
+  },
+  has(_target, prop) {
+    return Reflect.has(getAuth(), prop);
+  },
+  // Kept in step with `get`/`has` so anything that enumerates or reflects over
+  // the instance (a plugin, a future integration) sees the real shape rather
+  // than the empty target.
+  ownKeys(_target) {
+    return Reflect.ownKeys(getAuth());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    const descriptor = Reflect.getOwnPropertyDescriptor(getAuth(), prop);
+    // `ownKeys` must only report configurable keys or the proxy invariant throws.
+    return descriptor && { ...descriptor, configurable: true };
   },
 });
 
