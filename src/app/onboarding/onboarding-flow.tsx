@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useRouter } from 'next/navigation';
 import { ArrowRight, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { completeOnboardingAction } from '@/server/actions/onboarding.actions';
@@ -65,10 +64,25 @@ const TOTAL_STEPS = 6;
  * and infuriating: you answer three questions, connect GitHub, and come back to
  * a blank first step.
  *
- * `sessionStorage`, not `localStorage`: this is scratch state for one sitting,
- * it contains a display name and a city, and it should not outlive the tab.
+ * See `stores()` below for which storage this uses and why.
  */
-const DRAFT_KEY = 'circuit:onboarding-draft:v1';
+const DRAFT_PREFIX = 'circuit:onboarding-draft:v1:';
+
+/** A draft older than this is stale enough that resurrecting it would surprise. */
+const DRAFT_TTL_MS = 24 * 60 * 60_000;
+
+/**
+ * Scoped per account.
+ *
+ * A shared key leaks between people who use the same tab: A starts onboarding
+ * and abandons it, signs out, B signs in — and B's first question is prefilled
+ * with A's display name and city. The server-issued username is stable for the
+ * lifetime of an incomplete onboarding (it is only rewritten at completion), so
+ * it is a usable scope without adding an identifier the state does not carry.
+ */
+function draftKey(scope: string): string {
+  return `${DRAFT_PREFIX}${scope}`;
+}
 
 interface Draft {
   displayName: string;
@@ -76,37 +90,107 @@ interface Draft {
   city: string;
   termsAccepted: boolean;
   step: StepIndex;
+  savedAt: number;
 }
 
-function readDraft(): Partial<Draft> | null {
+/**
+ * `localStorage` first, `sessionStorage` as the fallback.
+ *
+ * This started as sessionStorage alone, on the reasoning that a display name and
+ * a city are scratch data that should not outlive the tab. Adversarial review
+ * found the hole in that: `sessionStorage` is per-TAB, and the GitHub callback
+ * is not guaranteed to land in the tab it left from. When it does not, the draft
+ * is invisible and the person is dropped back to whatever the database already
+ * held — which for a partly-filled account means their newer answers are
+ * quietly replaced by older ones.
+ *
+ * Nothing can be submitted blind (an empty answer keeps Continue disabled, and
+ * every value is on screen at the step it belongs to), and it is no worse than
+ * the form this replaced, which lost all three fields on every GitHub hop. But
+ * "no worse than before" is not the bar. `localStorage` survives the round trip
+ * in any tab, is scoped per account, is cleared the moment onboarding completes,
+ * and expires after a day so a long-abandoned attempt cannot reappear.
+ *
+ * Both stores are written and both are cleared, so a browser that refuses one —
+ * private mode, disabled storage — still gets the other, and neither can be
+ * left holding a stale copy.
+ */
+function stores(): Storage[] {
+  const found: Storage[] = [];
   try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
-    return raw ? (JSON.parse(raw) as Partial<Draft>) : null;
+    found.push(window.localStorage);
   } catch {
-    // Private mode, disabled storage, or corrupt JSON. Losing the draft is a
-    // nuisance; throwing here would break onboarding entirely.
-    return null;
+    // Blocked by the browser; sessionStorage may still work.
+  }
+  try {
+    found.push(window.sessionStorage);
+  } catch {
+    // Both blocked. The flow still works, it just cannot survive the hop.
+  }
+  return found;
+}
+
+/**
+ * The NEWEST valid draft across both stores — not the first one found.
+ *
+ * The two writes succeed or fail independently, so the stores can disagree: a
+ * quota or privacy failure on `localStorage` part-way through leaves it holding
+ * an older copy while `sessionStorage` keeps taking the latest answers. Reading
+ * in store order would then prefer the stale one and throw away everything typed
+ * since, which is the exact class of loss this draft exists to prevent.
+ *
+ * `savedAt` already distinguishes them, so the newest simply wins, and the
+ * losing copies are overwritten on the next write.
+ */
+function readDraft(scope: string): Draft | null {
+  let newest: Draft | null = null;
+
+  for (const store of stores()) {
+    try {
+      const raw = store.getItem(draftKey(scope));
+      if (!raw) continue;
+      const draft = JSON.parse(raw) as Partial<Draft>;
+      if (
+        typeof draft.savedAt !== 'number' ||
+        Date.now() - draft.savedAt > DRAFT_TTL_MS
+      ) {
+        store.removeItem(draftKey(scope));
+        continue;
+      }
+      if (!newest || draft.savedAt > newest.savedAt) {
+        newest = draft as Draft;
+      }
+    } catch {
+      // Corrupt JSON or a blocked read. Losing the draft is a nuisance;
+      // throwing here would break onboarding entirely.
+    }
+  }
+
+  return newest;
+}
+
+function writeDraft(scope: string, draft: Omit<Draft, 'savedAt'>): void {
+  const payload = JSON.stringify({ ...draft, savedAt: Date.now() });
+  for (const store of stores()) {
+    try {
+      store.setItem(draftKey(scope), payload);
+    } catch {
+      // Quota or private mode. Ignored for the same reason.
+    }
   }
 }
 
-function writeDraft(draft: Draft): void {
-  try {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-  } catch {
-    // Ignored for the same reason.
-  }
-}
-
-function clearDraft(): void {
-  try {
-    sessionStorage.removeItem(DRAFT_KEY);
-  } catch {
-    // Ignored for the same reason.
+function clearDraft(scope: string): void {
+  for (const store of stores()) {
+    try {
+      store.removeItem(draftKey(scope));
+    } catch {
+      // Ignored for the same reason.
+    }
   }
 }
 
 export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
-  const router = useRouter();
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     completeOnboardingAction,
     null,
@@ -126,8 +210,13 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
   // question, which is exactly what someone returning from GitHub would see.
   const [ready, setReady] = useState(false);
 
+  // Fixed for the lifetime of this page: the username the SERVER issued, not
+  // the one being edited. Using the live value would move the draft to a new
+  // key on every keystroke of step 2 and leave a trail of orphans.
+  const draftScope = useRef(initial.profile.username).current;
+
   useEffect(() => {
-    const draft = readDraft();
+    const draft = readDraft(draftScope);
     if (draft) {
       if (draft.displayName) setDisplayName(draft.displayName);
       if (draft.username) setUsername(draft.username);
@@ -151,15 +240,25 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
     }
 
     setReady(true);
-  }, [initial.githubLinked]);
+  }, [initial.githubLinked, draftScope]);
 
   // Persist after every change, so the draft is current whenever the person
   // leaves for GitHub. Skipped until `ready` so the empty pre-hydration state
   // cannot overwrite a real draft.
   useEffect(() => {
     if (!ready) return;
-    writeDraft({ displayName, username, city, termsAccepted, step });
-  }, [ready, displayName, username, city, termsAccepted, step]);
+    // Step 6 is the completed state, and `clearDraft` has just run. Writing
+    // here would immediately resurrect what was cleared — the effect depends on
+    // `step`, so reaching the success screen re-triggers it.
+    if (step === 6) return;
+    writeDraft(draftScope, {
+      displayName,
+      username,
+      city,
+      termsAccepted,
+      step,
+    });
+  }, [ready, draftScope, displayName, username, city, termsAccepted, step]);
 
   // ---- Validation. The same rules the action enforces, used only to gate the
   // button. Nothing here relaxes or replaces the server's check. ----
@@ -203,15 +302,23 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
 
   // ---- Result handling ----
 
+  // A result must be acted on exactly once. Without this guard the effect
+  // re-runs whenever `firstInvalidStep` changes identity — which is every
+  // keystroke — so correcting a rejected username would re-toast the error and
+  // yank the step back on every character typed.
+  const handledResult = useRef<ActionState>(null);
+
   useEffect(() => {
-    if (!state) return;
+    if (!state || handledResult.current === state) return;
+    handledResult.current = state;
     if (state.ok) {
-      clearDraft();
+      clearDraft(draftScope);
       setStep(6);
-      // Refresh so the session and any shell state reflect a completed profile
-      // before the person moves on. The navigation itself is theirs to make —
-      // the success screen is part of the flow, not a redirect target.
-      router.refresh();
+      // Deliberately NO `router.refresh()` here. Refreshing re-runs the page's
+      // Server Component, which now sees `state.completed === true` and calls
+      // `redirect('/dashboard')` — so the success screen would be replaced by
+      // the dashboard before anyone read it. The "Enter Mission Control" link
+      // is a full navigation, which rebuilds the shell properly anyway.
     } else {
       // A rejected submission must land the person ON the question that was
       // wrong. The previous form could only toast, because every field was on
@@ -221,16 +328,22 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
       setStep(target);
       toast.error(state.error.message);
     }
-  }, [state, router, firstInvalidStep]);
+  }, [state, firstInvalidStep, draftScope]);
 
   // ---- Focus. After every transition the caret belongs in the next answer. ----
 
   const panelRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!ready) return;
+    // The panel's own field first; otherwise the primary action. Steps that ask
+    // nothing — welcome, GitHub once it is already connected, success — have no
+    // field, and without the fallback focus would sit on <body> and the whole
+    // keyboard path would go dead exactly where it matters most.
     const node =
-      panelRef.current?.querySelector<HTMLElement>('[data-autofocus]');
+      panelRef.current?.querySelector<HTMLElement>('[data-autofocus]') ??
+      formRef.current?.querySelector<HTMLElement>('[data-primary-action]');
     // `preventScroll` because the panel is already centred; letting the browser
     // scroll to it shifts a page that did not need moving.
     node?.focus({ preventScroll: true });
@@ -249,7 +362,13 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
     setLinking(true);
     // Written synchronously before navigating away: the persistence effect
     // above runs on a React commit, and this handler leaves the page.
-    writeDraft({ displayName, username, city, termsAccepted, step: 4 });
+    writeDraft(draftScope, {
+      displayName,
+      username,
+      city,
+      termsAccepted,
+      step: 4,
+    });
     try {
       await authClient.linkSocial({
         provider: 'github',
@@ -274,7 +393,10 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
     if ((event.target as HTMLElement).tagName === 'BUTTON') return;
 
     if (step === 5) {
-      if (!canContinue) event.preventDefault();
+      // `pending` matters as much as validity: the Continue button is disabled
+      // mid-flight, but Enter bypasses a disabled button and would submit the
+      // action a second time.
+      if (!canContinue || pending) event.preventDefault();
       return;
     }
     event.preventDefault();
@@ -283,6 +405,7 @@ export function OnboardingFlow({ initial }: { initial: OnboardingState }) {
 
   return (
     <form
+      ref={formRef}
       action={formAction}
       onKeyDown={onKeyDown}
       className={cn(
@@ -427,7 +550,9 @@ function StepBody({
             autoCapitalize="none"
             spellCheck={false}
             maxLength={24}
-            prefix="circuit.devhub.wtf/u/"
+            // Path only. The previous version hardcoded the production host,
+            // which is simply untrue on localhost and on any preview domain.
+            prefix="/u/"
           />
           <Hint
             tone={
@@ -728,7 +853,7 @@ function Actions({
         */}
         <a
           href="/dashboard"
-          data-autofocus
+          data-primary-action
           className={cn(
             buttonVariants({ variant: 'broadcast', size: 'lg' }),
             'w-full justify-center sm:w-auto',
@@ -756,7 +881,7 @@ function Actions({
           disabled={!canContinue || pending}
           aria-busy={pending}
           className="w-full justify-center sm:w-auto sm:min-w-[11rem]"
-          {...(step === 0 ? { 'data-autofocus': true } : {})}
+          data-primary-action
         >
           {pending ? (
             <>
@@ -807,6 +932,7 @@ function Progress({ step }: { step: StepIndex }) {
       {[1, 2, 3, 4, 5].map((index) => (
         <span
           key={index}
+          aria-hidden
           className={cn(
             'h-1 rounded-full transition-all duration-[var(--motion-base)]',
             index === step
