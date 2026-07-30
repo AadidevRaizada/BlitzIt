@@ -23,7 +23,12 @@ import {
   updateProblem,
 } from '@/server/modules/problem';
 import { recordAudit } from '@/server/modules/admin/audit';
-import { listAuditLog, listUsers } from '@/server/modules/admin/directory';
+import {
+  deleteUser,
+  listAuditLog,
+  listUsers,
+  setTesterRole,
+} from '@/server/modules/admin/directory';
 import {
   cancelRegistrationForAdmin,
   getPaymentForAdmin,
@@ -40,6 +45,7 @@ import {
   createProblemFormSchema,
   configureTournamentFormSchema,
   createTournamentFormSchema,
+  deleteUserSchema,
   hiddenTestIdSchema,
   listAuditSchema,
   listPaymentsSchema,
@@ -49,6 +55,7 @@ import {
   problemIdSchema,
   removeRegistrationSchema,
   scheduleFormSchema,
+  setTesterRoleSchema,
   startSuddenDeathSchema,
   updateProblemFormSchema,
   updateTournamentFormSchema,
@@ -767,6 +774,54 @@ export async function listUsersAction(
     return ok(await listUsers(admin, parsed.data));
   } catch (error) {
     captureException(error, { where: 'listUsersAction' });
+    return toErr(error);
+  }
+}
+
+/**
+ * Grant or revoke the TEST role. The module owns every rule — that ADMIN is not
+ * reachable from here, that bots have no editable role, and that a competitor
+ * with a production record cannot be converted.
+ */
+export async function setTesterRoleAction(
+  userId: string,
+  isTester: boolean,
+): Promise<Result<{ role: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = setTesterRoleSchema.safeParse({ userId, isTester });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const user = await setTesterRole(
+      parsed.data.userId,
+      parsed.data.isTester,
+      admin,
+    );
+    revalidatePath('/admin/users');
+    return ok({ role: user.role });
+  } catch (error) {
+    captureException(error, { where: 'setTesterRoleAction' });
+    return toErr(error);
+  }
+}
+
+export async function deleteUserAction(
+  userId: string,
+  anonymise = false,
+): Promise<Result<{ outcome: 'DELETED' | 'ANONYMISED' }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = deleteUserSchema.safeParse({ userId, anonymise });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const result = await deleteUser(parsed.data.userId, admin, {
+      anonymise: parsed.data.anonymise,
+    });
+    revalidatePath('/admin/users');
+    revalidatePath('/admin');
+    return ok({ outcome: result.outcome });
+  } catch (error) {
+    captureException(error, { where: 'deleteUserAction' });
     return toErr(error);
   }
 }

@@ -464,6 +464,23 @@ export const assignProblemSchema = z.object({
 export const listUsersSchema = z.object({
   search: optionalText(120),
   take: z.coerce.number().int().positive().max(200).optional(),
+  includeBots: z.coerce.boolean().optional(),
+});
+
+export const setTesterRoleSchema = z.object({
+  userId: z.string().uuid(),
+  isTester: z.boolean(),
+});
+
+export const deleteUserSchema = z.object({
+  userId: z.string().uuid(),
+  /**
+   * Anonymise instead of deleting, for an account with a competitive record.
+   * Required rather than inferred: erasing somebody's identity while keeping
+   * their results is a different decision from removing an empty account, and
+   * the operator has to have made it deliberately.
+   */
+  anonymise: z.boolean().optional(),
 });
 
 export const listAuditSchema = z.object({
