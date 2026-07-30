@@ -551,6 +551,14 @@ export interface BracketRoundView {
     /** Ids, so a viewer's own path can be highlighted without name matching. */
     competitorAId: string | null;
     competitorBId: string | null;
+    /**
+     * This slot is held by a test bot (D35). Surfaced from the read model rather
+     * than looked up by the view, so every bracket consumer — admin, spectator,
+     * arena — shows the BOT badge from the same fact and none of them can forget
+     * to. A competitor is entitled to know they are playing a bot.
+     */
+    competitorABot: boolean;
+    competitorBBot: boolean;
     seedA: number | null;
     seedB: number | null;
     /**
@@ -611,9 +619,12 @@ export async function listBracketRounds(
 
   const users = await client.user.findMany({
     where: { id: { in: userIds } },
-    select: { id: true, username: true },
+    select: { id: true, username: true, isBot: true },
   });
   const usernameById = new Map(users.map((user) => [user.id, user.username]));
+  const botIds = new Set(
+    users.filter((user) => user.isBot).map((user) => user.id),
+  );
 
   // Only the opening round assigns competitors by seed; every later round is
   // fed by a winner. That is what separates "empty forever" from "not yet".
@@ -643,6 +654,12 @@ export async function listBracketRounds(
           : null,
         competitorAId: match.competitorAId,
         competitorBId: match.competitorBId,
+        competitorABot: match.competitorAId
+          ? botIds.has(match.competitorAId)
+          : false,
+        competitorBBot: match.competitorBId
+          ? botIds.has(match.competitorBId)
+          : false,
         seedA: match.seedA,
         seedB: match.seedB,
         slotAEmpty: isSlotPermanentlyEmpty({

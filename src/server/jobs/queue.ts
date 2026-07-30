@@ -28,7 +28,11 @@ export type JobName =
   | 'sendEmail'
   // D34 — post-cancel cleanup for auto-cancelled tournaments: notify all
   // registrants and initiate refunds for paid entries.
-  | 'cancelTournamentCleanup';
+  | 'cancelTournamentCleanup'
+  // D35 — make every bot in an open TEST round submit. Enqueued by the same
+  // sweep that drives round deadlines and lifecycle milestones (D30/D33): one
+  // timer, now three kinds of due work.
+  | 'botSubmit';
 
 export interface EnqueueOptions {
   /** Idempotency key — duplicate enqueues with the same key collapse to one job. */

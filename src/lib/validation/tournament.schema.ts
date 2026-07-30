@@ -48,6 +48,13 @@ export const createTournamentSchema = z.object({
   maxRegistrations: z.number().int().positive().optional(),
   timezoneDisplay: z.string().min(1).optional(),
   youtubeStreamUrl: z.string().url().optional(),
+  /**
+   * Which world this tournament belongs to. Settable ONLY at creation — there is
+   * deliberately no equivalent on the update schema, because moving a tournament
+   * between environments would move its results with it, retroactively adding a
+   * test bracket to the production record or erasing a real one from it.
+   */
+  environment: z.enum(['PRODUCTION', 'TEST']).optional(),
 });
 
 export type CreateTournamentInput = z.infer<typeof createTournamentSchema>;

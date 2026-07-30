@@ -135,15 +135,18 @@ export const createTournamentFormSchema = z.object({
   maxRegistrations: optionalPositiveInt,
   passPriceMinor: optionalNonNegativeInt,
   visibility: z.enum(TOURNAMENT_VISIBILITIES).optional(),
+  environment: z.enum(['PRODUCTION', 'TEST']).optional(),
 });
 
 export type CreateTournamentFormInput = z.infer<
   typeof createTournamentFormSchema
 >;
 
+// `environment` is omitted, not merely optional: a tournament cannot change
+// worlds after creation, because its results would change worlds with it.
 export const updateTournamentFormSchema = createTournamentFormSchema
   .partial()
-  .omit({ slug: true })
+  .omit({ slug: true, environment: true })
   .extend({
     description: clearableText(1000),
     bracketSize: clearableBracketSize,
@@ -465,6 +468,31 @@ export const listUsersSchema = z.object({
   search: optionalText(120),
   take: z.coerce.number().int().positive().max(200).optional(),
   includeBots: z.coerce.boolean().optional(),
+});
+
+// ───────────────────────── Bots (D35) ─────────────────────────
+
+export const createBotSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .min(3, 'A bot handle must be at least 3 characters')
+    .max(30)
+    .regex(
+      /^[a-z0-9][a-z0-9-]*$/,
+      'Use lowercase letters, numbers and hyphens only',
+    ),
+  displayName: optionalText(60),
+  skill: z.coerce.number().int().min(0).max(100).optional(),
+  submitBehaviour: z.enum(['ALWAYS', 'NEVER', 'LATE']).optional(),
+  scoreMode: z.enum(['SEEDED', 'FIXED', 'TIE']).optional(),
+});
+
+export const botIdSchema = z.object({ botUserId: z.string().uuid() });
+
+export const addBotsSchema = z.object({
+  tournamentId: z.string().uuid(),
+  botUserIds: z.array(z.string().uuid()).min(1, 'Select at least one bot'),
 });
 
 export const setTesterRoleSchema = z.object({

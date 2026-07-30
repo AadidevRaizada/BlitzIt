@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Bot,
   ClipboardList,
   CreditCard,
   FileCode2,
@@ -41,6 +42,7 @@ const ITEMS: readonly NavItem[] = [
   { href: '/admin/submissions', label: 'Submissions', icon: ClipboardList },
   { href: '/admin/evaluations', label: 'Evaluations', icon: ScanSearch },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/bots', label: 'Test bots', icon: Bot },
   { href: '/admin/audit', label: 'Audit log', icon: ScrollText },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];

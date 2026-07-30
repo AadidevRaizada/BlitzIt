@@ -309,14 +309,35 @@ export async function submitSolution(
 ): Promise<SubmissionResult> {
   const now = options.now ?? new Date();
   const validated = validateSubmissionInput(input);
-  const profile = await db.profile.findUnique({
-    where: { userId: input.userId },
-    select: { githubUsername: true },
+
+  // Bots take the SAME path as everyone else, with exactly one check skipped:
+  // the GitHub ownership probe. A test bot has no GitHub account and no real
+  // repository, and D35 rules out generating them — so this one check, and only
+  // this one, cannot apply. Everything else it passes for real: the window, the
+  // registration guard, the match pairing, deployment-URL reuse, the revision
+  // history and the evaluation queue.
+  //
+  // The flag is DERIVED from the persisted row rather than accepted as an
+  // option, deliberately. A `skipRepoVerification` parameter would be a way for
+  // any caller — including a future server action — to turn off a real
+  // competitor's anti-cheat check. Read from the database, it cannot be
+  // forged: only a row an admin created as a bot qualifies.
+  const entrant = await db.user.findUnique({
+    where: { id: input.userId },
+    select: { isBot: true },
   });
-  await assertRepoOwnedAndPublic({
-    repoUrl: validated.repoUrl,
-    githubUsername: profile?.githubUsername,
-  });
+  if (!entrant) throw new NotFoundError('That user does not exist');
+
+  if (!entrant.isBot) {
+    const profile = await db.profile.findUnique({
+      where: { userId: input.userId },
+      select: { githubUsername: true },
+    });
+    await assertRepoOwnedAndPublic({
+      repoUrl: validated.repoUrl,
+      githubUsername: profile?.githubUsername,
+    });
+  }
 
   let accepted;
   try {

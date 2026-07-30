@@ -4,6 +4,7 @@ import { db } from '@/server/db';
 import { runEvaluation } from '@/server/modules/evaluation';
 import { UnsupportedCategoryError } from '@/server/modules/evaluation';
 import { resolveEvaluationProfile } from '@/server/modules/tournament/evaluation-profiles';
+import { runReferenceEvaluation } from '@/server/modules/bot/reference-evaluator';
 import { isEvaluationResultCurrent } from '@/server/modules/submission/state';
 import type { ClaimedJob } from '../queue';
 import { logger } from '@/lib/logger';
@@ -73,6 +74,7 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
       problem: { include: { hiddenTests: { orderBy: { sequence: 'asc' } } } },
       round: { select: { stage: true } },
       tournament: { select: { evaluationProfiles: true } },
+      user: { select: { isBot: true, botProfile: true } },
     },
   });
 
@@ -122,29 +124,47 @@ export async function evaluateProcessor(job: ClaimedJob): Promise<void> {
   );
 
   try {
-    const outcome = await runEvaluation(
-      {
-        submissionId: submission.id,
-        repoUrl: submission.repoUrl,
-        deploymentUrl: submission.deploymentUrl,
-        commitSha: submission.commitSha,
-        // The category the entry was ACCEPTED under, not the problem's current
-        // one. Re-categorising a problem mid-tournament must not retroactively
-        // change how an already-accepted entry is scored — or fail it outright
-        // as unsupported. The snapshot is the whole reason the column exists.
-        category: submission.category,
-        contractSpec: submission.problem.contractSpec,
-        hiddenTests: submission.problem.hiddenTests.map((test) => ({
-          id: test.id,
-          name: test.name,
-          kind: test.kind,
-          spec: test.spec,
-          weight: test.weight,
-          timeoutMs: test.timeoutMs,
-        })),
-      },
-      profile,
-    );
+    // WHERE the measurements come from is resolved here, at the same altitude
+    // as the profile above and for the same reason: the engine must stay free of
+    // competitor-shaped special cases (D20's architectural rule). A bot has no
+    // deployment to probe and no repository to read, so its numbers come from
+    // the deterministic internal reference evaluator instead — which honours the
+    // very same profile, and produces a complete outcome that everything
+    // downstream treats identically. There is no `if (isBot)` inside
+    // `runEvaluation`, and there must never be one.
+    const outcome = submission.user.isBot
+      ? runReferenceEvaluation({
+          botUserId: submission.userId,
+          roundId: submission.roundId,
+          problemId: submission.problemId,
+          skill: submission.user.botProfile?.skill ?? 50,
+          scoreMode: submission.user.botProfile?.scoreMode ?? 'SEEDED',
+          testCount: submission.problem.hiddenTests.length,
+          profile,
+        })
+      : await runEvaluation(
+          {
+            submissionId: submission.id,
+            repoUrl: submission.repoUrl,
+            deploymentUrl: submission.deploymentUrl,
+            commitSha: submission.commitSha,
+            // The category the entry was ACCEPTED under, not the problem's current
+            // one. Re-categorising a problem mid-tournament must not retroactively
+            // change how an already-accepted entry is scored — or fail it outright
+            // as unsupported. The snapshot is the whole reason the column exists.
+            category: submission.category,
+            contractSpec: submission.problem.contractSpec,
+            hiddenTests: submission.problem.hiddenTests.map((test) => ({
+              id: test.id,
+              name: test.name,
+              kind: test.kind,
+              spec: test.spec,
+              weight: test.weight,
+              timeoutMs: test.timeoutMs,
+            })),
+          },
+          profile,
+        );
 
     const finishedAt = new Date();
 

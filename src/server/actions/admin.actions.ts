@@ -24,6 +24,11 @@ import {
 } from '@/server/modules/problem';
 import { recordAudit } from '@/server/modules/admin/audit';
 import {
+  addBotsToTournament,
+  createBot,
+  deleteBot,
+} from '@/server/modules/bot';
+import {
   deleteUser,
   listAuditLog,
   listUsers,
@@ -40,10 +45,13 @@ import {
 import {
   adminPaymentIdSchema,
   addHiddenTestFormSchema,
+  addBotsSchema,
   archiveTournamentSchema,
+  botIdSchema,
   assignProblemSchema,
   createProblemFormSchema,
   configureTournamentFormSchema,
+  createBotSchema,
   createTournamentFormSchema,
   deleteUserSchema,
   hiddenTestIdSchema,
@@ -120,6 +128,7 @@ export async function createTournamentAdminAction(
         minRegistrations: parsed.data.minRegistrations,
         maxRegistrations: parsed.data.maxRegistrations,
         passPriceMinor: parsed.data.passPriceMinor,
+        environment: parsed.data.environment,
       },
       { actorId: admin.id },
     );
@@ -774,6 +783,70 @@ export async function listUsersAction(
     return ok(await listUsers(admin, parsed.data));
   } catch (error) {
     captureException(error, { where: 'listUsersAction' });
+    return toErr(error);
+  }
+}
+
+// ───────────────────────── Bots (D35) ─────────────────────────
+
+export async function createBotAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<Result<{ userId: string; username: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = createBotSchema.safeParse(formObject(formData));
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const bot = await createBot(parsed.data, admin);
+    revalidatePath('/admin/bots');
+    return ok({ userId: bot.userId, username: bot.username });
+  } catch (error) {
+    captureException(error, { where: 'createBotAction' });
+    return toErr(error);
+  }
+}
+
+export async function deleteBotAction(
+  botUserId: string,
+): Promise<Result<{ deleted: true }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = botIdSchema.safeParse({ botUserId });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    await deleteBot(parsed.data.botUserId, admin);
+    revalidatePath('/admin/bots');
+    return ok({ deleted: true });
+  } catch (error) {
+    captureException(error, { where: 'deleteBotAction' });
+    return toErr(error);
+  }
+}
+
+/**
+ * Fill test-tournament slots with bots. The module refuses a production
+ * tournament and one with an entry fee; nothing is decided here.
+ */
+export async function addBotsToTournamentAction(
+  tournamentId: string,
+  botUserIds: string[],
+): Promise<Result<{ added: number; skipped: string[] }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = addBotsSchema.safeParse({ tournamentId, botUserIds });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const result = await addBotsToTournament(
+      parsed.data.tournamentId,
+      parsed.data.botUserIds,
+      admin,
+    );
+    revalidateAdmin(parsed.data.tournamentId);
+    revalidatePath('/admin/bots');
+    return ok(result);
+  } catch (error) {
+    captureException(error, { where: 'addBotsToTournamentAction' });
     return toErr(error);
   }
 }

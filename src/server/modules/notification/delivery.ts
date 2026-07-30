@@ -72,11 +72,38 @@ export async function deliverNotificationEmail(
   const notification = await db.notification.findUnique({
     where: { id: notificationId },
     include: {
-      user: { select: { email: true, displayName: true, username: true } },
+      user: {
+        select: {
+          email: true,
+          displayName: true,
+          username: true,
+          isBot: true,
+        },
+      },
     },
   });
   if (!notification) {
     throw new NotFoundError(`notification ${notificationId} not found`);
+  }
+
+  // A bot receives NOTIFICATION ROWS — that is deliberate, it is how the
+  // notification pipeline gets exercised end to end — but never an email. Its
+  // address is already on an unroutable `.invalid` domain, so this is the second
+  // of two independent guards. Email is the one thing on this platform that
+  // leaves the building, and the cost of being wrong once is a real message to a
+  // real address; two guards is proportionate.
+  if (notification.user.isBot) {
+    await db.notification.update({
+      where: { id: notification.id },
+      // Terminal, not left PENDING: the intent has been processed as far as it
+      // can be, and a PENDING row would be retried by every future sweep.
+      data: { status: 'SENT', sentAt: new Date(), lastError: null },
+    });
+    logger.debug(
+      { notificationId, type: notification.type },
+      'notification belongs to a bot; no email sent',
+    );
+    return { sent: false, skipped: true };
   }
 
   // Already delivered, or already read by the recipient in-app. Either way

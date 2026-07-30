@@ -143,6 +143,7 @@ export function BracketTree({
                       }
                       decided={match.status === 'DECIDED'}
                       permanentlyEmpty={match.slotAEmpty}
+                      isBot={match.competitorABot}
                     />
                     <Competitor
                       name={match.competitorB}
@@ -158,6 +159,7 @@ export function BracketTree({
                       }
                       decided={match.status === 'DECIDED'}
                       permanentlyEmpty={match.slotBEmpty}
+                      isBot={match.competitorBBot}
                     />
 
                     {match.status === 'DECIDED' && match.winReason ? (
@@ -184,6 +186,7 @@ function Competitor({
   isMe,
   decided,
   permanentlyEmpty,
+  isBot,
 }: {
   name: string | null;
   seed: number | null;
@@ -192,6 +195,8 @@ function Competitor({
   decided: boolean;
   /** An unfilled seed in the opening round — nobody is coming. */
   permanentlyEmpty: boolean;
+  /** A test bot fills this slot (D35). Competitors see a plain BOT badge. */
+  isBot: boolean;
 }) {
   if (!name) {
     return (
@@ -215,6 +220,11 @@ function Competitor({
     >
       <span className="truncate">
         {name}
+        {isBot ? (
+          <span className="bg-muted text-muted-foreground ml-1.5 rounded px-1 py-0.5 text-[10px] font-medium tracking-wide">
+            BOT
+          </span>
+        ) : null}
         {isMe ? (
           <span className="text-primary ml-1 text-xs font-medium">(you)</span>
         ) : null}

@@ -108,6 +108,7 @@ async function createTournamentUnchecked(
         maxRegistrations: input.maxRegistrations,
         timezoneDisplay: input.timezoneDisplay,
         youtubeStreamUrl: input.youtubeStreamUrl,
+        environment: input.environment,
         createdBy: options.actorId ?? null,
       },
     });
@@ -118,7 +119,11 @@ async function createTournamentUnchecked(
         action: 'tournament.create',
         entityType: 'Tournament',
         entityId: tournament.id,
-        after: { slug: tournament.slug, name: tournament.name },
+        after: {
+          slug: tournament.slug,
+          name: tournament.name,
+          environment: tournament.environment,
+        },
       },
       tx,
     );

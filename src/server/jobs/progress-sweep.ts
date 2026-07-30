@@ -260,6 +260,89 @@ export async function sweepDueTransitions(
   return enqueued;
 }
 
+// ---------------------------------------------------------------------------
+// Bot submissions in test rounds (D35)
+// ---------------------------------------------------------------------------
+
+/**
+ * Enqueue a bot-submission pass for an open round in a TEST tournament.
+ *
+ * Bucketed by minute for the same reason round progression is: a permanent key
+ * would fire once per round ever, and if that single pass ran before the bots
+ * were paired into their matches, the key would be spent and they would never
+ * submit at all. Re-arming each minute keeps trying while the window is open,
+ * and collapses concurrent replicas within a minute into one row.
+ */
+export function enqueueBotSubmissions(
+  tournamentId: string,
+  roundId: string,
+  now: Date = new Date(),
+): Promise<string> {
+  const bucket = Math.floor(now.getTime() / PROGRESSION_BUCKET_MS);
+  return queue.enqueue(
+    'botSubmit',
+    { tournamentId, roundId },
+    {
+      idempotencyKey: `botsubmit:${roundId}:${bucket}`,
+      // Above round progression: a bot's entry has to land BEFORE the round is
+      // swept and decided, or it is judged a no-show in a round it was meant to
+      // compete in.
+      priority: 18,
+    },
+  );
+}
+
+/**
+ * Open rounds in test tournaments that still contain a bot with no entry.
+ *
+ * Restricted to `environment = 'TEST'` in SQL rather than filtered afterwards:
+ * this is the one sweep that must never touch a production tournament, and the
+ * narrowest place to guarantee that is the query itself. `runBotSubmissionsForRound`
+ * re-checks anyway, because a guard that only exists in one place is one
+ * refactor from not existing.
+ */
+async function findRoundsAwaitingBots(): Promise<ExpiredRound[]> {
+  return db.$queryRaw<ExpiredRound[]>`
+    SELECT DISTINCT r."id" AS "roundId", r."tournamentId"
+    FROM "Round" r
+    JOIN "Tournament" t ON t."id" = r."tournamentId"
+    JOIN "Registration" reg
+      ON reg."tournamentId" = t."id" AND reg."status" = 'ACTIVE'
+    JOIN "User" u ON u."id" = reg."userId" AND u."isBot" = true
+    LEFT JOIN "Submission" s
+      ON s."roundId" = r."id" AND s."userId" = reg."userId"
+    WHERE t."environment" = 'TEST'
+      AND t."status" IN ('SIMULATION', 'LIVE')
+      AND r."status" = 'OPEN'
+      AND r."problemId" IS NOT NULL
+      AND (r."deadlineAt" IS NULL OR r."deadlineAt" > now())
+      AND s."id" IS NULL
+  `;
+}
+
+async function sweepBotSubmissions(now: Date = new Date()): Promise<number> {
+  const rounds = await findRoundsAwaitingBots();
+  if (rounds.length === 0) return 0;
+
+  let enqueued = 0;
+  for (const round of rounds) {
+    try {
+      await enqueueBotSubmissions(round.tournamentId, round.roundId, now);
+      enqueued++;
+    } catch (error) {
+      logger.error(
+        { err: error, roundId: round.roundId },
+        'failed to enqueue bot submissions',
+      );
+    }
+  }
+
+  if (enqueued > 0) {
+    logger.info({ enqueued }, 'bot sweep enqueued submission passes');
+  }
+  return enqueued;
+}
+
 /**
  * Enqueue cleanup jobs for cancelled tournaments (D34).
  *
@@ -396,24 +479,30 @@ export async function sweepDueWork(now: Date = new Date()): Promise<{
   transitions: number;
   cleanups: number;
   archives: number;
+  botSubmissions: number;
 }> {
-  const [rounds, transitions, cleanups, archives] = await Promise.all([
-    sweepExpiredRounds().catch((error) => {
-      logger.error({ err: error }, 'round deadline sweep failed');
-      return 0;
-    }),
-    sweepDueTransitions(now).catch((error) => {
-      logger.error({ err: error }, 'lifecycle schedule sweep failed');
-      return 0;
-    }),
-    sweepCancelledTournaments().catch((error) => {
-      logger.error({ err: error }, 'cancellation cleanup sweep failed');
-      return 0;
-    }),
-    sweepDueArchival(now).catch((error) => {
-      logger.error({ err: error }, 'archival sweep failed');
-      return 0;
-    }),
-  ]);
-  return { rounds, transitions, cleanups, archives };
+  const [rounds, transitions, cleanups, archives, botSubmissions] =
+    await Promise.all([
+      sweepExpiredRounds().catch((error) => {
+        logger.error({ err: error }, 'round deadline sweep failed');
+        return 0;
+      }),
+      sweepDueTransitions(now).catch((error) => {
+        logger.error({ err: error }, 'lifecycle schedule sweep failed');
+        return 0;
+      }),
+      sweepCancelledTournaments().catch((error) => {
+        logger.error({ err: error }, 'cancellation cleanup sweep failed');
+        return 0;
+      }),
+      sweepDueArchival(now).catch((error) => {
+        logger.error({ err: error }, 'archival sweep failed');
+        return 0;
+      }),
+      sweepBotSubmissions(now).catch((error) => {
+        logger.error({ err: error }, 'bot submission sweep failed');
+        return 0;
+      }),
+    ]);
+  return { rounds, transitions, cleanups, archives, botSubmissions };
 }

@@ -48,6 +48,11 @@ export const JOB_RETRY_POLICIES: Record<JobName, JobRetryPolicy> = {
     baseBackoffMs: 60_000,
     maxBackoffMs: 30 * 60_000,
   },
+  // D35: bot submissions. Few attempts, short backoff — the sweep re-enqueues
+  // on the next bucket while the round is still open, so THAT is the retry
+  // loop, exactly as it is for reconciliation. A round that closes before a bot
+  // submits is a no-show, which is a legitimate outcome rather than a failure.
+  botSubmit: { maxAttempts: 2, baseBackoffMs: 5_000, maxBackoffMs: 30_000 },
 };
 
 export function retryPolicyFor(name: JobName): JobRetryPolicy {

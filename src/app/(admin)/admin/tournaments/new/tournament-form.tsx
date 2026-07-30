@@ -79,6 +79,16 @@ export function NewTournamentForm() {
               { value: 'UNLISTED', label: 'Unlisted' },
             ]}
           />
+          <SelectField
+            name="environment"
+            label="Environment"
+            defaultValue="PRODUCTION"
+            hint="A test tournament is invisible to normal competitors and its results never reach production leaderboards, rankings, statistics or the Hall of Fame. This cannot be changed after creation — the results would move with it."
+            options={[
+              { value: 'PRODUCTION', label: 'Production' },
+              { value: 'TEST', label: 'Test' },
+            ]}
+          />
         </CardContent>
       </Card>
 
