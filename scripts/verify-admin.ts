@@ -1,4 +1,5 @@
 import './load-env';
+import type { Role } from '../src/generated/prisma/client';
 import { db } from '../src/server/db';
 import {
   createTournament,
@@ -145,7 +146,7 @@ async function cleanup() {
   });
 }
 
-async function makeUser(username: string, role: 'USER' | 'ADMIN' = 'USER') {
+async function makeUser(username: string, role: Role = 'USER') {
   return db.user.create({
     data: {
       authUserId: `auth-${TAG}-${username}`,
@@ -294,7 +295,7 @@ async function main() {
       removeRegistration(
         tournament.id,
         competitor.id,
-        competitor as { id: string; role: 'USER' | 'ADMIN' },
+        competitor as { id: string; role: Role },
         'not allowed',
       ),
     'FORBIDDEN',
@@ -545,7 +546,7 @@ async function main() {
   });
   await checkRejects(
     'non-admin cannot list challenges',
-    () => listProblems(competitor as { id: string; role: 'USER' | 'ADMIN' }),
+    () => listProblems(competitor as { id: string; role: Role }),
     'FORBIDDEN',
   );
 
@@ -619,7 +620,7 @@ async function main() {
     () =>
       retryEvaluation(
         submission.submission.id,
-        competitor as { id: string; role: 'USER' | 'ADMIN' },
+        competitor as { id: string; role: Role },
       ),
     'FORBIDDEN',
   );
@@ -699,7 +700,7 @@ async function main() {
   );
   await checkRejects(
     'non-admin cannot read users directory',
-    () => listUsers(competitor as { id: string; role: 'USER' | 'ADMIN' }),
+    () => listUsers(competitor as { id: string; role: Role }),
     'FORBIDDEN',
   );
   check(

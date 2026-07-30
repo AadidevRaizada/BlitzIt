@@ -30,6 +30,29 @@ export function hasRole(user: Pick<User, 'role'>, role: Role): boolean {
   return user.role === role;
 }
 
+/**
+ * An internal tester. Identical to a normal competitor everywhere except which
+ * environment's tournaments and surfaces they can reach.
+ */
+export function isTester(user: Pick<User, 'role'>): boolean {
+  return user.role === 'TEST';
+}
+
+/**
+ * May this user discover, enter, or read anything in the TEST environment?
+ *
+ * The ONLY predicate that answers this. Admins qualify because they operate the
+ * test environment; testers qualify because they live in it. Everyone else —
+ * including a signed-out visitor — does not, and must never learn that a test
+ * tournament exists at all.
+ */
+export function canAccessTestEnvironment(
+  user: Pick<User, 'role'> | null | undefined,
+): boolean {
+  if (!user) return false;
+  return isAdmin(user) || isTester(user);
+}
+
 /** True when the user owns the resource, or is an admin. */
 export function canAccess(
   user: Pick<User, 'id' | 'role'>,

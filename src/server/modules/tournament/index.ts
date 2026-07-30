@@ -33,6 +33,18 @@ export {
   type TournamentConfigSource,
 } from './config';
 
+// ---- Environment scoping (pure) ----
+export {
+  PRODUCTION,
+  TEST,
+  testScopeFor,
+  tournamentEnvironmentFilter,
+  nestedTournamentEnvironmentFilter,
+  assertTournamentVisible,
+  isTournamentVisibleTo,
+  type EnvironmentScope,
+} from './environment.public';
+
 // ---- Schedule → lifecycle diagnostics (server) ----
 export {
   getLifecycleDiagnostics,

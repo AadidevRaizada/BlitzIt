@@ -7,11 +7,20 @@ export {
   requireAdmin,
   requireUserOrThrow,
   requireAdminOrThrow,
+  requireTestAccess,
+  requireTestAccessOrThrow,
   getUserByUsername,
   type SessionContext,
 } from './session';
 
-export { isAdmin, hasRole, canAccess, AUTOMATION_ACTOR } from './roles';
+export {
+  isAdmin,
+  hasRole,
+  canAccess,
+  isTester,
+  canAccessTestEnvironment,
+  AUTOMATION_ACTOR,
+} from './roles';
 
 export { syncDomainUser, ensureProfile, slugifyUsername } from './sync';
 export {

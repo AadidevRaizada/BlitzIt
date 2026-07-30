@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@/generated/prisma/client';
 import type {
   Payment,
+  Role,
   PaymentStatus,
   Tournament,
 } from '@/generated/prisma/client';
@@ -1956,7 +1957,7 @@ function adminRefundIdempotencyKey(paymentId: string): string {
 
 async function claimAdminRefundIntent(
   paymentId: string,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
   reason: string,
 ): Promise<{
   payment: Payment;
@@ -2220,7 +2221,7 @@ async function markRefundProviderFailure(input: {
 
 async function finalizePendingRefund(input: {
   paymentId: string;
-  admin: { id: string; role: 'USER' | 'ADMIN' };
+  admin: { id: string; role: Role };
   providerPaymentId: string | null;
   providerRefundId?: string | null;
   reason: string;
@@ -2249,7 +2250,7 @@ async function finalizePendingRefund(input: {
 
 export async function refundPaymentForAdmin(
   paymentId: string,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
   reason: string,
   options: {
     gateway?: RazorpayGateway;
@@ -2304,7 +2305,7 @@ export async function refundPaymentForAdmin(
 
 export async function reconcilePendingRefundForAdmin(
   paymentId: string,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
   reason = 'Reconciled pending provider refund',
 ): Promise<Payment> {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
@@ -2343,7 +2344,7 @@ export async function reconcilePendingRefundForAdmin(
 
 export async function markManualPaymentPaidForAdmin(
   paymentId: string,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
 ): Promise<PaymentActivationResult> {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
   const payment = await db.payment.findUnique({ where: { id: paymentId } });
@@ -2368,7 +2369,7 @@ export async function markManualPaymentPaidForAdmin(
 export async function cancelRegistrationForAdmin(
   tournamentId: string,
   userId: string,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
   reason: string,
 ) {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');

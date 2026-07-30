@@ -1,6 +1,6 @@
 import 'server-only';
 import { Prisma } from '@/generated/prisma/client';
-import type { Match, Round } from '@/generated/prisma/client';
+import type { Match, Role, Round } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
@@ -55,7 +55,7 @@ export interface StartSuddenDeathResult {
 export async function startSuddenDeath(
   matchId: string,
   problemId: string,
-  actor: { id: string; role: 'USER' | 'ADMIN' },
+  actor: { id: string; role: Role },
 ): Promise<StartSuddenDeathResult> {
   if (!isAdmin(actor)) throw new ForbiddenError('Admin access required');
 

@@ -1,6 +1,7 @@
 import 'server-only';
 import type {
   ChallengeCategory,
+  Role,
   MatchStatus,
   Registration,
   RegistrationStatus,
@@ -384,7 +385,7 @@ export async function listRegistrations(
 export async function removeRegistration(
   tournamentId: string,
   userId: string,
-  admin: Pick<Tournament, never> & { id: string; role: 'USER' | 'ADMIN' },
+  admin: Pick<Tournament, never> & { id: string; role: Role },
   reason: string,
 ): Promise<Registration> {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
@@ -458,7 +459,7 @@ export async function removeRegistration(
 export async function setTournamentArchived(
   tournamentId: string,
   archived: boolean,
-  admin: { id: string; role: 'USER' | 'ADMIN' },
+  admin: { id: string; role: Role },
 ): Promise<Tournament> {
   if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
 

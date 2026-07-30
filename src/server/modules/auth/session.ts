@@ -5,11 +5,17 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/server/auth';
 import { db } from '@/server/db';
 import type { User } from '@/generated/prisma/client';
-import { ForbiddenError, UnauthorizedError } from '@/lib/errors';
+import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/errors';
 import { syncDomainUser } from './sync';
-import { isAdmin } from './roles';
+import { canAccessTestEnvironment, isAdmin } from './roles';
 
-export { isAdmin, hasRole, canAccess } from './roles';
+export {
+  isAdmin,
+  hasRole,
+  canAccess,
+  isTester,
+  canAccessTestEnvironment,
+} from './roles';
 
 /**
  * Session + authorization helpers.
@@ -76,6 +82,23 @@ export async function requireAdmin(callbackURL?: string): Promise<User> {
 }
 
 /**
+ * Require access to the TEST environment (admin or tester).
+ *
+ * Redirects a normal competitor to their dashboard with NO error code, unlike
+ * `requireAdmin`'s `?error=forbidden`. A refusal that names the thing refused is
+ * a disclosure: "you are not allowed in the test area" tells a production user
+ * there is a test area. They get the same silent bounce a mistyped URL would
+ * give them.
+ */
+export async function requireTestAccess(callbackURL?: string): Promise<User> {
+  const user = await requireUser(callbackURL);
+  if (!canAccessTestEnvironment(user)) {
+    redirect('/dashboard');
+  }
+  return user;
+}
+
+/**
  * Server Action / Route Handler variants: throw typed errors instead of
  * redirecting, so callers can return a `Result` to the client.
  */
@@ -88,6 +111,16 @@ export async function requireUserOrThrow(): Promise<User> {
 export async function requireAdminOrThrow(): Promise<User> {
   const user = await requireUserOrThrow();
   if (!isAdmin(user)) throw new ForbiddenError('Admin access required');
+  return user;
+}
+
+export async function requireTestAccessOrThrow(): Promise<User> {
+  const user = await requireUserOrThrow();
+  if (!canAccessTestEnvironment(user)) {
+    // NotFound, not Forbidden — see `assertTournamentVisible`. Same reasoning:
+    // a typed refusal is a confirmation that there is something to refuse.
+    throw new NotFoundError('Not found');
+  }
   return user;
 }
 

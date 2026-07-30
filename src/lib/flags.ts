@@ -1,4 +1,5 @@
 import 'server-only';
+import type { Role } from '@/generated/prisma/client';
 import { getPostHogServer } from '@/lib/posthog';
 import { logger } from '@/lib/logger';
 
@@ -33,7 +34,7 @@ export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS];
 
 export interface FlagViewer {
   id: string;
-  role: 'USER' | 'ADMIN';
+  role: Role;
 }
 
 /** How a flag decision was reached — surfaced in logs and the verify suite. */
