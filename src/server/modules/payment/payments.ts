@@ -13,6 +13,7 @@ import { recordAudit } from '@/server/modules/admin/audit';
 import { isAdmin } from '@/server/modules/auth/roles';
 import { evaluateRefundPolicy } from '@/server/modules/compliance';
 import {
+  assertMayEnterEnvironment,
   removeRegistration,
   recomputePrizePool,
   registerCompetitorInTransaction,
@@ -325,6 +326,7 @@ async function assertCanCreateOrder(
     select: {
       id: true,
       status: true,
+      environment: true,
       registrationOpensAt: true,
       registrationClosesAt: true,
       passPriceMinor: true,
@@ -338,6 +340,24 @@ async function assertCanCreateOrder(
     },
   });
   if (!tournament) throw new NotFoundError('Tournament not found');
+
+  // THE SECOND ENTRY POINT. `registerCompetitorInTransaction` guards the free
+  // path, but the paid path never passes through it: `reserveSeatHoldInTransaction`
+  // writes an ACTIVE registration directly, and `activatePaidPayment` then links
+  // the payment to that existing row rather than registering afresh. Without
+  // this check a TEST account that knew a production tournament's id could buy a
+  // seat in it — putting test results into the permanent production record,
+  // which is the exact failure the environment split exists to prevent.
+  //
+  // Checked BEFORE the status guard, so probing an id in the other environment
+  // returns "not found" rather than a status message confirming it is there.
+  const entrant = await tx.user.findUnique({
+    where: { id: userId },
+    select: { role: true, isBot: true },
+  });
+  if (!entrant) throw new NotFoundError('User not found');
+  assertMayEnterEnvironment(entrant, tournament.environment);
+
   if (tournament.status !== 'REGISTRATION_OPEN') {
     throw new ConflictError('Registration is not open for this tournament');
   }

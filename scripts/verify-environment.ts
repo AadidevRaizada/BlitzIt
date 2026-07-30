@@ -1,5 +1,12 @@
 import './load-env';
 
+// The paid-registration assertion below drives a real `createPassOrder`, which
+// refuses to construct a gateway without credentials. Selecting the fake
+// gateway is what lets the call reach the environment guard being tested rather
+// than dying at configuration. Never reachable in production —
+// `razorpayFakeModeEnabled` also requires NODE_ENV !== 'production'.
+process.env.RAZORPAY_USE_FAKE = 'true';
+
 import { db } from '../src/server/db';
 import { queue } from '../src/server/jobs/pg-queue';
 import { processors } from '../src/server/jobs/processors';
@@ -69,10 +76,13 @@ async function expectThrows(
     check(label, false, 'expected it to be refused, but it succeeded');
   } catch (error) {
     const code = (error as { code?: string })?.code;
+    const message = error instanceof Error ? error.message : String(error);
     check(
       label,
       expectedCode ? code === expectedCode : true,
-      expectedCode ? `expected ${expectedCode}, got ${code}` : undefined,
+      expectedCode
+        ? `expected ${expectedCode}, got ${code}: ${message}`
+        : undefined,
     );
   }
 }
@@ -410,6 +420,92 @@ async function main() {
     `test submissions=${testStats.submissions}, prod=${prodStats.submissions}/${actualProdSubmissions}`,
   );
   check('bots are counted separately from users', prodStats.bots > 0);
+
+  console.log('\n=== Adversarial review findings (must stay fixed) ===\n');
+
+  // FINDING 1 (Codex): the PAID registration path never passes through
+  // `registerCompetitorInTransaction` — `reserveSeatHoldInTransaction` writes an
+  // ACTIVE registration directly and `activatePaidPayment` links to it. Without
+  // a guard of its own, a TEST account that knew a production tournament's id
+  // could BUY a seat in it, putting test results into the permanent record.
+  const paidProd = await db.tournament.create({
+    data: {
+      slug: `${TAG}-paid-prod`,
+      name: 'Env Verify Paid Production',
+      status: 'REGISTRATION_OPEN',
+      visibility: 'PUBLIC',
+      environment: 'PRODUCTION',
+      passPriceMinor: 10000,
+      registrationOpensAt: new Date(Date.now() - 60_000),
+    },
+  });
+  const tester = await db.user.create({
+    data: {
+      authUserId: `auth-${TAG}-tester`,
+      email: `tester@${EMAIL_DOMAIN}`,
+      username: `${TAG}-tester`,
+      role: 'TEST',
+      onboardingCompletedAt: new Date(),
+    },
+  });
+  const { createPassOrder } =
+    await import('../src/server/modules/payment/payments');
+  await expectThrows(
+    'a TEST account cannot BUY a seat in a production tournament',
+    () => createPassOrder(paidProd.id, tester.id),
+    'FORBIDDEN',
+  );
+
+  // FINDING 2 (Codex): `hasCompetitiveRecord` omitted Registration, so an
+  // entrant who had registered but not yet submitted looked like an empty
+  // account — convertible to TEST while holding a seat in a live production
+  // field that D6 bracket sizing already counts.
+  const registeredOnly = await db.user.create({
+    data: {
+      authUserId: `auth-${TAG}-registered`,
+      email: `registered@${EMAIL_DOMAIN}`,
+      username: `${TAG}-registered`,
+      role: 'USER',
+      onboardingCompletedAt: new Date(),
+    },
+  });
+  const freeProd = await db.tournament.create({
+    data: {
+      slug: `${TAG}-free-prod`,
+      name: 'Env Verify Free Production',
+      status: 'REGISTRATION_OPEN',
+      visibility: 'PUBLIC',
+      environment: 'PRODUCTION',
+      passPriceMinor: 0,
+      registrationOpensAt: new Date(Date.now() - 60_000),
+    },
+  });
+  await registerCompetitor(freeProd.id, registeredOnly.id);
+  const { hasCompetitiveRecord, setTesterRole } =
+    await import('../src/server/modules/admin/directory');
+  check(
+    'a registration alone counts as a competitive record',
+    await hasCompetitiveRecord(registeredOnly.id),
+    'no submission, no ranking, no payment — but a seat in a live field',
+  );
+  await expectThrows(
+    'a user holding a production registration cannot be granted TEST',
+    () => setTesterRole(registeredOnly.id, true, admin),
+    'CONFLICT',
+  );
+
+  // FINDING 3 (Codex): a TEST account's public profile was reachable by a
+  // production visitor. Its placements and badges were already empty, but the
+  // page still confirmed the account exists — and "never even know test
+  // tournaments exist" is weaker if you can enumerate the people running them.
+  const { getProfileByUsername } =
+    await import('../src/server/modules/auth/profile');
+  const testerProfile = await getProfileByUsername(`${TAG}-tester`);
+  check(
+    'a public profile read exposes the role needed to gate a tester',
+    testerProfile?.role === 'TEST' && testerProfile?.isBot === false,
+    'the page cannot refuse what the query does not select',
+  );
 
   console.log('\n=== Cleanup ===\n');
   await cleanup();

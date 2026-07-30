@@ -98,11 +98,15 @@ export async function listUsers(
     createdAt: user.createdAt,
     registrations: user._count.registrations,
     submissions: user._count.submissions,
+    // Must stay in step with `hasCompetitiveRecord`, which is the authority —
+    // this is the list view's preview of the answer, computed from counts the
+    // query already loads rather than N+1 calls into it.
     hasCompetitiveRecord:
       user._count.submissions > 0 ||
       user._count.rankings > 0 ||
       user._count.payments > 0 ||
-      user._count.payouts > 0,
+      user._count.payouts > 0 ||
+      user._count.registrations > 0,
   }));
 }
 
@@ -111,23 +115,34 @@ export async function listUsers(
 /**
  * Does this account carry anything the competitive record depends on?
  *
- * The four relations checked here are exactly the ones with non-cascading
- * foreign keys, which is not a coincidence: the schema was built so that a
- * competitor's results cannot be deleted out from under a tournament. This
- * function is the readable form of that constraint, so an operator learns the
- * answer from the UI instead of from a foreign-key violation.
+ * The relations checked here are the ones with non-cascading foreign keys, which
+ * is not a coincidence: the schema was built so that a competitor's results
+ * cannot be deleted out from under a tournament. This function is the readable
+ * form of that constraint, so an operator learns the answer from the UI instead
+ * of from a foreign-key violation.
+ *
+ * **`Registration` counts, and it is the one that is easy to leave out.** An
+ * entrant who has registered but not yet submitted has no submission, no
+ * ranking and — in a free tournament — no payment, so the other four checks all
+ * pass and the account looks empty. It is not: the registration is part of a
+ * live field, counted by `countCompetitionEligibleRegistrations` and therefore
+ * by the D6 bracket sizing. Converting that account to TEST would leave a TEST
+ * user holding a seat in a production draw; deleting it would silently shrink a
+ * field that may already have been sized around it.
  */
 export async function hasCompetitiveRecord(
   userId: string,
   client: DbClient = db,
 ): Promise<boolean> {
-  const [submissions, rankings, payments, payouts] = await Promise.all([
-    client.submission.count({ where: { userId } }),
-    client.ranking.count({ where: { userId } }),
-    client.payment.count({ where: { userId } }),
-    client.payout.count({ where: { userId } }),
-  ]);
-  return submissions + rankings + payments + payouts > 0;
+  const [submissions, rankings, payments, payouts, registrations] =
+    await Promise.all([
+      client.submission.count({ where: { userId } }),
+      client.ranking.count({ where: { userId } }),
+      client.payment.count({ where: { userId } }),
+      client.payout.count({ where: { userId } }),
+      client.registration.count({ where: { userId } }),
+    ]);
+  return submissions + rankings + payments + payouts + registrations > 0;
 }
 
 /**

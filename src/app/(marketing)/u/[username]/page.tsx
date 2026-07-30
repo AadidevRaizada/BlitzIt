@@ -36,13 +36,18 @@ export default async function ProfilePage({
   const user = await getProfileByUsername(username);
   if (!user) notFound();
 
-  // A bot has a real `User` row, so it has a profile URL like anyone else — and
-  // this page is keyed by username, which is the one public surface the
-  // environment filter cannot reach. Without this, a production visitor who
-  // guessed a bot's handle would find a profile page for a competitor that does
-  // not exist, in a world they are not supposed to know about. Test-capable
-  // viewers still see it, because inspecting a bot is a legitimate testing act.
-  if (user.isBot && !canAccessTestEnvironment(await getCurrentUser())) {
+  // Bots and testers both have real `User` rows, so both have a profile URL like
+  // anyone else — and this page is keyed by username, which makes it the one
+  // public surface the environment filter cannot reach: there is no tournament
+  // in the query to filter on.
+  //
+  // Their PLACEMENTS and BADGES are already scoped to PRODUCTION below and come
+  // back empty, but the page itself would still confirm the account exists, and
+  // "a production user should never even know Test Tournaments exist" is weaker
+  // if they can enumerate the people who run them. Test-capable viewers still
+  // see both, because inspecting a tester or a bot is a legitimate testing act.
+  const isTestIdentity = user.isBot || user.role === 'TEST';
+  if (isTestIdentity && !canAccessTestEnvironment(await getCurrentUser())) {
     notFound();
   }
 
