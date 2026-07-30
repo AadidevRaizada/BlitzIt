@@ -484,7 +484,9 @@ export const createBotSchema = z.object({
     ),
   displayName: optionalText(60),
   skill: z.coerce.number().int().min(0).max(100).optional(),
-  submitBehaviour: z.enum(['ALWAYS', 'NEVER', 'LATE']).optional(),
+  // LATE is a schema value the sweep does not yet honour (BACKLOG B3), so it
+  // is not accepted from the form.
+  submitBehaviour: z.enum(['ALWAYS', 'NEVER']).optional(),
   scoreMode: z.enum(['SEEDED', 'FIXED', 'TIE']).optional(),
 });
 

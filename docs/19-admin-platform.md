@@ -123,3 +123,49 @@ with `configureTournamentFormSchema`; nothing reaches Prisma unvalidated.
 **`SUDDEN_DEATH` is deliberately absent** from the duration controls — sudden death is not
 implemented (E6), so a control for it would misrepresent the product. See the deferred-functionality
 table in `CHANGELOG_EPIC_E5.md`.
+
+## Test environment (D35)
+
+The admin platform is where the internal test environment is operated. Three surfaces:
+
+### Users (`/admin/users`)
+
+- **Grant / revoke TEST.** Refused for an account holding any production competitive record —
+  including a bare registration — because `Role` is single-valued, so the grant replaces their
+  USER identity and bars them from tournaments they are already in. Testers are new accounts.
+- **Delete / anonymise.** An account with no competitive record is deleted outright, along with
+  its `AuthUser` (which is what actually ends the session and releases the GitHub link). One
+  with a record is refused unless the operator explicitly anonymises, which scrubs identity and
+  leaves the results standing. This mirrors `deleteTournament`'s existing stance.
+- ADMIN is deliberately **not** grantable here. It stays with `npm run make:admin`.
+
+### Test bots (`/admin/bots`)
+
+Create bots, delete them, and add them to a test tournament to fill the field toward the D6
+minimum of 8 — which is *met*, not bypassed: bots hold genuine registrations.
+
+Two settings do the real work:
+
+| Setting | Why it exists |
+|---|---|
+| `submitBehaviour: NEVER` | produces a no-show, the only way to exercise walkovers, double-no-shows and the higher-seed fallback without asking a tester to sit out |
+| `scoreMode: TIE` | produces a deliberate deadlock against another TIE bot of equal skill, the only way to reach sudden death (D14) on demand |
+
+Bots are refused from production tournaments and from any tournament with an entry fee.
+
+### Environment switch
+
+`/admin` takes `?env=test`, rendering the same dashboard against test data with a persistent
+banner. Test tournaments are created by choosing Environment = Test on the new-tournament form;
+it cannot be changed afterwards, because the results would move with it.
+
+### Finishing a round early
+
+A round in a TEST tournament shows a **Finish now** control on the Timeline tab. It closes the
+window immediately; everything after that is the ordinary advancement path, treating
+non-submitters as no-shows exactly as an expired deadline would. Refused for production.
+
+### Verification
+
+`npm run verify:environment` — 47 checks proving a production user never receives test data by
+any route, and that a tester's results never enter the production record.

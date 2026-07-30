@@ -27,7 +27,7 @@ we do not hand-roll credential storage.
 
 **User** (domain user; 1:1 with Better Auth user)
 - `id`, `authUserId` (unique, FK→Better Auth user), `email` (unique), `username` (unique,
-  citext), `displayName`, `avatarUrl`, `city`, `country`, `role` (`USER|ADMIN`),
+  citext), `displayName`, `avatarUrl`, `city`, `country`, `role` (`USER|ADMIN|TEST`), `isBot`,
   `createdAt`, `updatedAt`.
 
 **Profile** (extended, optional/1:1 with User)

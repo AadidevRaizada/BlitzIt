@@ -71,7 +71,9 @@ export function CreateBotForm() {
           options={[
             { value: 'ALWAYS', label: 'Always submits' },
             { value: 'NEVER', label: 'Never submits (no-show)' },
-            { value: 'LATE', label: 'Submits late' },
+            // LATE exists in the enum but the sweep does not yet honour it
+            // (docs/BACKLOG.md B3). Not offered here: a control that silently
+            // does nothing is worse than a missing one.
           ]}
         />
         <SelectField

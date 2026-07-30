@@ -27,6 +27,31 @@ You need, before you start:
 
 ---
 
+## 1b. If you have been given a TEST account
+
+Most testers are given a **TEST account**, which competes in the internal test
+environment rather than in the live league. Everything below still applies
+unchanged — you onboard, connect GitHub, register, submit and appear in brackets
+exactly like a real competitor, because it is the same product. Three things
+differ, and only three:
+
+- Your tournaments live under **Test environment** in the account menu. A yellow
+  banner sits above every page there so you always know which world you are in.
+- Your results stay there. They never reach the public leaderboard, rankings,
+  statistics, Hall of Fame or your public profile — so you can lose badly in a
+  rehearsal without it following you around.
+- Your field may include **bots**, shown with a `BOT` badge beside their name.
+  They are synthetic competitors that fill the bracket so a tournament can run
+  with fewer than eight real people. They submit and score like anyone else; you
+  play them normally.
+
+You cannot enter production tournaments from a TEST account, and a production
+account cannot see test ones. If you need to do both, ask for two accounts.
+
+If you were given an ordinary account, ignore this section entirely.
+
+---
+
 ## 2. Sign in and set up your profile
 
 1. Go to https://circuit.devhub.wtf and press **Register** (or **Log in**).

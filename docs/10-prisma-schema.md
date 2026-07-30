@@ -31,7 +31,13 @@ datasource db {
 }
 
 /// ─────────────────────────── Enums ───────────────────────────
-enum Role            { USER ADMIN }
+enum Role            { USER ADMIN TEST }
+// D35 - which world a tournament belongs to. Orthogonal to TournamentVisibility:
+// UNLISTED is an unannounced PRODUCTION rehearsal whose results count; TEST is
+// not production at all and feeds only the parallel test surfaces.
+enum TournamentEnvironment { PRODUCTION TEST }
+enum BotSubmitBehaviour { ALWAYS NEVER LATE }
+enum BotScoreMode       { SEEDED FIXED TIE }
 enum TournamentStatus{ DRAFT REGISTRATION_OPEN REGISTRATION_CLOSED SIMULATION SEEDING LIVE COMPLETED CANCELLED }
 enum RoundType       { SIMULATION KNOCKOUT }
 enum RoundStage      { SIMULATION R64 R32 R16 QF SF THIRD_PLACE FINAL SUDDEN_DEATH }
@@ -61,6 +67,10 @@ model User {
   city         String?
   country      String?  @default("IN")
   role         Role     @default(USER)
+  // D35 - a test bot, not a person. A bot is a User because every table the
+  // engine touches keys on a user id; a separate model would make Ranking,
+  // Submission, Match, Notification, UserBadge and HallOfFame polymorphic.
+  isBot        Boolean  @default(false)
   profile      Profile?
   registrations Registration[]
   payments     Payment[]

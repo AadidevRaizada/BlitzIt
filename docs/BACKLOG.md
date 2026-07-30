@@ -80,3 +80,75 @@ validating it would mean the validation no longer describes the shipped system.
 - The 5-minute bucket stays as the retry cadence for guard-blocked reconciliations. This item must
   not shorten it — that bucket exists to keep a permanently-failing tournament from flooding the
   job table.
+
+---
+
+## B2 — Test-environment surfaces that fall back to production rather than having their own
+
+**Type:** completeness
+**Status:** not implemented — deferred deliberately
+**Raised:** 2026-07-30, from the D35 implementation
+
+### The situation
+
+D35 gives the test environment parallel Tournaments, Leaderboard and Hall of Fame surfaces,
+built by rendering the *same* components the production routes render with a TEST scope. Three
+surfaces were not given a `/test` route:
+
+- **The landing page.** `getSpectatorSnapshot(PRODUCTION)` is hardcoded, so a tester visiting
+  `/` sees the production spectator experience. Correct but incomplete: a tester cannot watch
+  their own test tournament from the homepage.
+- **The tournament detail page.** Shared between both worlds in one URL space, gated by viewer,
+  with a `TEST ENVIRONMENT` badge. This is deliberate — duplicating a 300-line page to change
+  one argument would be worse — but it means the detail page sits outside the `/test` banner.
+- **The bracket page and Live Arena.** Gated correctly (a production user gets a 404) but not
+  duplicated under `/test`, so they also render outside the banner.
+
+### Why it is deferred
+
+None of it is a leak. `verify:environment` proves a production user receives nothing from any
+of these routes, which is the property that actually matters. What is missing is *navigational
+comfort* for testers, and the cost of fixing it badly — duplicating large pages so they can
+differ — is higher than the cost of leaving it.
+
+### Definition of done
+
+- A tester on `/` sees their own environment's spectator experience, without the landing page
+  becoming dynamic for every anonymous visitor (which is why the cookie-switch approach was
+  rejected for the other surfaces).
+- The banner reaches the detail, bracket and arena pages when the subject is a test tournament,
+  without those pages being duplicated.
+
+---
+
+## B3 — `BotSubmitBehaviour.LATE` is accepted but behaves as ALWAYS
+
+**Type:** correctness (feature gap, not a defect in production behaviour)
+**Status:** not implemented — deferred deliberately
+**Raised:** 2026-07-30, from the D35 implementation
+
+### The situation
+
+`BotProfile.submitBehaviour` has three schema values, `ALWAYS | NEVER | LATE`. `ALWAYS` and
+`NEVER` are honoured — `NEVER` is load-bearing, since it is how walkovers and double-no-shows
+are exercised. `LATE` is **not**: `runBotSubmissionsForRound` treats it exactly like `ALWAYS`.
+
+It has therefore been **removed from the admin form and from the create-bot schema**, so
+nothing offers an option that does nothing. The enum value remains in the database (dropping it
+would be a destructive migration for no benefit) and is reachable only by writing a row
+directly.
+
+The intent was a bot that submits near the deadline, exercising the deadline sweep racing a
+submission, and the "submitted in the last minute" timing classification.
+
+### Why it is deferred
+
+Implementing it properly means the bot sweep must decide *when* within the window to submit,
+which needs either a per-bot scheduled job or a "not before" time on the sweep query. Both are
+real design, and neither is needed for the scenarios D35 was built to unblock.
+
+### Definition of done
+
+- `LATE` genuinely submits in the final portion of the window, and is re-offered in the admin
+  form and the create-bot schema at the same time — not before.
+

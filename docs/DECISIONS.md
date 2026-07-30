@@ -630,3 +630,131 @@ This supersedes the "CANCEL is manual" line in D32. Admin-initiated cancellation
 now gets the same notify/refund/archive aftermath.
 
 Verified by `npm run verify:cancellation`.
+
+---
+
+## D35 — The internal test environment is a product feature, not a shortcut (locked 2026-07-30)
+
+Every new platform feature needs a full tournament to validate — lifecycle, scheduling,
+bracket generation, advancement, sudden death, notifications, Mission Control, evaluation,
+rankings. Doing that in production means either running fake tournaments in front of real
+competitors, or lowering the D6 minimum of 8 and validating a shape the real product never
+takes. Both corrupt the thing they are meant to protect.
+
+**Decision. A permanent TEST environment, isolated from production by data rather than by
+deployment, in which the competitor experience is identical and only the data differs.**
+
+### The three orthogonal axes
+
+`TournamentVisibility` was NOT reused. An UNLISTED tournament is a real production rehearsal
+that happens to be unannounced — its rankings, payments and history are genuine and count. A
+TEST tournament is not production at all: its results must never reach a production aggregate,
+and it needs parallel surfaces testers can *discover*, which "hidden from listings" cannot
+express. A tournament therefore now has three independent properties:
+
+| Axis | Question |
+|---|---|
+| `status` | where is it in its life? |
+| `visibility` | should anyone who may see it find it listed? |
+| `environment` | which population may see it, and whose aggregates does it feed? |
+
+`environment` is settable **only at creation** and omitted from the update schema — moving a
+tournament between worlds would move its results with it.
+
+### Isolation is enforced by the type system, not by discipline
+
+D33 established that a fact with two definitions eventually has two different answers. The
+failure mode here is not exotic: fifteen query sites each remembering `environment:
+'PRODUCTION'`, and the sixteenth — added months later by someone who never read this — forgetting.
+
+So `environment.public.ts` is the one definition, and the scope is a **required argument with
+no default**. A new surface cannot compile without stating which world it belongs to. There is
+deliberately no `ALL` scope: production and test data must never appear in one list, so a
+merged scope is not something the type can express. Admin surfaces browse both through an
+explicit optional filter, already behind `requireAdmin`.
+
+Entity reads (one bracket, one live feed, one tournament) throw **NotFound, never Forbidden**.
+A 403 confirms the thing exists, and "a production user should never even know Test
+Tournaments exist" is only true if a test tournament is indistinguishable from a typo.
+
+### The guard is on the way IN
+
+Competitor-owned reads — dashboard, Mission Control, results, submissions, notifications — carry
+**no** environment filter, and that is correct rather than an oversight: they are scoped by
+`userId`, and a user cannot hold a row in the wrong world because they were never able to
+create one. `assertMayEnterEnvironment` establishes that invariant at registration.
+
+**Both directions are enforced.** Blocking a production user from a test tournament without
+also blocking a tester from a production one leaves the leak open in the direction that
+actually corrupts the permanent record.
+
+There are **two** ways in, and the first implementation only guarded one. The paid path never
+passes through `registerCompetitorInTransaction`: `reserveSeatHoldInTransaction` writes an
+ACTIVE registration directly and `activatePaidPayment` links a payment to that existing row.
+`assertCanCreateOrder` therefore carries the same guard. A comment asserting "every path
+funnels through one function" is not the same as it being true.
+
+### Role.TEST is single-valued, and that costs something
+
+A user is USER or TEST, never both — one identity spanning both environments is exactly the
+mixing this decision exists to prevent. The consequence is that granting TEST to an existing
+competitor is **refused** while they hold any production record, including a bare registration:
+the grant would bar them from tournaments they are already in, locking them out mid-event while
+the leaderboard still lists them. **Testers are new accounts.** That is a deliberate cost.
+
+ADMIN is not grantable from the admin UI and stays with `make:admin`. Handing out the role that
+hands out roles is a different class of decision from marking somebody a tester.
+
+### Bots fill the field; the minimum does not move
+
+**Minimum registrations remains 8 (D6).** Bots do not bypass it — they hold genuine
+`Registration` rows counted by `countCompetitionEligibleRegistrations`, so three testers and
+five bots really is a field of eight.
+
+A bot **is a `User`** with `isBot`. Every table the engine touches keys on a user id, so a
+separate model would force `Ranking`, `Submission`, `Match`, `Notification`, `UserBadge` and
+`HallOfFame` to become polymorphic and every read to become a union. As a User, a bot travels
+the real registration, submission, evaluation and advancement paths — which is the point.
+
+It can never sign in (no `AuthUser`; a `bot:` id prefix Better Auth cannot issue), never receive
+email (an unroutable `.invalid` address **and** an explicit refusal in delivery), and never
+enter production or a tournament with an entry fee.
+
+### Bot scoring: deterministic internal reference submissions
+
+Rejected: **an evaluator bypass**, which puts a competitor-shaped special case inside the engine
+against D20's explicit architectural rule, *and* means bots never exercise the evaluation
+pipeline they exist to exercise. Rejected: **real seeded repositories**, which make the
+reliability of the test harness depend on GitHub, on our hosting, and on eight live deployments
+somebody keeps alive forever.
+
+Chosen: what differs for a bot is not *how* a result is scored but *where* the raw measurements
+come from — a question about the submission's source, answered before the engine is called, at
+exactly the altitude where `evaluateProcessor` already resolves the `EvaluationProfile`. Every
+number derives from `sha256(botId, roundId, problemId)` and is blended by the real
+`computeOverallScore` under the real `effectiveWeights`, so a test tournament **replays to the
+same bracket** and nothing downstream can tell the difference.
+
+`submitBehaviour: NEVER` and `scoreMode: TIE` exist because walkovers and sudden death are
+otherwise unreachable on demand — you cannot validate D14 by waiting for a coincidence.
+
+### Rounds finish early with no engine change
+
+The platform already has a precise way to say "this round is over": the deadline has passed.
+`finishRoundEarly` moves `deadlineAt` to now and closes the round; `windowClosed` becomes true
+and the absence-based outcomes advancement already implements become legitimate on their own.
+Finishing early is not new behaviour, it is existing behaviour reached sooner — so the only new
+thing is *who may ask for it*, and that check lives at the admin boundary. Production is
+untouched because the function refuses to run against it, not because the engine branches.
+
+### The one deliberate deviation
+
+Test tournaments are **forced free and never generate payouts**. "The test experience is
+identical" and "production behaviour is unchanged" genuinely conflict here, and money wins.
+
+### What a test tournament must never reach
+
+Production Hall of Fame, leaderboards, rankings, statistics, profiles, badges, spectator
+selection, the live feed, or the landing page. Proven by `npm run verify:environment` (47
+checks), which runs a test tournament to COMPLETED with bots so there is a real champion and
+record to leak, with a production tournament alongside it so absence is a meaningful assertion.
