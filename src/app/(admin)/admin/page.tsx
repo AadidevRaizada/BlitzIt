@@ -3,8 +3,13 @@ import { requireAdmin } from '@/server/modules/auth';
 import {
   getQueueHealth,
   listTournamentSummaries,
+  parseEnvironmentParam,
   type TournamentSummary,
 } from '@/server/modules/tournament';
+import {
+  EnvironmentSwitch,
+  TestEnvironmentBanner,
+} from '@/components/features/environment-switch';
 import { getPlatformStats } from '@/server/modules/admin/directory';
 import { runnerHeartbeat } from '@/server/jobs';
 import { PageHeader, SectionTitle } from '@/components/ui/page-header';
@@ -35,12 +40,17 @@ const RUNNING_STATUSES = [
   'LIVE',
 ] as const;
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ env?: string }>;
+}) {
   await requireAdmin('/admin');
+  const scope = parseEnvironmentParam((await searchParams).env);
 
   const [tournaments, stats, queue] = await Promise.all([
-    listTournamentSummaries({ take: 100 }),
-    getPlatformStats(),
+    listTournamentSummaries({ take: 100, environment: scope }),
+    getPlatformStats(scope),
     getQueueHealth(),
   ]);
 
@@ -67,14 +77,19 @@ export default async function AdminDashboardPage() {
         title="Operations"
         description="Everything running right now, and the health of the pipeline behind it."
         actions={
-          <Link
-            href="/admin/tournaments/new"
-            className={buttonVariants({ variant: 'primary' })}
-          >
-            New tournament
-          </Link>
+          <div className="flex items-center gap-3">
+            <EnvironmentSwitch current={scope} basePath="/admin" />
+            <Link
+              href="/admin/tournaments/new"
+              className={buttonVariants({ variant: 'primary' })}
+            >
+              New tournament
+            </Link>
+          </div>
         }
       />
+
+      {scope === 'TEST' ? <TestEnvironmentBanner /> : null}
 
       <section className="space-y-3">
         <SectionTitle>Pipeline health</SectionTitle>

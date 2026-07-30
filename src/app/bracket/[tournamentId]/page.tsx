@@ -3,6 +3,7 @@ import { getCurrentUser, isAdmin } from '@/server/modules/auth';
 import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import {
+  isTournamentVisibleTo,
   getLiveSnapshot,
   getTournamentSummary,
   listBracketRounds,
@@ -42,6 +43,11 @@ export default async function BracketPage({
   }
 
   if (summary.visibility === 'UNLISTED') notFound();
+  // A test bracket is public-URL reachable exactly like any other, so the
+  // environment has to be enforced here rather than left to discovery. The
+  // non-throwing predicate, because a page renders Next's `notFound()` rather
+  // than throwing an AppError an error boundary would turn into a 500.
+  if (!isTournamentVisibleTo(user, summary)) notFound();
 
   const rounds = await listBracketRounds(tournamentId, {
     revealProblems: false,

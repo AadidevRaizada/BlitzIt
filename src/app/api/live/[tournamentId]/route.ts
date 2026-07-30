@@ -2,8 +2,10 @@ import { z } from 'zod';
 import { db } from '@/server/db';
 import {
   getLiveSnapshot,
+  isTournamentVisibleTo,
   type LiveSnapshot,
 } from '@/server/modules/tournament';
+import { getCurrentUser } from '@/server/modules/auth';
 import { evaluateFlag, FLAGS } from '@/lib/flags';
 import { serverEnv } from '@/lib/env';
 import { logger } from '@/lib/logger';
@@ -106,16 +108,31 @@ export async function GET(
 
   const tournament = await db.tournament.findUnique({
     where: { id: tournamentId },
-    select: { id: true, visibility: true },
+    select: { id: true, visibility: true, environment: true },
   });
   // An unlisted tournament is a rehearsal: it must not be observable from a
   // public URL, and "does not exist" is the only answer that does not confirm
   // one is running.
+  //
+  // A TEST tournament gets the same answer for the same reason, but the check
+  // cannot be a bare column comparison: admins and testers are entitled to
+  // stream their own environment. The viewer is only resolved when the
+  // tournament is actually in TEST, so the public path stays anonymous and pays
+  // no session lookup.
   if (!tournament || tournament.visibility === 'UNLISTED') {
     return Response.json(
       { error: { code: 'NOT_FOUND', message: 'No such tournament' } },
       { status: 404 },
     );
+  }
+  if (tournament.environment !== 'PRODUCTION') {
+    const viewer = await getCurrentUser();
+    if (!isTournamentVisibleTo(viewer, tournament)) {
+      return Response.json(
+        { error: { code: 'NOT_FOUND', message: 'No such tournament' } },
+        { status: 404 },
+      );
+    }
   }
 
   const env = serverEnv();

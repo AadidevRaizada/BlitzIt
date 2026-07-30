@@ -6,6 +6,7 @@ import {
   DEFAULT_STAGE_PROFILES,
   getMyTournamentState,
   listPublicTournaments,
+  PRODUCTION,
   nextRealEvent,
 } from '@/server/modules/tournament';
 import { DEFAULT_WEIGHTS } from '@/server/modules/evaluation/types';
@@ -30,7 +31,7 @@ export default async function TournamentPage({
     searchParams,
     getCurrentUser(),
   ]);
-  const grouped = await listPublicTournaments({ slug, take: 1 });
+  const grouped = await listPublicTournaments(PRODUCTION, { slug, take: 1 });
   const tournament =
     grouped.LIVE_NOW[0] ??
     grouped.REGISTERING[0] ??

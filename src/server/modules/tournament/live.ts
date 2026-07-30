@@ -14,6 +14,10 @@ import { CURRENT_TERMS_VERSION } from '@/server/modules/compliance';
 import { NotFoundError } from '@/lib/errors';
 import { listBracketRounds, type BracketRoundView } from './admin-ops';
 import { STRUCTURAL_MATCH_FILTER, isStructuralMatch } from './bye';
+import {
+  tournamentEnvironmentFilter,
+  type EnvironmentScope,
+} from './environment.public';
 import { getPrizePoolDisplay, type PrizePoolDisplay } from './prize-pool';
 import { computeCountdown, type Countdown } from './timers.public';
 
@@ -750,17 +754,24 @@ export interface PublicPlacement {
  * cannot render one.
  *
  * Unlisted tournaments are excluded — a rehearsal must not surface through a
- * participant's profile.
+ * participant's profile — and so is every environment but `scope`. Without the
+ * latter, a tester's public profile would list their test placements to any
+ * visitor, which is the same leak by a quieter route.
  */
 export async function listPublicPlacements(
   userId: string,
+  scope: EnvironmentScope,
   options: { take?: number } = {},
   client: DbClient = db,
 ): Promise<PublicPlacement[]> {
   const rankings = await client.ranking.findMany({
     where: {
       userId,
-      tournament: { visibility: 'PUBLIC', archivedAt: null },
+      tournament: {
+        ...tournamentEnvironmentFilter(scope),
+        visibility: 'PUBLIC',
+        archivedAt: null,
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: options.take ?? 25,
@@ -790,7 +801,10 @@ export async function listPublicPlacements(
  * that has been announced, which beats the last one that finished.
  *
  * Unlisted and archived tournaments never qualify — a rehearsal must not become
- * the homepage.
+ * the homepage — and neither does another environment. A test tournament that
+ * happened to be the most recently LIVE one would otherwise become the
+ * production landing page, which is the single most visible way this feature
+ * could fail.
  */
 const SPECTATOR_STATUS_PRIORITY: readonly TournamentStatus[] = [
   'LIVE',
@@ -804,11 +818,17 @@ const SPECTATOR_STATUS_PRIORITY: readonly TournamentStatus[] = [
 ];
 
 export async function getSpectatorTournamentId(
+  scope: EnvironmentScope,
   client: DbClient = db,
 ): Promise<string | null> {
   for (const status of SPECTATOR_STATUS_PRIORITY) {
     const tournament = await client.tournament.findFirst({
-      where: { status, visibility: 'PUBLIC', archivedAt: null },
+      where: {
+        status,
+        ...tournamentEnvironmentFilter(scope),
+        visibility: 'PUBLIC',
+        archivedAt: null,
+      },
       // Within a status, the most recently started one. `createdAt` rather than
       // a schedule field because the schedule is optional and a tournament with
       // no dates set must still be findable.
@@ -822,10 +842,11 @@ export async function getSpectatorTournamentId(
 
 /** The live snapshot for whatever the public surfaces should be showing. */
 export async function getSpectatorSnapshot(
+  scope: EnvironmentScope,
   options: LiveSnapshotOptions = {},
   client: DbClient = db,
 ): Promise<LiveSnapshot | null> {
-  const tournamentId = await getSpectatorTournamentId(client);
+  const tournamentId = await getSpectatorTournamentId(scope, client);
   if (!tournamentId) return null;
   return getLiveSnapshot(tournamentId, options, client);
 }

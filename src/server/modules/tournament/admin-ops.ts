@@ -8,6 +8,7 @@ import type {
   RoundStage,
   RoundStatus,
   Tournament,
+  TournamentEnvironment,
   TournamentStatus,
   WinReason,
 } from '@/generated/prisma/client';
@@ -53,6 +54,10 @@ export interface TournamentSummary {
   description: string | null;
   status: TournamentStatus;
   visibility: Tournament['visibility'];
+  /** Which world this tournament belongs to. Surfaced so the admin list can
+   * label and filter it, and so entity pages can refuse it to the wrong
+   * viewer without a second query. */
+  environment: Tournament['environment'];
   archivedAt: Date | null;
   currentStage: Tournament['currentStage'];
   /** Flattened lifecycle state, or null when the row is inconsistent. */
@@ -154,6 +159,7 @@ function summarise(
     description: tournament.description,
     status: tournament.status,
     visibility: tournament.visibility,
+    environment: tournament.environment,
     archivedAt: tournament.archivedAt,
     currentStage: tournament.currentStage,
     state,
@@ -242,6 +248,12 @@ export interface ListTournamentSummariesOptions {
   includeArchived?: boolean;
   /** Only archived tournaments; applied before `take`. */
   archivedOnly?: boolean;
+  /**
+   * Restrict to one environment. Optional, unlike every public read's required
+   * scope: an operator browsing the admin list legitimately wants to see both
+   * worlds, and this surface is already behind `requireAdmin`.
+   */
+  environment?: TournamentEnvironment;
   take?: number;
 }
 
@@ -256,6 +268,11 @@ export async function listTournamentSummaries(
   const tournaments = await client.tournament.findMany({
     where: {
       ...(status ? { status } : {}),
+      // Admin surfaces are the ONE place both worlds are legitimately
+      // browsable, so this filter is optional rather than required. Omitting it
+      // is a deliberate "show me everything", available only behind
+      // requireAdmin — never on a public path.
+      ...(options.environment ? { environment: options.environment } : {}),
       ...(options.archivedOnly
         ? { archivedAt: { not: null } }
         : options.includeArchived

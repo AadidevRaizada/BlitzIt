@@ -4,7 +4,7 @@ import type {
   User,
 } from '@/generated/prisma/client';
 import { canAccessTestEnvironment } from '@/server/modules/auth/roles';
-import { NotFoundError } from '@/lib/errors';
+import { ForbiddenError, NotFoundError } from '@/lib/errors';
 
 /**
  * Environment scoping — the ONE definition of "whose world is this?".
@@ -59,19 +59,43 @@ export const PRODUCTION: EnvironmentScope = 'PRODUCTION';
 export const TEST: EnvironmentScope = 'TEST';
 
 /**
- * The environment a viewer's TEST-capable surfaces read from, or null when they
- * have none.
+ * The environment a viewer *competes in* — the scope for surfaces that offer
+ * something to enter or show what they have entered: the dashboard, Mission
+ * Control, tournament discovery.
  *
- * Note what this does NOT do: it does not switch a tester's *production* pages
- * to test data. A tester on `/leaderboard` sees the production leaderboard,
- * exactly as any competitor would — that is what "the same competitor UI" means.
- * The test world lives at its own routes, reading the same components with this
- * scope. Nothing about a tester's production experience changes.
+ * A tester's entire competitive life happens in TEST, so their dashboard must
+ * offer test tournaments; scoping it to PRODUCTION would hand them an empty
+ * Mission Control and no way to register, which is precisely the experience this
+ * feature exists to provide. Everybody else competes in PRODUCTION.
+ *
+ * Admins are NOT testers by this rule, deliberately. An admin is a production
+ * operator who happens to be able to see the test world; their own dashboard
+ * stays production, and they reach test surfaces by asking for them. Silently
+ * flipping every admin's dashboard to test data the moment a test tournament
+ * existed would be a surprising, and eventually a dangerous, default.
  */
-export function testScopeFor(
+export function competitorScopeFor(
   user: Pick<User, 'role'> | null | undefined,
-): EnvironmentScope | null {
-  return canAccessTestEnvironment(user) ? TEST : null;
+): EnvironmentScope {
+  return user?.role === 'TEST' ? TEST : PRODUCTION;
+}
+
+/**
+ * Read an environment out of a URL parameter, defaulting to PRODUCTION.
+ *
+ * Case-insensitive and total: anything unrecognised is PRODUCTION, never an
+ * error. A malformed `?env=` must not be able to produce a 500 on an operator's
+ * dashboard, and — more importantly — must never fall through to TEST.
+ *
+ * This performs NO authorisation. It parses; the caller still gates. Every
+ * current caller is behind `requireAdmin` or `requireTestAccess`, so a
+ * production user appending `?env=test` to an admin URL is bounced before this
+ * is ever reached.
+ */
+export function parseEnvironmentParam(
+  value: string | undefined | null,
+): EnvironmentScope {
+  return value?.toUpperCase() === 'TEST' ? TEST : PRODUCTION;
 }
 
 /**
@@ -121,6 +145,57 @@ export function assertTournamentVisible(
 /** The narrowest shape {@link assertTournamentVisible} needs. */
 interface Tournamentish {
   environment: TournamentEnvironment;
+}
+
+/**
+ * May this user ENTER a tournament in this environment?
+ *
+ * This is the guard that makes every competitor-owned read safe without an
+ * environment filter of its own. The dashboard, Mission Control, results,
+ * submissions and notifications are all scoped by `userId` and none of them
+ * checks an environment — which is only correct because a user can never have
+ * acquired a row in the wrong world in the first place. That invariant is
+ * established here, on the way in, and nowhere else.
+ *
+ * The rule, and why each half matters:
+ *
+ * | Actor | May enter | Why |
+ * |---|---|---|
+ * | bot | TEST only | Bots are lifecycle participants, never competitors |
+ * | TEST | TEST only | A tester's results must never reach a production record |
+ * | USER | PRODUCTION only | Test tournaments are not theirs to discover |
+ * | ADMIN | either | Operators legitimately drive both worlds |
+ *
+ * Both directions are enforced, not just the obvious one. Blocking a production
+ * user from a test tournament without also blocking a tester from a production
+ * one would leave the leak wide open in the direction that actually corrupts the
+ * permanent record.
+ *
+ * Throws `NotFoundError` for the same reason as `assertTournamentVisible`: a
+ * competitor who cannot see a tournament must not learn of it from the shape of
+ * the refusal.
+ */
+export function assertMayEnterEnvironment(
+  user: Pick<User, 'role' | 'isBot'>,
+  environment: TournamentEnvironment,
+): void {
+  if (user.isBot) {
+    if (environment === 'TEST') return;
+    // Not a NotFoundError: nothing is being hidden from a bot, and this one is
+    // an internal programming error worth reading in a log.
+    throw new ForbiddenError(
+      'Bots may only take part in test tournaments (D35)',
+    );
+  }
+  if (user.role === 'ADMIN') return;
+  if (user.role === 'TEST') {
+    if (environment === 'TEST') return;
+    throw new ForbiddenError(
+      'Test accounts may only enter test tournaments; their results must never reach the production record',
+    );
+  }
+  if (environment === 'PRODUCTION') return;
+  throw new NotFoundError('That tournament does not exist');
 }
 
 /**

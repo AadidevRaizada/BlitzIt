@@ -2,6 +2,7 @@ import 'server-only';
 import type { RoundStage } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
+import type { EnvironmentScope } from '@/server/modules/tournament/environment.public';
 import { ConflictError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import {
@@ -210,12 +211,17 @@ export interface HallOfFameEntry {
 }
 
 export async function listHallOfFame(
+  scope: EnvironmentScope,
   options: { take?: number } = {},
   client: DbClient = db,
 ): Promise<HallOfFameEntry[]> {
   const entries = await client.hallOfFame.findMany({
     // Unlisted tournaments are rehearsals; they never reach the public record.
-    where: { tournament: { visibility: 'PUBLIC' } },
+    // Neither does another environment: a test champion in the production Hall
+    // of Fame would be a permanent, public falsehood about who has won what.
+    where: {
+      tournament: { visibility: 'PUBLIC', environment: scope },
+    },
     orderBy: { publishedAt: 'desc' },
     take: options.take ?? 50,
     include: {
@@ -276,11 +282,19 @@ export interface UserBadgeView {
 /**
  * A competitor's badges.
  *
- * **`publicOnly` must be set on any surface a stranger can read.** A badge
+ * **`publicScope` must be set on any surface a stranger can read.** A badge
  * carries the name of the tournament that awarded it, and rehearsals run
  * UNLISTED — without the filter a public profile would announce a tournament
  * that is deliberately unannounced everywhere else. `listPublicPlacements`
  * already applies the same rule; this is the other half of it.
+ *
+ * It replaces the old `publicOnly: boolean` rather than sitting beside it,
+ * because "public" is now two questions — listed, and which environment — and a
+ * boolean can only answer one. Leaving the boolean would have left a caller able
+ * to ask for "public badges" and still receive test ones.
+ *
+ * Omitting it entirely is the OWNER's view (the competitor's own results page),
+ * which shows everything they have earned in whichever environment they compete.
  *
  * `UserBadge.tournamentId` is a plain column rather than a relation, so the
  * filter is applied after the read instead of in the WHERE clause. A badge with
@@ -288,7 +302,7 @@ export interface UserBadgeView {
  */
 export async function listUserBadges(
   userId: string,
-  options: { publicOnly?: boolean } = {},
+  options: { publicScope?: EnvironmentScope } = {},
   client: DbClient = db,
 ): Promise<UserBadgeView[]> {
   const rows = await client.userBadge.findMany({
@@ -307,7 +321,13 @@ export async function listUserBadges(
   const tournaments = await client.tournament.findMany({
     where: {
       id: { in: tournamentIds },
-      ...(options.publicOnly ? { visibility: 'PUBLIC', archivedAt: null } : {}),
+      ...(options.publicScope
+        ? {
+            visibility: 'PUBLIC',
+            archivedAt: null,
+            environment: options.publicScope,
+          }
+        : {}),
     },
     select: { id: true, name: true },
   });
@@ -316,7 +336,7 @@ export async function listUserBadges(
   return rows
     .filter(
       (row) =>
-        !options.publicOnly ||
+        !options.publicScope ||
         row.tournamentId === null ||
         nameById.has(row.tournamentId),
     )

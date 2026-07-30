@@ -3,6 +3,7 @@ import { ArrowRight, CheckCircle2, Circle } from 'lucide-react';
 import { requireUser } from '@/server/modules/auth';
 import { listMyNotifications } from '@/server/modules/notification';
 import {
+  competitorScopeFor,
   getLeaderboard,
   getMyTournamentState,
   listPublicTournaments,
@@ -32,7 +33,11 @@ export default async function DashboardPage({
 }) {
   const { error } = await searchParams;
   const user = await requireUser('/dashboard');
-  const grouped = await listPublicTournaments();
+  // Mission Control offers what this competitor may enter. For a tester that is
+  // the test environment — scoping it to production would hand them an empty
+  // dashboard and no way to register, which is the whole experience they exist
+  // to exercise. Everyone else, including admins, gets production.
+  const grouped = await listPublicTournaments(competitorScopeFor(user));
   const tournaments = [
     ...grouped.LIVE_NOW,
     ...grouped.REGISTERING,

@@ -3,8 +3,12 @@ import { notFound } from 'next/navigation';
 import { ExternalLink, Globe, MapPin, Trophy, UserRound } from 'lucide-react';
 import { GitHubIcon, XIcon } from '@/components/ui/brand-icons';
 import { getProfileByUsername } from '@/server/modules/auth/profile';
+import {
+  canAccessTestEnvironment,
+  getCurrentUser,
+} from '@/server/modules/auth';
 import { listUserBadges } from '@/server/modules/hall-of-fame';
-import { listPublicPlacements } from '@/server/modules/tournament';
+import { listPublicPlacements, PRODUCTION } from '@/server/modules/tournament';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { DisplayHeading } from '@/components/ui/display-heading';
@@ -32,10 +36,20 @@ export default async function ProfilePage({
   const user = await getProfileByUsername(username);
   if (!user) notFound();
 
+  // A bot has a real `User` row, so it has a profile URL like anyone else — and
+  // this page is keyed by username, which is the one public surface the
+  // environment filter cannot reach. Without this, a production visitor who
+  // guessed a bot's handle would find a profile page for a competitor that does
+  // not exist, in a world they are not supposed to know about. Test-capable
+  // viewers still see it, because inspecting a bot is a legitimate testing act.
+  if (user.isBot && !canAccessTestEnvironment(await getCurrentUser())) {
+    notFound();
+  }
+
   const profile = user.profile;
   const [badges, placements] = await Promise.all([
-    listUserBadges(user.id, { publicOnly: true }),
-    listPublicPlacements(user.id),
+    listUserBadges(user.id, { publicScope: PRODUCTION }),
+    listPublicPlacements(user.id, PRODUCTION),
   ]);
   const hasLinks = Boolean(
     profile?.githubUsername ?? profile?.twitterHandle ?? profile?.websiteUrl,

@@ -4,6 +4,7 @@ import {
   getLeaderboard,
   getLiveSnapshot,
   getSpectatorTournamentId,
+  PRODUCTION,
   getTournamentSummary,
   type LeaderboardOrder,
 } from '@/server/modules/tournament';
@@ -39,7 +40,7 @@ export default async function LeaderboardPage({
   const order = parseOrder(by);
 
   const [tournamentId, user] = await Promise.all([
-    getSpectatorTournamentId(),
+    getSpectatorTournamentId(PRODUCTION),
     getCurrentUser(),
   ]);
 

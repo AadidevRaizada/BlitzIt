@@ -8,6 +8,7 @@ import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
 import { AUTOMATION_ACTOR } from '@/server/modules/auth/roles';
 import { resolveTournamentConfig } from './config';
+import { assertMayEnterEnvironment } from './environment.public';
 import { recomputePrizePool } from './prize-pool';
 
 /**
@@ -63,6 +64,7 @@ export async function registerCompetitorInTransaction(
     select: {
       id: true,
       status: true,
+      environment: true,
       registrationOpensAt: true,
       registrationClosesAt: true,
       participantCount: true,
@@ -76,6 +78,24 @@ export async function registerCompetitorInTransaction(
   if (!tournament) {
     throw new NotFoundError(`tournament ${tournamentId} not found`);
   }
+
+  // THE environment boundary. Every path into a tournament — the public
+  // register button, the payment webhook's activation, an admin adding a bot —
+  // funnels through this function, which is why the check lives here and not at
+  // each of those call sites. It is also what lets every competitor-owned read
+  // stay a plain `userId` query: a user cannot hold a row in the wrong world
+  // because they were never allowed to create one.
+  //
+  // Checked BEFORE the status guard, so a production user probing a test
+  // tournament's id gets "does not exist" rather than a status message that
+  // confirms one is there.
+  const entrant = await tx.user.findUnique({
+    where: { id: userId },
+    select: { role: true, isBot: true },
+  });
+  if (!entrant) throw new NotFoundError(`user ${userId} not found`);
+  assertMayEnterEnvironment(entrant, tournament.environment);
+
   if (tournament.status !== 'REGISTRATION_OPEN') {
     throw new ConflictError(
       `registration is not open (tournament is ${tournament.status})`,

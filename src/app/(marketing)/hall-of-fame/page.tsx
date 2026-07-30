@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Medal, Trophy } from 'lucide-react';
 import { listHallOfFame } from '@/server/modules/hall-of-fame';
+import { PRODUCTION } from '@/server/modules/tournament';
 import { Card } from '@/components/ui/card';
 import { Reward } from '@/components/ui/reward';
 import { DisplayHeading } from '@/components/ui/display-heading';
@@ -12,7 +13,7 @@ export const metadata = { title: 'Hall of Fame - The Circuit' };
 export const dynamic = 'force-dynamic';
 
 export default async function HallOfFamePage() {
-  const entries = await listHallOfFame({ take: 100 });
+  const entries = await listHallOfFame(PRODUCTION, { take: 100 });
 
   return (
     <main>

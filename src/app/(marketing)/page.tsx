@@ -5,6 +5,7 @@ import { listHallOfFame } from '@/server/modules/hall-of-fame';
 import { formatMinor } from '@/server/modules/notification';
 import {
   getSpectatorSnapshot,
+  PRODUCTION,
   listMyLiveMatches,
   type LiveSnapshot,
   type MyMatchSummary,
@@ -34,8 +35,8 @@ type HeroStat = {
 
 export default async function HomePage() {
   const [snapshot, hallOfFame, user] = await Promise.all([
-    getSpectatorSnapshot({ leaderboardTake: 10 }),
-    listHallOfFame({ take: 1 }),
+    getSpectatorSnapshot(PRODUCTION, { leaderboardTake: 10 }),
+    listHallOfFame(PRODUCTION, { take: 1 }),
     getCurrentUser(),
   ]);
 

@@ -10,6 +10,10 @@ import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/errors';
 import { scheduleEditConflicts } from './schedule.public';
+import {
+  tournamentEnvironmentFilter,
+  type EnvironmentScope,
+} from './environment.public';
 import { evaluationProfileConfigSchema } from './evaluation-profiles';
 import {
   getPrizePoolDisplay,
@@ -484,19 +488,26 @@ export function publicTournamentBucket(
 }
 
 /**
- * Public-safe tournament discovery.
+ * Public-safe tournament discovery, within ONE environment.
  *
  * This is intentionally narrower than `listTournaments`: unlisted, archived,
  * draft and cancelled tournaments are excluded at the query boundary so public
  * pages cannot accidentally reveal rehearsals or shelved records.
+ *
+ * `scope` is required and has no default. Production callers pass PRODUCTION;
+ * the gated `/test` routes pass TEST. Forcing the decision at every call site is
+ * what stops a future surface from silently inheriting whichever default seemed
+ * reasonable the day this was written.
  */
 export async function listPublicTournaments(
+  scope: EnvironmentScope,
   options: ListPublicTournamentsOptions = {},
   client: DbClient = db,
 ): Promise<Record<PublicTournamentBucket, PublicTournamentCard[]>> {
   const tournaments = await client.tournament.findMany({
     where: {
       slug: options.slug,
+      ...tournamentEnvironmentFilter(scope),
       visibility: 'PUBLIC',
       archivedAt: null,
       status: { in: [...PUBLIC_TOURNAMENT_STATUSES] },

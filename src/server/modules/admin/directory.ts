@@ -2,6 +2,10 @@ import 'server-only';
 import type { Role } from '@/generated/prisma/client';
 import { db } from '@/server/db';
 import { isAdmin } from '@/server/modules/auth/roles';
+import {
+  tournamentEnvironmentFilter,
+  type EnvironmentScope,
+} from '@/server/modules/tournament/environment.public';
 import { ForbiddenError } from '@/lib/errors';
 import type { DbClient } from './audit';
 
@@ -139,48 +143,75 @@ export async function listAuditLog(
 export interface PlatformStats {
   users: number;
   admins: number;
+  testers: number;
+  bots: number;
   tournaments: number;
   activeTournaments: number;
   submissions: number;
   evaluations: number;
 }
 
+const ACTIVE_TOURNAMENT_STATUSES = [
+  'REGISTRATION_OPEN',
+  'REGISTRATION_CLOSED',
+  'SIMULATION',
+  'SEEDING',
+  'BRACKET_GENERATED',
+  'LIVE',
+] as const;
+
+/**
+ * Operator statistics for ONE environment.
+ *
+ * Scoped, because an unscoped count is a lie in both directions: a rehearsal
+ * with five bots would inflate the production tournament count an operator uses
+ * to judge real activity, and a test run's submissions would land in the same
+ * total as real ones. "Statistics" is named explicitly in the isolation
+ * requirement for exactly this reason.
+ *
+ * People are counted separately from tournaments and never scoped by
+ * environment, because a `User` has no environment — it has a role. `users`
+ * therefore excludes bots and testers rather than filtering them: an operator
+ * asking "how many users do we have?" means humans competing for real, and
+ * silently including seven bots in that number is the same class of falsehood.
+ */
 export async function getPlatformStats(
+  scope: EnvironmentScope,
   client: DbClient = db,
 ): Promise<PlatformStats> {
+  const environment = tournamentEnvironmentFilter(scope);
+
   const [
     users,
     admins,
+    testers,
+    bots,
     tournaments,
     activeTournaments,
     submissions,
     evaluations,
   ] = await Promise.all([
-    client.user.count(),
-    client.user.count({ where: { role: 'ADMIN' } }),
-    client.tournament.count({ where: { archivedAt: null } }),
+    client.user.count({ where: { isBot: false, role: 'USER' } }),
+    client.user.count({ where: { isBot: false, role: 'ADMIN' } }),
+    client.user.count({ where: { isBot: false, role: 'TEST' } }),
+    client.user.count({ where: { isBot: true } }),
+    client.tournament.count({ where: { ...environment, archivedAt: null } }),
     client.tournament.count({
       where: {
+        ...environment,
         archivedAt: null,
-        status: {
-          in: [
-            'REGISTRATION_OPEN',
-            'REGISTRATION_CLOSED',
-            'SIMULATION',
-            'SEEDING',
-            'BRACKET_GENERATED',
-            'LIVE',
-          ],
-        },
+        status: { in: [...ACTIVE_TOURNAMENT_STATUSES] },
       },
     }),
-    client.submission.count(),
-    client.evaluation.count(),
+    client.submission.count({ where: { tournament: environment } }),
+    client.evaluation.count({ where: { tournament: environment } }),
   ]);
 
   return {
     users,
     admins,
+    testers,
+    bots,
     tournaments,
     activeTournaments,
     submissions,

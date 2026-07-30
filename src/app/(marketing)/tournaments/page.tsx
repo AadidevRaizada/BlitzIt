@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { ArrowRight, CalendarClock, Radio, Trophy } from 'lucide-react';
 import {
   listPublicTournaments,
+  PRODUCTION,
   type PublicTournamentBucket,
   type PublicTournamentCard,
   nextRealEvent,
@@ -70,7 +71,7 @@ const SECTIONS: Array<{
 ];
 
 export default async function TournamentsPage() {
-  const grouped = await listPublicTournaments();
+  const grouped = await listPublicTournaments(PRODUCTION);
   const serverTime = new Date().toISOString();
 
   return (

@@ -37,10 +37,12 @@ export {
 export {
   PRODUCTION,
   TEST,
-  testScopeFor,
+  competitorScopeFor,
+  parseEnvironmentParam,
   tournamentEnvironmentFilter,
   nestedTournamentEnvironmentFilter,
   assertTournamentVisible,
+  assertMayEnterEnvironment,
   isTournamentVisibleTo,
   type EnvironmentScope,
 } from './environment.public';

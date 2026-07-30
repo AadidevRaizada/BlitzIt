@@ -28,6 +28,10 @@ export async function getProfileByUsername(username: string) {
       city: true,
       country: true,
       createdAt: true,
+      // Selected so the public profile page can refuse a bot. This page is keyed
+      // by username, which makes it the one public surface the environment
+      // filter cannot reach.
+      isBot: true,
       profile: {
         select: {
           bio: true,

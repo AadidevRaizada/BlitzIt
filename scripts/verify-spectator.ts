@@ -12,6 +12,7 @@ import {
   listMyResults,
   listPublicPlacements,
   listPublicTournaments,
+  PRODUCTION,
   notifyRegistrationConfirmed,
   progressTournament,
   registerCompetitor,
@@ -605,7 +606,7 @@ async function pipeline() {
     data: { archivedAt: new Date() },
   });
 
-  const publicTournaments = await listPublicTournaments();
+  const publicTournaments = await listPublicTournaments(PRODUCTION);
   const publicIds = Object.values(publicTournaments)
     .flat()
     .map((row) => row.id);
@@ -624,7 +625,7 @@ async function pipeline() {
   // Asserted as a RULE rather than an identity: the development database may
   // already hold other public tournaments, and a check that demanded this one
   // specifically would pass or fail on leftover data rather than on the code.
-  const spectatorId = await getSpectatorTournamentId();
+  const spectatorId = await getSpectatorTournamentId(PRODUCTION);
   check(
     'the landing page always resolves something to show',
     spectatorId !== null,
@@ -1006,7 +1007,7 @@ async function pipeline() {
     ),
   );
 
-  const publicList = await listHallOfFame({ take: 10 });
+  const publicList = await listHallOfFame(PRODUCTION, { take: 10 });
   check(
     'the tournament appears in the public Hall of Fame',
     publicList.some((entry) => entry.tournamentId === tournament.id),
@@ -1022,13 +1023,13 @@ async function pipeline() {
   });
   check(
     'an unlisted tournament is withheld from the public Hall of Fame',
-    !(await listHallOfFame({ take: 10 })).some(
+    !(await listHallOfFame(PRODUCTION, { take: 10 })).some(
       (entry) => entry.tournamentId === tournament.id,
     ),
   );
   check(
     'and withheld from a public profile',
-    (await listPublicPlacements(championId)).every(
+    (await listPublicPlacements(championId, PRODUCTION)).every(
       (entry) => entry.tournamentId !== tournament.id,
     ),
   );
@@ -1037,14 +1038,14 @@ async function pipeline() {
   // deliberately unannounced everywhere else.
   check(
     'REGRESSION: an unlisted tournament’s badges are withheld from a public profile',
-    (await listUserBadges(championId, { publicOnly: true })).every(
+    (await listUserBadges(championId, { publicScope: PRODUCTION })).every(
       (badge) => badge.tournamentId !== tournament.id,
     ),
   );
   check(
     'REGRESSION: and its name never appears in the public badge list',
     !JSON.stringify(
-      await listUserBadges(championId, { publicOnly: true }),
+      await listUserBadges(championId, { publicScope: PRODUCTION }),
     ).includes(tournament.name),
   );
   check(
@@ -1177,7 +1178,7 @@ async function pipeline() {
   );
 
   // ── Public placements are narrower than private results ──
-  const publicPlacements = await listPublicPlacements(championId);
+  const publicPlacements = await listPublicPlacements(championId, PRODUCTION);
   check(
     'public placements expose the placement',
     publicPlacements[0]?.placement === 1,
@@ -1194,7 +1195,9 @@ async function pipeline() {
   // has completed. Both halves are checked: the resolver returns something
   // coherent, and this tournament's own snapshot carries what the landing page
   // renders.
-  const spectator = await getSpectatorSnapshot({ leaderboardTake: 10 });
+  const spectator = await getSpectatorSnapshot(PRODUCTION, {
+    leaderboardTake: 10,
+  });
   check(
     'the landing page resolves a snapshot without an id in the URL',
     spectator !== null && spectator.tournamentId.length > 0,
