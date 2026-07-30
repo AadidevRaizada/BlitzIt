@@ -48,6 +48,7 @@
     "verify:prize-pool": "tsx --conditions=react-server scripts/verify-prize-pool.ts",
     "verify:sudden-death": "tsx --conditions=react-server scripts/verify-sudden-death.ts",
     "verify:live-arena": "tsx --conditions=react-server scripts/verify-live-arena.ts",
+    "verify:environment": "tsx --conditions=react-server scripts/verify-environment.ts",
     "verify:spectator": "tsx --conditions=react-server scripts/verify-spectator.ts"
   },
   "dependencies": {
