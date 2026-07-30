@@ -16,6 +16,39 @@ datasource db {
 enum Role {
   USER
   ADMIN
+  /// Internal tester. Behaves exactly like USER on every production surface;
+  /// the ONLY difference is that a TEST user may discover and enter tournaments
+  /// in the TEST environment, and reads the parallel TEST surfaces instead of
+  /// nothing. There is deliberately no separate testing UI — a tester's
+  /// experience is the competitor experience, pointed at other data.
+  ///
+  /// Single-valued like the rest of this enum, so a user is USER or TEST and
+  /// never both. That is intentional: a tester's results must not mix into the
+  /// production record, and one identity in two environments is exactly the
+  /// mixing `TournamentEnvironment` exists to prevent.
+  TEST
+}
+
+/// Which world a tournament belongs to.
+///
+/// Orthogonal to BOTH `TournamentStatus` (the lifecycle phase) and
+/// `TournamentVisibility` (whether it is listed). The three answer different
+/// questions and none substitutes for another:
+///
+/// - `status`     — where is it in its life?
+/// - `visibility` — should anyone who may see it find it listed?
+/// - `environment`— which population may see it at all, and whose aggregates
+///                  does it contribute to?
+///
+/// UNLISTED was NOT reused for this. An unlisted tournament is a real
+/// production rehearsal that happens to be unannounced: its rankings, payments
+/// and history are genuine and count. A TEST tournament is not production at
+/// all — its results must never reach a production leaderboard, and it needs a
+/// parallel set of surfaces that testers can actually discover, which
+/// "hidden from listings" cannot express.
+enum TournamentEnvironment {
+  PRODUCTION
+  TEST
 }
 
 enum TournamentStatus {
@@ -277,6 +310,21 @@ model User {
   city             String?
   country          String?           @default("IN")
   role             Role              @default(USER)
+  /// This "user" is a test bot, not a person.
+  ///
+  /// A bot is a real `User` row on purpose. Every table the tournament engine
+  /// touches — Ranking, Submission, Match, Notification, UserBadge, HallOfFame —
+  /// keys on a user id, so a separate `Bot` model would force all of them to
+  /// become polymorphic and every read to become a union. Making a bot a User
+  /// instead means bots exercise the REAL registration, submission, evaluation
+  /// and advancement paths rather than a parallel imitation of them, which is
+  /// the entire point of having them.
+  ///
+  /// A bot can never sign in: it has no `AuthUser`, and its `authUserId` carries
+  /// a `bot:` prefix that Better Auth (which issues cuids) cannot produce. Same
+  /// device as `AUTOMATION_ACTOR`'s `system:` prefix.
+  isBot            Boolean           @default(false)
+  botProfile       BotProfile?
   profile          Profile?
   registrations    Registration[]
   payments         Payment[]
@@ -292,6 +340,46 @@ model User {
 
   @@index([city])
   @@index([onboardingCompletedAt])
+  @@index([isBot])
+}
+
+/// How a test bot behaves. Kept in a sibling table rather than as columns on
+/// `User` so that bot-only configuration cannot leak into the shape every real
+/// competitor read carries. `User.isBot` is the flag queries filter on; this is
+/// the knob an admin turns.
+model BotProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Target score band, 0-100. The seeded evaluator centres a bot's overall
+  /// score here, so an admin can build a field with a predictable pecking order
+  /// and know in advance who should reach the final.
+  skill          Int               @default(50)
+  /// Whether — and when — this bot submits. NEVER exercises walkovers and
+  /// no-shows; LATE exercises the deadline sweep. Without these a tester can
+  /// only ever observe the happy path.
+  submitBehaviour BotSubmitBehaviour @default(ALWAYS)
+  /// How its score is produced. TIE forces a deliberate deadlock so the D5
+  /// tie-break chain and sudden death (D14) can be validated on demand instead
+  /// of waiting for a natural tie that may never occur.
+  scoreMode      BotScoreMode      @default(SEEDED)
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum BotSubmitBehaviour {
+  ALWAYS
+  NEVER
+  LATE
+}
+
+enum BotScoreMode {
+  SEEDED
+  FIXED
+  TIE
 }
 
 model Profile {
@@ -321,6 +409,14 @@ model Tournament {
   /// open? are we live?), visibility is whether anyone but an admin should see
   /// it at all. A rehearsal tournament runs the full lifecycle UNLISTED.
   visibility                TournamentVisibility @default(PUBLIC)
+  /// Which environment this tournament belongs to. PRODUCTION unless an admin
+  /// deliberately creates it as a test.
+  ///
+  /// Defaulting to PRODUCTION is the safe direction for the DEFAULT, but it is
+  /// the wrong direction for a READ: a query that forgets this column sees test
+  /// data. Reads therefore go through `environment.public.ts`, which makes the
+  /// scope a REQUIRED argument so a new surface cannot compile without deciding.
+  environment               TournamentEnvironment @default(PRODUCTION)
   /// Shelved by an admin. NOT a lifecycle state — archiving is a filing
   /// operation on a finished tournament, so it stays off the E3 state machine
   /// (which would otherwise need a new terminal state and new edges from every
@@ -381,6 +477,7 @@ model Tournament {
   updatedAt                 DateTime             @updatedAt
 
   @@index([status])
+  @@index([environment, status])
 }
 
 model Round {
