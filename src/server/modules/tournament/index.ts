@@ -301,6 +301,7 @@ export {
   listRegistrations,
   removeRegistration,
   setTournamentArchived,
+  finishRoundEarly,
   getQueueHealth,
   type TournamentSummary,
   type ListTournamentSummariesOptions,

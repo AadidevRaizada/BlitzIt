@@ -488,6 +488,10 @@ export const createBotSchema = z.object({
   scoreMode: z.enum(['SEEDED', 'FIXED', 'TIE']).optional(),
 });
 
+export const finishRoundEarlySchema = z.object({
+  roundId: z.string().uuid(),
+});
+
 export const botIdSchema = z.object({ botUserId: z.string().uuid() });
 
 export const addBotsSchema = z.object({

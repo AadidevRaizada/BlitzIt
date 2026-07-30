@@ -23,6 +23,7 @@ import { toLifecycleState, type LifecycleState } from './lifecycle';
 import { allowedTransitions, type TournamentTransition } from './lifecycle';
 import { isBracketSize } from './config';
 import { countCompetitionEligibleRegistrations } from './registration';
+import { closeRound } from './rounds';
 import {
   isSlotPermanentlyEmpty,
   isStructuralMatch,
@@ -518,6 +519,89 @@ export async function setTournamentArchived(
 }
 
 // ───────────────────────── Ops health ─────────────────────────
+
+/**
+ * Finish an open round early, without waiting for every competitor (D35).
+ *
+ * ## Why this needs no engine change at all
+ *
+ * The temptation is an "early finish" mode threaded through advancement — a
+ * flag that tells `decideMatch` to stop waiting. That would put a testing
+ * concept inside the competitive engine, and every future reader of
+ * `advancement.ts` would have to reason about it.
+ *
+ * None of it is necessary, because the platform already has a precise way to say
+ * "this round is over": the deadline has passed. `closeRound` moves
+ * `deadlineAt` to now and sets JUDGING; `decideAndPropagate` then computes
+ * `windowClosed = true` and the absence-based outcomes it already implements —
+ * walkover, no-show, the higher-seed fallback for a double no-show — become
+ * legitimate on their own. Finishing early is not a new behaviour. It is the
+ * existing behaviour, reached sooner.
+ *
+ * So the ONLY new thing is who may ask for it, and that check lives here, at the
+ * admin boundary, exactly where D20 puts policy decisions. Production is
+ * untouched not because the engine treats it differently but because this
+ * function refuses to run against it.
+ *
+ * Enqueues rather than progressing inline, for D30's reason: one path into
+ * progression, under the runner's concurrency cap and retry policy.
+ */
+export async function finishRoundEarly(
+  roundId: string,
+  admin: { id: string; role: Role },
+): Promise<{ roundId: string; closedAt: Date }> {
+  if (!isAdmin(admin)) throw new ForbiddenError('Admin access required');
+
+  const round = await db.round.findUnique({
+    where: { id: roundId },
+    select: {
+      id: true,
+      status: true,
+      stage: true,
+      tournamentId: true,
+      tournament: { select: { environment: true } },
+    },
+  });
+  if (!round) throw new NotFoundError('That round does not exist');
+
+  // The one environment check in the whole feature that changes tournament
+  // BEHAVIOUR rather than visibility. Deliberately narrow, and deliberately
+  // here: a production round must always run its full window, because a
+  // competitor who is still typing has a right to the time they were promised.
+  if (round.tournament.environment !== 'TEST') {
+    throw new ConflictError(
+      'Rounds can only be finished early in test tournaments. A production round runs its full window.',
+    );
+  }
+  if (round.status !== 'OPEN') {
+    throw new ConflictError(
+      `That round is ${round.status}; only an OPEN round can be finished early`,
+    );
+  }
+
+  const now = new Date();
+  await closeRound(db, roundId, now);
+
+  await recordAudit({
+    actorId: admin.id,
+    action: 'round.finishEarly',
+    entityType: 'Round',
+    entityId: roundId,
+    before: { status: 'OPEN' },
+    after: { status: 'JUDGING', closedAt: now, stage: round.stage },
+  });
+
+  const { enqueueRoundProgression } =
+    await import('@/server/jobs/progress-sweep');
+  await enqueueRoundProgression(round.tournamentId, roundId, now);
+
+  logger.info(
+    { roundId, tournamentId: round.tournamentId, stage: round.stage },
+    'test round finished early by an admin',
+  );
+
+  return { roundId, closedAt: now };
+}
 
 export interface QueueHealth {
   byState: Record<JobLifecycleState, number>;

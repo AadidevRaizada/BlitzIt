@@ -5,6 +5,7 @@ import { requireAdminOrThrow } from '@/server/modules/auth';
 import {
   configureTournament,
   createTournament,
+  finishRoundEarly,
   listRegistrations,
   removeRegistration,
   recomputePrizePool,
@@ -54,6 +55,7 @@ import {
   createBotSchema,
   createTournamentFormSchema,
   deleteUserSchema,
+  finishRoundEarlySchema,
   hiddenTestIdSchema,
   listAuditSchema,
   listPaymentsSchema,
@@ -783,6 +785,32 @@ export async function listUsersAction(
     return ok(await listUsers(admin, parsed.data));
   } catch (error) {
     captureException(error, { where: 'listUsersAction' });
+    return toErr(error);
+  }
+}
+
+/**
+ * Finish an open TEST round early (D35).
+ *
+ * The module refuses a production tournament outright — the environment check
+ * is not repeated here, because a rule expressed twice is a rule that can
+ * disagree with itself.
+ */
+export async function finishRoundEarlyAction(
+  roundId: string,
+  tournamentId: string,
+): Promise<Result<{ roundId: string }>> {
+  try {
+    const admin = await requireAdminOrThrow();
+    const parsed = finishRoundEarlySchema.safeParse({ roundId });
+    if (!parsed.success) return validationError(parsed.error.issues);
+
+    const result = await finishRoundEarly(parsed.data.roundId, admin);
+    revalidateAdmin(tournamentId);
+    revalidatePath(`/bracket/${tournamentId}`);
+    return ok({ roundId: result.roundId });
+  } catch (error) {
+    captureException(error, { where: 'finishRoundEarlyAction' });
     return toErr(error);
   }
 }

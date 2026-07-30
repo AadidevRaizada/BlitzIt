@@ -18,6 +18,7 @@ import {
 import { SectionTitle, formatIst } from '@/components/ui/page-header';
 import { ScheduleForm } from './schedule-form';
 import { AssignProblemControl } from './assign-problem';
+import { FinishRoundEarlyControl } from './finish-round-early';
 
 const ROUND_TONE: Record<string, BadgeTone> = {
   PENDING: 'neutral',
@@ -82,6 +83,7 @@ export async function TimelineTab({ summary }: { summary: TournamentSummary }) {
               <TH>Window</TH>
               <TH numeric>Submissions</TH>
               <TH numeric>Matches</TH>
+              <TH>{''}</TH>
             </THead>
             <TBody>
               {rounds.map((round) => (
@@ -140,6 +142,19 @@ export async function TimelineTab({ summary }: { summary: TournamentSummary }) {
                   </TD>
                   <TD numeric>{round._count.submissions}</TD>
                   <TD numeric>{round._count.matches || '—'}</TD>
+                  <TD>
+                    {/* Test tournaments only: a production round always runs
+                        its full window, because a competitor who is still
+                        typing has a right to the time they were promised. */}
+                    {summary.environment === 'TEST' &&
+                    round.status === 'OPEN' ? (
+                      <FinishRoundEarlyControl
+                        roundId={round.id}
+                        tournamentId={summary.id}
+                        stage={round.stage}
+                      />
+                    ) : null}
+                  </TD>
                 </TR>
               ))}
             </TBody>
