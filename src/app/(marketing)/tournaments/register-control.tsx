@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { CheckCircle2, CircleAlert, CreditCard } from 'lucide-react';
-import { acceptCurrentTermsAction } from '@/server/actions/compliance.actions';
 import { createPassOrderAction } from '@/server/actions/payment.actions';
 import { registerForTournamentAction } from '@/server/actions/registration.actions';
 import type { MyTournamentState } from '@/server/modules/tournament';
@@ -44,16 +43,16 @@ export function RegisterControl({
   intent?: string;
 }) {
   const router = useRouter();
-  const [accepted, setAccepted] = useState(false);
-  const [step, setStep] = useState<'rules' | 'payment'>('rules');
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const full =
     maxRegistrations !== null && participantCount >= maxRegistrations;
   const paidEntry = entryFeeMinor > 0;
-  const termsAccepted = accepted || state?.readiness.termsAccepted === true;
   const paymentStatus = state?.payment?.status ?? null;
+  const onboardingComplete = Boolean(
+    state?.readiness.profileComplete && state?.readiness.termsAccepted,
+  );
   const started = [
     'SIMULATION',
     'SEEDING',
@@ -84,7 +83,7 @@ export function RegisterControl({
     if (state?.isRegistered) {
       return {
         href: '/dashboard',
-        label: started ? 'Open Dashboard' : 'Registered',
+        label: started ? 'Open Mission Control' : 'Registered',
       };
     }
     return null;
@@ -176,6 +175,32 @@ export function RegisterControl({
     );
   }
 
+  if (!onboardingComplete) {
+    return (
+      <div className="space-y-4">
+        <SurfaceState title="Onboarding required">
+          Complete your profile, link GitHub, and accept the current terms
+          before entering a tournament.
+        </SurfaceState>
+        <ReadinessList
+          signedIn
+          profileComplete={state?.readiness.profileComplete ?? false}
+          termsAccepted={state?.readiness.termsAccepted ?? false}
+          paymentSettled={!paidEntry}
+          registered={false}
+        />
+        <Link
+          href="/onboarding"
+          className={cn(
+            buttonVariants({ variant: 'broadcast', size: 'broadcast' }),
+          )}
+        >
+          Complete onboarding
+        </Link>
+      </div>
+    );
+  }
+
   if (paidEntry && paymentStatus && paymentStatus !== 'FAILED') {
     return (
       <div className="space-y-4">
@@ -188,7 +213,7 @@ export function RegisterControl({
         <ReadinessList
           signedIn
           profileComplete={state?.readiness.profileComplete ?? false}
-          termsAccepted={termsAccepted}
+          termsAccepted={state?.readiness.termsAccepted ?? false}
           paymentSettled={paymentStatus === 'PAID'}
           registered={state?.isRegistered ?? false}
         />
@@ -197,24 +222,7 @@ export function RegisterControl({
   }
 
   function submit() {
-    if (!termsAccepted) {
-      setMessage('Accept the tournament rules before continuing.');
-      return;
-    }
-
-    if (step === 'rules') {
-      setStep('payment');
-      setMessage(null);
-      return;
-    }
-
     startTransition(async () => {
-      const termsResult = await acceptCurrentTermsAction();
-      if (!termsResult.ok) {
-        setMessage(termsResult.error.message);
-        return;
-      }
-
       if (paidEntry) {
         const result = await createPassOrderAction({ tournamentId });
         if (!result.ok) {
@@ -237,7 +245,7 @@ export function RegisterControl({
         setMessage(result.error.message);
         return;
       }
-      setMessage('Registered. Your dashboard is ready.');
+      setMessage('Registered. Mission Control is ready.');
       router.refresh();
     });
   }
@@ -245,67 +253,31 @@ export function RegisterControl({
   return (
     <div className="border-hairline bg-surface-raised space-y-4 border p-4">
       <div>
-        <p className="font-semibold">
-          {step === 'payment'
-            ? paidEntry
-              ? 'Payment confirmation'
-              : 'Free registration confirmation'
-            : 'Join this tournament'}
-        </p>
+        <p className="font-semibold">Join this tournament</p>
         <p className="text-muted-foreground mt-1 text-sm">
-          {step === 'payment'
-            ? paidEntry
-              ? 'A paid pass is required before registration can be confirmed.'
-              : 'No entry fee is collected for this tournament.'
-            : 'Rules acceptance is required and recorded when you register.'}
+          {paidEntry
+            ? 'A paid pass is required before registration can be confirmed.'
+            : 'No entry fee is collected for this tournament.'}
         </p>
       </div>
 
-      <label className="flex items-start gap-3 text-sm">
-        <input
-          type="checkbox"
-          checked={accepted}
-          onChange={(event) => setAccepted(event.target.checked)}
-          className="mt-1"
-        />
-        <span>
-          I accept the tournament rules, sealed reveal timing, evaluation
-          policy, terms, privacy policy, and refund policy.
-          <span className="mt-1 block">
-            <Link href="/terms" className="text-primary underline">
-              Terms
-            </Link>
-            {' · '}
-            <Link href="/privacy" className="text-primary underline">
-              Privacy
-            </Link>
-            {' · '}
-            <Link href="/refunds" className="text-primary underline">
-              Refunds
-            </Link>
-          </span>
-        </span>
-      </label>
-
-      {step === 'payment' ? (
-        <div className="border-hairline flex items-center gap-3 border p-3 text-sm">
-          <CreditCard className="text-primary size-5" aria-hidden />
-          <div>
-            <p className="font-medium">
-              {paidEntry
-                ? `${formatAmount(entryFeeMinor, currency)} entry fee`
-                : 'Free entry'}
-            </p>
-            <p className="text-muted-foreground">
-              {paidEntry
-                ? paymentStatus === 'FAILED'
-                  ? 'Previous payment failed. Create a retry order.'
-                  : 'Payment must settle before your slot is active.'
-                : 'Registration activates immediately after confirmation.'}
-            </p>
-          </div>
+      <div className="border-hairline flex items-center gap-3 border p-3 text-sm">
+        <CreditCard className="text-primary size-5" aria-hidden />
+        <div>
+          <p className="font-medium">
+            {paidEntry
+              ? `${formatAmount(entryFeeMinor, currency)} entry fee`
+              : 'Free entry'}
+          </p>
+          <p className="text-muted-foreground">
+            {paidEntry
+              ? paymentStatus === 'FAILED'
+                ? 'Previous payment failed. Create a retry order.'
+                : 'Payment must settle before your slot is active.'
+              : 'Registration activates immediately after confirmation.'}
+          </p>
         </div>
-      ) : null}
+      </div>
 
       {state?.payment?.status === 'FAILED' ? (
         <SurfaceState title="Payment failed">
@@ -317,7 +289,7 @@ export function RegisterControl({
       <ReadinessList
         signedIn
         profileComplete={state?.readiness.profileComplete ?? false}
-        termsAccepted={termsAccepted}
+        termsAccepted={state?.readiness.termsAccepted ?? false}
         paymentSettled={!paidEntry || state?.payment?.status === 'PAID'}
         registered={state?.isRegistered ?? false}
       />
@@ -339,13 +311,11 @@ export function RegisterControl({
           ? paidEntry
             ? 'Creating order...'
             : 'Registering...'
-          : step === 'payment'
-            ? paidEntry
-              ? paymentStatus === 'FAILED'
-                ? 'Retry payment'
-                : 'Create payment order'
-              : 'Confirm registration'
-            : 'Continue to payment'}
+          : paidEntry
+            ? paymentStatus === 'FAILED'
+              ? 'Retry payment'
+              : 'Create payment order'
+            : 'Confirm registration'}
       </Button>
     </div>
   );

@@ -1,4 +1,7 @@
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { requireUser, isAdmin } from '@/server/modules/auth';
+import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import { ProductShell } from '@/components/features/product-shell';
 
@@ -14,7 +17,15 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const unread = await countUnreadNotifications(user.id);
+  const pathname = (await headers()).get('x-pathname') ?? '';
+  if (!user.onboardingCompletedAt && pathname !== '/settings') {
+    redirect('/onboarding');
+  }
+
+  const [unread, settings] = await Promise.all([
+    countUnreadNotifications(user.id),
+    getPlatformSettings(),
+  ]);
 
   return (
     <ProductShell
@@ -25,6 +36,7 @@ export default async function AppLayout({
         unread,
         isAdmin: isAdmin(user),
       }}
+      communityHref={settings.communityWhatsAppUrl}
     >
       {children}
     </ProductShell>

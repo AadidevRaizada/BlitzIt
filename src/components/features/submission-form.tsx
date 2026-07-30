@@ -1,9 +1,10 @@
 'use client';
 
-import { useActionState, useEffect, useId } from 'react';
+import { useActionState, useEffect, useId, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { submitSolutionAction } from '@/server/actions/submission.actions';
+import type { PublicRepoOption } from '@/server/modules/github/repos';
 import type { Result } from '@/lib/errors';
 
 type State = Result<{
@@ -23,6 +24,7 @@ interface Props {
   } | null;
   /** False once the window has closed or the entry has been sealed. */
   editable: boolean;
+  repos: PublicRepoOption[];
   /**
    * Where to go after a successful submit. Defaults to the submission detail
    * page ([9]'s behaviour); the arena ([10]) passes its own URL so a competitor
@@ -47,8 +49,16 @@ export function SubmissionForm({
   editable,
   redirectTo,
   closedHint,
+  repos,
 }: Props) {
   const router = useRouter();
+  const existingInList = useMemo(
+    () => repos.some((repo) => repo.htmlUrl === existing?.repoUrl),
+    [existing?.repoUrl, repos],
+  );
+  const [manual, setManual] = useState(
+    repos.length === 0 || Boolean(existing?.repoUrl && !existingInList),
+  );
   const [state, formAction, pending] = useActionState<State, FormData>(
     submitSolutionAction,
     null,
@@ -87,14 +97,12 @@ export function SubmissionForm({
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="roundId" value={roundId} />
 
-      <Field
-        name="repoUrl"
-        label="GitHub repository"
-        type="url"
-        defaultValue={existing?.repoUrl ?? ''}
-        placeholder="https://github.com/you/your-project"
-        hint="Must be a public github.com repository (D16)."
-        required
+      <RepoPicker
+        repos={repos}
+        existingRepoUrl={existing?.repoUrl ?? ''}
+        manual={manual}
+        onManualChange={setManual}
+        onRefresh={() => router.refresh()}
       />
       <Field
         name="deploymentUrl"
@@ -141,6 +149,96 @@ export function SubmissionForm({
         </p>
       ) : null}
     </form>
+  );
+}
+
+function RepoPicker({
+  repos,
+  existingRepoUrl,
+  manual,
+  onManualChange,
+  onRefresh,
+}: {
+  repos: PublicRepoOption[];
+  existingRepoUrl: string;
+  manual: boolean;
+  onManualChange: (manual: boolean) => void;
+  onRefresh: () => void;
+}) {
+  const id = useId();
+  const hintId = `${id}-hint`;
+
+  if (manual) {
+    return (
+      <div className="space-y-2">
+        <Field
+          name="repoUrl"
+          label="GitHub repository"
+          type="url"
+          defaultValue={existingRepoUrl}
+          placeholder="https://github.com/you/your-project"
+          hint="Must be an owned public github.com repository."
+          required
+        />
+        {repos.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => onManualChange(false)}
+            className="text-primary rounded-md text-sm font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+          >
+            Select repository instead
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-1.5">
+        <label htmlFor={id} className="block text-sm font-medium">
+          GitHub repository
+          <span className="text-destructive ml-0.5" aria-hidden="true">
+            *
+          </span>
+        </label>
+        <select
+          id={id}
+          name="repoUrl"
+          required
+          defaultValue={existingRepoUrl || repos[0]?.htmlUrl || ''}
+          aria-describedby={hintId}
+          className="border-input bg-background focus-visible:ring-ring h-9 w-full rounded-md border px-3 text-sm focus-visible:ring-2 focus-visible:outline-none"
+        >
+          {repos.map((repo) => (
+            <option key={repo.id} value={repo.htmlUrl}>
+              {repo.fullName}
+            </option>
+          ))}
+        </select>
+        <p id={hintId} className="text-muted-foreground text-xs">
+          Showing public repositories owned by your linked GitHub account.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        <span className="text-muted-foreground">Can&apos;t find it?</span>
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="text-primary rounded-md font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Refresh
+        </button>
+        <button
+          type="button"
+          onClick={() => onManualChange(true)}
+          className="text-primary rounded-md font-medium hover:underline focus-visible:ring-2 focus-visible:outline-none"
+        >
+          Enter repository manually
+        </button>
+      </div>
+    </div>
   );
 }
 

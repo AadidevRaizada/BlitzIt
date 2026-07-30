@@ -14,3 +14,9 @@ export {
 export { isAdmin, hasRole, canAccess, AUTOMATION_ACTOR } from './roles';
 
 export { syncDomainUser, ensureProfile, slugifyUsername } from './sync';
+export {
+  assertOnboardingComplete,
+  completeOnboarding,
+  getOnboardingState,
+  type OnboardingState,
+} from './onboarding';

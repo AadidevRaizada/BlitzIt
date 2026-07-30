@@ -10,11 +10,13 @@ export function ProductShell({
   user,
   surface,
   footer = false,
+  communityHref = null,
 }: {
   children: React.ReactNode;
   user: ProductNavUser | null;
   surface: 'broadcast' | 'workspace';
   footer?: boolean;
+  communityHref?: string | null;
 }) {
   return (
     <div
@@ -24,15 +26,15 @@ export function ProductShell({
         surface === 'workspace' && 'text-[0.875rem]',
       )}
     >
-      <ProductNav user={user} />
-      <div className="lg:pl-[92px]">
+      <ProductNav user={user} communityHref={communityHref} />
+      <div className="lg:pl-[176px]">
         <main
           className={cn(surface === 'workspace' && 'px-4 py-4 sm:px-5 lg:px-6')}
         >
           {children}
         </main>
       </div>
-      {footer ? <ProductFooter /> : null}
+      {footer ? <ProductFooter communityHref={communityHref} /> : null}
     </div>
   );
 }

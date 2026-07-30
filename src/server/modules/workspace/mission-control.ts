@@ -6,6 +6,7 @@ import type {
 
 export type NextActionKind =
   | 'SIGN_IN'
+  | 'COMPLETE_ONBOARDING'
   | 'COMPLETE_PROFILE'
   | 'ACCEPT_TERMS'
   | 'PAY_ENTRY_FEE'
@@ -43,22 +44,11 @@ export interface MissionControlState {
     label: string;
     complete: boolean;
   }>;
-  sections: {
-    overview: string;
-    currentTournament: string;
-    submission: string;
-    evaluation: string;
-    bracket: string;
-    results: string;
-    history: string;
-    notifications: string;
-    settings: string;
-    profile: string;
-  };
 }
 
 export function resolveMissionControl(input: {
   isSignedIn: boolean;
+  isOnboardingComplete?: boolean;
   tournament: PublicTournamentCard | null;
   competitor: MyTournamentState | null;
 }): MissionControlState {
@@ -71,22 +61,6 @@ export function resolveMissionControl(input: {
     nextAction,
     countdown: resolveCountdown(input.tournament, input.competitor),
     checklist,
-    sections: {
-      overview: nextAction.body,
-      currentTournament: input.tournament
-        ? `${input.tournament.name} is ${formatState(input.tournament.status)}.`
-        : 'No public tournament is scheduled.',
-      submission: submissionSummary(input.competitor),
-      evaluation: evaluationSummary(input.competitor),
-      bracket: bracketSummary(input.tournament, input.competitor),
-      results: resultsSummary(input.tournament, input.competitor),
-      history: 'Your completed tournaments and score evidence live in results.',
-      notifications:
-        'Round openings, match results and prize updates land in notifications.',
-      settings:
-        'Profile details, connected identity and data export live in settings.',
-      profile: 'Your public profile shows public badges and placements only.',
-    },
   };
 }
 
@@ -96,6 +70,7 @@ export function resolveMissionControl(input: {
  */
 export function resolveNextAction(input: {
   isSignedIn: boolean;
+  isOnboardingComplete?: boolean;
   tournament: PublicTournamentCard | null;
   competitor: MyTournamentState | null;
 }): NextAction {
@@ -107,7 +82,18 @@ export function resolveNextAction(input: {
       'Sign in to compete',
       'Your workspace unlocks after authentication.',
       'Sign in',
-      '/login?next=/dashboard',
+      '/login?callbackURL=/dashboard',
+      'blocked',
+    );
+  }
+
+  if (input.isOnboardingComplete === false) {
+    return action(
+      'COMPLETE_ONBOARDING',
+      'Complete onboarding',
+      'Set your profile, link GitHub, and accept the current terms before entering a tournament.',
+      'Open onboarding',
+      '/onboarding',
       'blocked',
     );
   }
@@ -427,49 +413,6 @@ function resolveCountdown(
     label: 'Registration opens',
     targetAt: tournament?.registrationOpensAt ?? null,
   };
-}
-
-function submissionSummary(competitor: MyTournamentState | null): string {
-  if (!competitor?.currentRound) return 'No active submission window.';
-  if (competitor.currentRound.submitted) return 'Current round entry received.';
-  if (competitor.currentRound.status === 'OPEN')
-    return 'Submission is due now.';
-  return 'Submission window is not open.';
-}
-
-function evaluationSummary(competitor: MyTournamentState | null): string {
-  const status = competitor?.currentRound?.submissionStatus;
-  if (status === 'SCORED') return 'Evaluation evidence is ready.';
-  if (status === 'FAILED') return 'Evaluation needs attention.';
-  if (status === 'JUDGING' || status === 'QUEUED') {
-    return 'Evaluation is in progress.';
-  }
-  return 'No evaluation result for the current round.';
-}
-
-function bracketSummary(
-  tournament: PublicTournamentCard | null,
-  competitor: MyTournamentState | null,
-): string {
-  if (competitor?.currentMatch) {
-    return `Current match: ${formatState(competitor.currentMatch.stage)}.`;
-  }
-  if (competitor?.qualified) return 'You qualified for the bracket.';
-  if (tournament)
-    return `Bracket size: ${tournament.bracketSize ?? 'pending'}.`;
-  return 'No bracket selected.';
-}
-
-function resultsSummary(
-  tournament: PublicTournamentCard | null,
-  competitor: MyTournamentState | null,
-): string {
-  if (competitor?.placement) return `Final placement #${competitor.placement}.`;
-  if (competitor?.eliminatedAtStage) {
-    return `Eliminated in ${formatState(competitor.eliminatedAtStage)}.`;
-  }
-  if (tournament?.status === 'COMPLETED') return 'Tournament is complete.';
-  return 'No final result yet.';
 }
 
 function action(

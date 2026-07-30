@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { getCurrentUser, isAdmin } from '@/server/modules/auth';
+import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import {
   getLiveSnapshot,
@@ -49,12 +50,16 @@ export default async function BracketPage({
   const tied = rounds
     .flatMap((round) => round.matches)
     .filter((match) => match.tieUnresolved).length;
-  const unread = user ? await countUnreadNotifications(user.id) : 0;
+  const [unread, settings] = await Promise.all([
+    user ? countUnreadNotifications(user.id) : Promise.resolve(0),
+    getPlatformSettings(),
+  ]);
 
   return (
     <ProductShell
       surface="broadcast"
       footer
+      communityHref={settings.communityWhatsAppUrl}
       user={
         user
           ? {

@@ -286,10 +286,12 @@ model User {
   notifications    Notification[]
   userBadges       UserBadge[]
   termsAcceptances TermsAcceptance[]
+  onboardingCompletedAt DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
   @@index([city])
+  @@index([onboardingCompletedAt])
 }
 
 model Profile {
@@ -851,6 +853,12 @@ model AuditLog {
   createdAt     DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+model PlatformSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }
 
 /// Scheduler + manual-ops trail. Every lifecycle transition is recorded here

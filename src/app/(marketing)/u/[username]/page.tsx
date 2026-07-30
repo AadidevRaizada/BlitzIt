@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { ExternalLink, MapPin, Trophy, UserRound } from 'lucide-react';
+import { ExternalLink, Globe, MapPin, Trophy, UserRound } from 'lucide-react';
+import { GitHubIcon, XIcon } from '@/components/ui/brand-icons';
 import { getProfileByUsername } from '@/server/modules/auth/profile';
 import { listUserBadges } from '@/server/modules/hall-of-fame';
 import { listPublicPlacements } from '@/server/modules/tournament';
@@ -103,18 +104,21 @@ export default async function ProfilePage({
                   <LinkChip
                     href={`https://github.com/${profile.githubUsername}`}
                     label={`@${profile.githubUsername}`}
+                    icon={GitHubIcon}
                   />
                 ) : null}
                 {profile?.twitterHandle ? (
                   <LinkChip
                     href={`https://x.com/${profile.twitterHandle}`}
                     label={`@${profile.twitterHandle}`}
+                    icon={XIcon}
                   />
                 ) : null}
                 {profile?.websiteUrl ? (
                   <LinkChip
                     href={profile.websiteUrl}
                     label={profile.websiteUrl}
+                    icon={Globe}
                   />
                 ) : null}
               </ul>
@@ -175,7 +179,24 @@ export default async function ProfilePage({
   );
 }
 
-function LinkChip({ href, label }: { href: string; label: string }) {
+/**
+ * A profile link, led by the mark of the thing it points at.
+ *
+ * The leading brand icon is what makes these scannable — "@parth_dev" twice
+ * over tells a visitor nothing about which is GitHub and which is X. The
+ * trailing arrow stays: it means "this leaves the site", which is a different
+ * claim from "this is GitHub", and it is the only affordance marking the
+ * boundary of the app.
+ */
+function LinkChip({
+  href,
+  label,
+  icon: Icon,
+}: {
+  href: string;
+  label: string;
+  icon: (props: { className?: string }) => React.ReactNode;
+}) {
   return (
     <li>
       <a
@@ -184,8 +205,9 @@ function LinkChip({ href, label }: { href: string; label: string }) {
         target="_blank"
         className="border-hairline bg-surface-raised text-foreground hover:border-primary/40 hover:text-primary focus-visible:ring-ring inline-flex max-w-full items-center gap-1.5 rounded-md border px-2.5 py-1 text-sm transition-colors duration-[var(--motion-fast)] focus-visible:ring-2 focus-visible:outline-none"
       >
+        <Icon className="size-3.5 shrink-0" />
         <span className="truncate">{label}</span>
-        <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+        <ExternalLink className="size-3 shrink-0 opacity-50" aria-hidden />
       </a>
     </li>
   );

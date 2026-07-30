@@ -153,7 +153,7 @@ async function makeUser(username: string, role: 'USER' | 'ADMIN' = 'USER') {
       username: `${username}-${TAG}`,
       displayName: username,
       role,
-      profile: { create: {} },
+      profile: { create: { githubUsername: 'vercel' } },
     },
   });
 }

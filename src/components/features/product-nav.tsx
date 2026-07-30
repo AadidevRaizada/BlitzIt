@@ -8,12 +8,13 @@ import {
   Crown,
   Gauge,
   Home,
-  Radio,
   Settings,
   Trophy,
   UserRound,
 } from 'lucide-react';
 import { SignOutButton } from '@/components/features/sign-out-button';
+import { WhatsAppIcon } from '@/components/ui/brand-icons';
+import { BrandLockup, Monogram } from '@/components/ui/wordmark';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -29,7 +30,7 @@ const primaryNavItems = [
   { href: '/tournaments', label: 'Tournaments', icon: Trophy },
   { href: '/leaderboard', label: 'Leaderboard', icon: BarChart3 },
   { href: '/hall-of-fame', label: 'Hall of Fame', icon: Crown },
-  { href: '/dashboard', label: 'Dashboard', icon: Gauge },
+  { href: '/dashboard', label: 'Mission Control', icon: Gauge },
 ];
 
 const workspaceLinks = [
@@ -45,7 +46,13 @@ const legalLinks = [
   { href: '/refunds', label: 'Refunds' },
 ];
 
-export function ProductNav({ user }: { user: ProductNavUser | null }) {
+export function ProductNav({
+  user,
+  communityHref,
+}: {
+  user: ProductNavUser | null;
+  communityHref?: string | null;
+}) {
   const pathname = usePathname();
 
   return (
@@ -81,15 +88,13 @@ export function ProductNav({ user }: { user: ProductNavUser | null }) {
         </nav>
       </header>
 
-      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-[92px] flex-col border-r lg:flex">
+      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-[176px] flex-col border-r lg:flex">
         <Link
           href="/"
-          className="border-hairline focus-visible:ring-ring flex h-20 items-center justify-center border-b px-3 focus-visible:ring-2 focus-visible:outline-none"
+          className="border-hairline focus-visible:ring-ring flex h-20 items-center justify-start border-b px-4 focus-visible:ring-2 focus-visible:outline-none"
           aria-label="The Circuit home"
         >
-          <span className="bg-primary text-primary-foreground flex size-12 items-center justify-center rounded-md shadow-[var(--glow-live)]">
-            <Radio className="size-6" aria-hidden />
-          </span>
+          <BrandLockup />
         </Link>
 
         <nav aria-label="Primary navigation" className="flex flex-1 flex-col">
@@ -97,6 +102,8 @@ export function ProductNav({ user }: { user: ProductNavUser | null }) {
             <PrimaryNavLink key={item.href} item={item} pathname={pathname} />
           ))}
         </nav>
+
+        {communityHref ? <CommunityLink href={communityHref} /> : null}
 
         {user ? (
           <UserMenu user={user} pathname={pathname} />
@@ -114,15 +121,16 @@ export function ProductNav({ user }: { user: ProductNavUser | null }) {
   );
 }
 
-export function ProductFooter() {
+export function ProductFooter({
+  communityHref,
+}: {
+  communityHref?: string | null;
+}) {
   return (
     <footer className="border-hairline bg-surface-deep border-t">
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-[116px]">
         <div>
-          <div className="flex items-center gap-2 font-extrabold">
-            <Trophy className="text-primary size-5" aria-hidden />
-            The Circuit
-          </div>
+          <BrandLockup />
           <p className="text-muted-foreground mt-3 max-w-xl text-sm">
             Weekly builder tournaments, scored by measurable product behavior,
             then settled live in a knockout bracket.
@@ -138,9 +146,34 @@ export function ProductFooter() {
               {item.label}
             </Link>
           ))}
+          {communityHref ? (
+            <Link
+              href={communityHref}
+              className="text-muted-foreground hover:text-foreground focus-visible:ring-ring inline-flex items-center gap-1.5 rounded-md text-sm focus-visible:ring-2 focus-visible:outline-none"
+              target="_blank"
+              rel="nofollow noopener noreferrer"
+            >
+              <WhatsAppIcon className="size-4" />
+              Community
+            </Link>
+          ) : null}
         </div>
       </div>
     </footer>
+  );
+}
+
+function CommunityLink({ href }: { href: string }) {
+  return (
+    <Link
+      href={href}
+      target="_blank"
+      rel="nofollow noopener noreferrer"
+      className="font-display border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-14 items-center gap-2 border-t px-4 text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+    >
+      <WhatsAppIcon className="size-4" />
+      <span>Join community</span>
+    </Link>
   );
 }
 
@@ -150,9 +183,7 @@ function BrandMark() {
       href="/"
       className="focus-visible:ring-ring inline-flex items-center gap-2 rounded-md focus-visible:ring-2 focus-visible:outline-none"
     >
-      <span className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
-        <Radio className="size-4" aria-hidden />
-      </span>
+      <Monogram className="text-primary h-8" />
       <span className="text-lg font-extrabold">The Circuit</span>
     </Link>
   );

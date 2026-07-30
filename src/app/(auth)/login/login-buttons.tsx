@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Github } from 'lucide-react';
 import { toast } from 'sonner';
 import { signIn } from '@/lib/auth-client';
 import { Button } from '@/components/ui/button';
+import { GitHubIcon, GoogleIcon } from '@/components/ui/brand-icons';
 
 type Provider = 'github' | 'google';
 
@@ -12,6 +12,11 @@ const LABELS: Record<Provider, string> = {
   github: 'Continue with GitHub',
   google: 'Continue with Google',
 };
+
+function ProviderIcon({ provider }: { provider: Provider }) {
+  const Icon = provider === 'github' ? GitHubIcon : GoogleIcon;
+  return <Icon className="size-4" />;
+}
 
 /**
  * OAuth sign-in. Only providers configured on the server are shown.
@@ -55,7 +60,7 @@ export function LoginButtons({
           aria-busy={pending === primary}
           className="w-full"
         >
-          {primary === 'github' ? <Github className="size-4" /> : null}
+          <ProviderIcon provider={primary} />
           {pending === primary ? 'Redirecting…' : LABELS[primary]}
         </Button>
       ) : null}
@@ -70,6 +75,7 @@ export function LoginButtons({
           aria-busy={pending === provider}
           className="w-full"
         >
+          <ProviderIcon provider={provider} />
           {pending === provider ? 'Redirecting…' : LABELS[provider]}
         </Button>
       ))}

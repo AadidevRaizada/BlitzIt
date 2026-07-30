@@ -1,13 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { requireUserOrThrow } from '@/server/modules/auth';
+import {
+  assertOnboardingComplete,
+  requireUserOrThrow,
+} from '@/server/modules/auth';
 import { db } from '@/server/db';
 import { recordAudit } from '@/server/modules/admin/audit';
-import {
-  acceptTerms,
-  assertCurrentTermsAccepted,
-} from '@/server/modules/compliance';
 import {
   notifyRegistrationConfirmed,
   registerCompetitor,
@@ -41,7 +40,7 @@ export async function registerForTournamentAction(
         'You must accept the tournament rules to enter.',
       );
     }
-    await acceptTerms({ userId: user.id });
+    await assertOnboardingComplete(user.id);
 
     const parsed = tournamentIdSchema.safeParse({ tournamentId });
     if (!parsed.success) {
@@ -65,7 +64,6 @@ export async function registerForTournamentAction(
       );
     }
 
-    await assertCurrentTermsAccepted(user.id);
     const result = await registerCompetitor(parsed.data.tournamentId, user.id, {
       actorId: user.id,
     });

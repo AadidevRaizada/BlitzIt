@@ -4,6 +4,7 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { PostHogProvider } from '@/components/providers/posthog-provider';
 import { Toaster } from '@/components/ui/sonner';
+import { publicEnv } from '@/lib/env';
 
 // Two families, max — see globals.css.
 //
@@ -26,10 +27,24 @@ const spaceGrotesk = Space_Grotesk({
   display: 'swap',
 });
 
+const DESCRIPTION =
+  'A competitive, AI-native coding esport. Understand a problem, wield AI, and ship a working solution under extreme time pressure.';
+
 export const metadata: Metadata = {
+  // Absolute URLs for the social card. Without a metadataBase, Next resolves
+  // `opengraph-image.png` against localhost and every shared link renders a
+  // broken preview in production.
+  metadataBase: new URL(publicEnv.NEXT_PUBLIC_APP_URL),
   title: 'The Circuit - 15 Minutes. One Shot. Just Ship.',
-  description:
-    'A competitive, AI-native coding esport. Understand a problem, wield AI, and ship a working solution under extreme time pressure.',
+  description: DESCRIPTION,
+  applicationName: 'The Circuit',
+  openGraph: {
+    title: 'The Circuit - 15 Minutes. One Shot. Just Ship.',
+    description: DESCRIPTION,
+    siteName: 'The Circuit',
+    type: 'website',
+  },
+  twitter: { card: 'summary_large_image' },
 };
 
 export default function RootLayout({

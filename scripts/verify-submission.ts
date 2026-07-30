@@ -409,7 +409,7 @@ async function pipeline() {
         authUserId: `auth-${TAG}-c`,
         email: `competitor@${EMAIL_DOMAIN}`,
         username: `competitor-${TAG}`,
-        profile: { create: {} },
+        profile: { create: { githubUsername: 'vercel' } },
       },
     }),
     db.user.create({
@@ -417,7 +417,7 @@ async function pipeline() {
         authUserId: `auth-${TAG}-r`,
         email: `rival@${EMAIL_DOMAIN}`,
         username: `rival-${TAG}`,
-        profile: { create: {} },
+        profile: { create: { githubUsername: 'vercel' } },
       },
     }),
     db.user.create({
@@ -425,7 +425,7 @@ async function pipeline() {
         authUserId: `auth-${TAG}-s`,
         email: `stranger@${EMAIL_DOMAIN}`,
         username: `stranger-${TAG}`,
-        profile: { create: {} },
+        profile: { create: { githubUsername: 'vercel' } },
       },
     }),
     db.user.create({
@@ -434,7 +434,7 @@ async function pipeline() {
         email: `admin@${EMAIL_DOMAIN}`,
         username: `admin-${TAG}`,
         role: 'ADMIN',
-        profile: { create: {} },
+        profile: { create: { githubUsername: 'vercel' } },
       },
     }),
   ]);
@@ -520,7 +520,7 @@ async function pipeline() {
         authUserId: `auth-${TAG}-paid-gate`,
         email: `paid-gate@${EMAIL_DOMAIN}`,
         username: `paid-gate-${TAG}`,
-        profile: { create: {} },
+        profile: { create: { githubUsername: 'vercel' } },
       },
     });
     const paidGateTournament = await db.tournament.create({
@@ -738,14 +738,14 @@ async function pipeline() {
   const second = await submitSolution({
     userId: competitor.id,
     roundId: openRound.id,
-    repoUrl: 'https://github.com/sindresorhus/p-limit',
+    repoUrl: 'https://github.com/vercel/swr',
     deploymentUrl: 'https://example.com',
   });
   check('editing before the deadline is allowed', second.replaced === true);
   check('the version was bumped', second.version === 2);
   check(
     'the current entry reflects the new revision',
-    second.submission.repoUrl === 'https://github.com/sindresorhus/p-limit',
+    second.submission.repoUrl === 'https://github.com/vercel/swr',
   );
   check(
     'there is still exactly ONE submission row for this round',
@@ -943,7 +943,7 @@ async function pipeline() {
     const replacedSub = await submitSolution({
       userId: competitor.id,
       roundId: freshRound.id,
-      repoUrl: 'https://github.com/sindresorhus/p-limit',
+      repoUrl: 'https://github.com/vercel/swr',
       deploymentUrl: 'https://example.org',
     });
     const freshJobs = await queue.claim(5, `e4-fresh-${TAG}`);
@@ -1047,7 +1047,7 @@ async function pipeline() {
     await submitSolution({
       userId: competitor.id,
       roundId: supersededRound.id,
-      repoUrl: 'https://github.com/sindresorhus/p-limit',
+      repoUrl: 'https://github.com/vercel/swr',
       deploymentUrl: 'https://example.superseded',
     });
     // Force that stale job down the exhausted-failure path.
@@ -1104,7 +1104,7 @@ async function pipeline() {
       submitSolution({
         userId: rival.id,
         roundId: raceRound.id,
-        repoUrl: 'https://github.com/sindresorhus/p-limit',
+        repoUrl: 'https://github.com/vercel/swr',
         deploymentUrl: 'https://example.race',
       }),
     ]);
@@ -1199,7 +1199,7 @@ async function pipeline() {
       where: { id: problem.id },
       data: { category: 'WEB_APP' },
     });
-    const untouched = await queue.claim(5, `e4-untouched-${TAG}`);
+    const untouched = await queue.claim(25, `e4-untouched-${TAG}`);
     const untouchedJob = untouched.find(
       (j) =>
         (j.payload as { submissionId?: string }).submissionId ===
@@ -1223,7 +1223,7 @@ async function pipeline() {
 
     const { enqueueEvaluation } = await import('../src/server/jobs');
     await enqueueEvaluation(accepted.submission.id, 99);
-    const failJobs = await queue.claim(5, `e4-fail-${TAG}`);
+    const failJobs = await queue.claim(25, `e4-fail-${TAG}`);
     const failJob = failJobs.find(
       (j) =>
         (j.payload as { submissionId?: string }).submissionId ===

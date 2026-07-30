@@ -12,6 +12,7 @@ import {
 } from '@/server/modules/tournament/arena.public';
 import { classifySubmissionTiming } from '@/server/modules/tournament/timers.public';
 import { getMySubmission, hasSubmission } from '@/server/modules/submission';
+import { listPublicReposForUser } from '@/server/modules/github/repos';
 import { isLiveArenaEnabled } from '@/lib/flags';
 import { Badge, type BadgeTone } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -54,7 +55,10 @@ export default async function KnockoutArenaPage({
   }
 
   const registered = await isRegistered(arena.tournament.id, user.id);
-  const existing = await getMySubmission(user.id, arena.round.id);
+  const [existing, repos] = await Promise.all([
+    getMySubmission(user.id, arena.round.id),
+    listPublicReposForUser(user.id),
+  ]);
   const opponentSubmitted =
     arena.mayRevealOpponentProgress && arena.opponent
       ? await hasSubmission(arena.opponent.userId, arena.round.id)
@@ -259,6 +263,7 @@ export default async function KnockoutArenaPage({
                   }
                 : null
             }
+            repos={repos}
           />
         )}
 

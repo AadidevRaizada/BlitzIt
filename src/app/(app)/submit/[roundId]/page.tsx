@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireUser } from '@/server/modules/auth';
 import { getRevealedRound, isRegistered } from '@/server/modules/tournament';
 import { getMySubmission } from '@/server/modules/submission';
+import { listPublicReposForUser } from '@/server/modules/github/repos';
 import { computeCountdown } from '@/server/modules/tournament/timers.public';
 import { SubmissionStatusBadge } from '@/components/features/submission-status-badge';
 import { Countdown } from '@/components/features/countdown';
@@ -37,7 +38,10 @@ export default async function SubmitPage({
   if (!round) notFound();
 
   const registered = await isRegistered(round.tournamentId, user.id);
-  const existing = await getMySubmission(user.id, roundId);
+  const [existing, repos] = await Promise.all([
+    getMySubmission(user.id, roundId),
+    listPublicReposForUser(user.id),
+  ]);
 
   const window = round.window;
   const now = new Date();
@@ -132,6 +136,7 @@ export default async function SubmitPage({
               : null
           }
           editable={editable}
+          repos={repos}
         />
         {existing ? (
           <p className="text-sm">

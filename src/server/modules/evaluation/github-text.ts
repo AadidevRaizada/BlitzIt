@@ -138,7 +138,7 @@ export function parseRepoUrl(rawUrl: string): { owner: string; repo: string } {
   return { owner, repo: repoRaw.replace(/\.git$/, '') };
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const token = process.env.GITHUB_API_TOKEN;
   return {
     accept: 'application/vnd.github+json',

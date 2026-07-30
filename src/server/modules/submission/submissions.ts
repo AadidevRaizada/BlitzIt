@@ -16,6 +16,7 @@ import {
 } from '@/server/modules/tournament';
 import { enqueueEvaluation } from '@/server/jobs';
 import { describeJob, type JobLifecycle } from '@/server/jobs/status';
+import { assertRepoOwnedAndPublic } from '@/server/modules/github/repos';
 // The pure predicate, not the auth barrel: `session.ts` pulls in
 // `next/navigation`, which cannot be loaded outside a Next runtime (scripts,
 // the runner). `roles.ts` exists for exactly this reason.
@@ -308,6 +309,14 @@ export async function submitSolution(
 ): Promise<SubmissionResult> {
   const now = options.now ?? new Date();
   const validated = validateSubmissionInput(input);
+  const profile = await db.profile.findUnique({
+    where: { userId: input.userId },
+    select: { githubUsername: true },
+  });
+  await assertRepoOwnedAndPublic({
+    repoUrl: validated.repoUrl,
+    githubUsername: profile?.githubUsername,
+  });
 
   let accepted;
   try {

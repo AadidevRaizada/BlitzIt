@@ -10,10 +10,7 @@ import { db } from '@/server/db';
 import type { DbClient } from '@/server/modules/admin/audit';
 import { recordAudit } from '@/server/modules/admin/audit';
 import { isAdmin } from '@/server/modules/auth/roles';
-import {
-  assertCurrentTermsAccepted,
-  evaluateRefundPolicy,
-} from '@/server/modules/compliance';
+import { evaluateRefundPolicy } from '@/server/modules/compliance';
 import {
   removeRegistration,
   recomputePrizePool,
@@ -348,7 +345,15 @@ async function assertCanCreateOrder(
       'This tournament is free. Use the free registration path instead of creating a payment order.',
     );
   }
-  await assertCurrentTermsAccepted(userId, tx);
+  const user = await tx.user.findUnique({
+    where: { id: userId },
+    select: { onboardingCompletedAt: true },
+  });
+  if (!user?.onboardingCompletedAt) {
+    throw new ForbiddenError(
+      'Complete onboarding before creating a pass order',
+    );
+  }
 
   const now = new Date();
   if (tournament.registrationOpensAt && now < tournament.registrationOpensAt) {
