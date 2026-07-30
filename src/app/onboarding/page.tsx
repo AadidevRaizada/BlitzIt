@@ -1,5 +1,9 @@
 import { redirect } from 'next/navigation';
-import { isAdmin, requireUser } from '@/server/modules/auth';
+import {
+  canAccessTestEnvironment,
+  isAdmin,
+  requireUser,
+} from '@/server/modules/auth';
 import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { getOnboardingState } from '@/server/modules/auth/onboarding';
 import { ProductShell } from '@/components/features/product-shell';
@@ -26,6 +30,7 @@ export default async function OnboardingPage() {
         profileHref: `/u/${user.username}`,
         unread: 0,
         isAdmin: isAdmin(user),
+        canAccessTest: canAccessTestEnvironment(user),
       }}
     >
       <div className="mx-auto grid max-w-5xl gap-6 py-6 lg:grid-cols-[0.8fr_1.2fr]">

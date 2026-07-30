@@ -23,6 +23,12 @@ export interface ProductNavUser {
   profileHref: string;
   unread: number;
   isAdmin: boolean;
+  /**
+   * May this viewer reach the TEST environment? Drives the `/test` link, which
+   * is the only way a tester discovers those surfaces — they are deliberately
+   * absent from every public listing.
+   */
+  canAccessTest: boolean;
 }
 
 const primaryNavItems = [
@@ -305,6 +311,14 @@ function UserMenu({
             </span>
           </MenuLink>
         ))}
+        {user.canAccessTest ? (
+          <MenuLink
+            href="/test/tournaments"
+            active={pathname.startsWith('/test/')}
+          >
+            Test environment
+          </MenuLink>
+        ) : null}
         {user.isAdmin ? (
           <MenuLink
             href="/admin"

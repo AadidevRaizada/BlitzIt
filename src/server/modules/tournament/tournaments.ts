@@ -3,6 +3,7 @@ import type {
   ChallengeCategory,
   Prisma,
   Tournament,
+  TournamentEnvironment,
   TournamentStatus,
 } from '@/generated/prisma/client';
 import { db } from '@/server/db';
@@ -420,6 +421,8 @@ export interface PublicTournamentCard {
   slug: string;
   name: string;
   status: TournamentStatus;
+  /** Which world produced this card. Carried so a detail page can label it. */
+  environment: TournamentEnvironment;
   currentStage: string | null;
   participantCount: number;
   bracketSize: number | null;
@@ -528,6 +531,7 @@ export async function listPublicTournaments(
       slug: true,
       name: true,
       status: true,
+      environment: true,
       currentStage: true,
       participantCount: true,
       bracketSize: true,
@@ -566,6 +570,7 @@ export async function listPublicTournaments(
       slug: tournament.slug,
       name: tournament.name,
       status: tournament.status,
+      environment: tournament.environment,
       currentStage: tournament.currentStage,
       participantCount: tournament.participantCount,
       bracketSize: tournament.bracketSize,

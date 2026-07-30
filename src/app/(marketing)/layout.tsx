@@ -1,4 +1,8 @@
-import { getCurrentUser, isAdmin } from '@/server/modules/auth';
+import {
+  getCurrentUser,
+  canAccessTestEnvironment,
+  isAdmin,
+} from '@/server/modules/auth';
 import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import { ProductShell } from '@/components/features/product-shell';
@@ -26,6 +30,7 @@ export default async function MarketingLayout({
               profileHref: `/u/${user.username}`,
               unread,
               isAdmin: isAdmin(user),
+              canAccessTest: canAccessTestEnvironment(user),
             }
           : null
       }

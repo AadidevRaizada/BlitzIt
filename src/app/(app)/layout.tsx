@@ -1,6 +1,10 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { requireUser, isAdmin } from '@/server/modules/auth';
+import {
+  requireUser,
+  canAccessTestEnvironment,
+  isAdmin,
+} from '@/server/modules/auth';
 import { getPlatformSettings } from '@/server/modules/admin/settings';
 import { countUnreadNotifications } from '@/server/modules/notification';
 import { ProductShell } from '@/components/features/product-shell';
@@ -35,6 +39,7 @@ export default async function AppLayout({
         profileHref: `/u/${user.username}`,
         unread,
         isAdmin: isAdmin(user),
+        canAccessTest: canAccessTestEnvironment(user),
       }}
       communityHref={settings.communityWhatsAppUrl}
     >

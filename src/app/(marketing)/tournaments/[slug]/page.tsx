@@ -1,13 +1,18 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CalendarDays, CheckCircle2 } from 'lucide-react';
-import { getCurrentUser } from '@/server/modules/auth';
+import {
+  canAccessTestEnvironment,
+  getCurrentUser,
+} from '@/server/modules/auth';
 import {
   DEFAULT_STAGE_PROFILES,
   getMyTournamentState,
   listPublicTournaments,
   PRODUCTION,
+  TEST,
   nextRealEvent,
+  type EnvironmentScope,
 } from '@/server/modules/tournament';
 import { DEFAULT_WEIGHTS } from '@/server/modules/evaluation/types';
 import { Badge } from '@/components/ui/badge';
@@ -31,13 +36,26 @@ export default async function TournamentPage({
     searchParams,
     getCurrentUser(),
   ]);
-  const grouped = await listPublicTournaments(PRODUCTION, { slug, take: 1 });
-  const tournament =
-    grouped.LIVE_NOW[0] ??
-    grouped.REGISTERING[0] ??
-    grouped.COMING_SOON[0] ??
-    grouped.PAST[0] ??
-    null;
+  // One URL space for both worlds. A production visitor only ever searches
+  // PRODUCTION, so a test slug is indistinguishable from a typo to them. A
+  // tester or admin also searches TEST — which is what makes the card links in
+  // `TournamentsView` work identically on `/tournaments` and `/test/tournaments`
+  // without a second copy of this 300-line page.
+  const scopes: EnvironmentScope[] = canAccessTestEnvironment(user)
+    ? [PRODUCTION, TEST]
+    : [PRODUCTION];
+
+  let tournament = null;
+  for (const scope of scopes) {
+    const grouped = await listPublicTournaments(scope, { slug, take: 1 });
+    tournament =
+      grouped.LIVE_NOW[0] ??
+      grouped.REGISTERING[0] ??
+      grouped.COMING_SOON[0] ??
+      grouped.PAST[0] ??
+      null;
+    if (tournament) break;
+  }
   if (!tournament) notFound();
 
   const myState = user
@@ -62,6 +80,14 @@ export default async function TournamentPage({
             <Badge tone={tournament.status === 'LIVE' ? 'live' : 'info'}>
               {formatStage(tournament.status)}
             </Badge>
+            {/* Only reachable by a tester or admin — a production visitor never
+                resolves a TEST slug at all. Shown because this page lives in the
+                shared URL space and therefore outside the `/test` banner. */}
+            {tournament.environment === 'TEST' ? (
+              <Badge tone="warning" className="ml-2">
+                TEST ENVIRONMENT
+              </Badge>
+            ) : null}
             <h1 className="font-display mt-4 text-4xl font-bold sm:text-6xl">
               {tournament.name}
             </h1>
