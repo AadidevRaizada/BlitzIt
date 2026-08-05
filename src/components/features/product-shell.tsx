@@ -27,14 +27,16 @@ export function ProductShell({
       )}
     >
       <ProductNav user={user} communityHref={communityHref} />
-      <div className="lg:pl-[176px]">
+      {/* 64px, matching the collapsed rail. The rail expands OVER this, so the
+          page never reflows when it does. */}
+      <div className="lg:pl-16">
         <main
           className={cn(surface === 'workspace' && 'px-4 py-4 sm:px-5 lg:px-6')}
         >
           {children}
         </main>
+        {footer ? <ProductFooter communityHref={communityHref} /> : null}
       </div>
-      {footer ? <ProductFooter communityHref={communityHref} /> : null}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { SignOutButton } from '@/components/features/sign-out-button';
 import { WhatsAppIcon } from '@/components/ui/brand-icons';
-import { BrandLockup, Monogram } from '@/components/ui/wordmark';
+import { BrandLockup, Monogram, Wordmark } from '@/components/ui/wordmark';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -94,16 +94,49 @@ export function ProductNav({
         </nav>
       </header>
 
-      <aside className="border-hairline bg-surface-deep fixed inset-y-0 left-0 z-50 hidden w-[176px] flex-col border-r lg:flex">
+      {/*
+       * The rail: 64px of chrome, not 176px.
+       *
+       * The old sidebar spent a sixth of a 1080p viewport on five links, each
+       * a 72px-tall stack of icon-over-caps-label. Here the resting state is
+       * icons only, and hovering (or tabbing into) the rail expands it to 224px
+       * OVER the page — `lg:pl-16` in the shell never changes, so labels cost
+       * discoverability, not layout shift. Every icon still carries its label
+       * in the accessibility tree at all times.
+       */}
+      <aside
+        className={cn(
+          // No `overflow-hidden`: the user menu opens outside the rail and
+          // would be clipped by it. Labels are clipped individually instead,
+          // by `truncate` inside a `min-w-0 flex-1` slot.
+          'group/rail border-hairline bg-surface-deep/95 fixed inset-y-0 left-0 z-50 hidden w-16 flex-col border-r backdrop-blur lg:flex',
+          'transition-[width,box-shadow] duration-[var(--motion-base)] ease-[var(--ease-out-quart)]',
+          'focus-within:w-56 focus-within:shadow-lg hover:w-56 hover:shadow-lg',
+        )}
+      >
+        {/*
+         * The mark alone. The rail used to stack "DEVHUB" above the wordmark,
+         * which spent the most valuable pixels on the site explaining our org
+         * chart to a competitor who came here to find a tournament. The org
+         * still gets its credit — in the footer, where that belongs.
+         */}
         <Link
           href="/"
-          className="border-hairline focus-visible:ring-ring flex h-20 items-center justify-start border-b px-4 focus-visible:ring-2 focus-visible:outline-none"
+          className="border-hairline focus-visible:ring-ring group/brand flex h-16 shrink-0 items-center gap-3 border-b px-4 focus-visible:ring-2 focus-visible:-outline-offset-2"
           aria-label="The Circuit home"
         >
-          <BrandLockup />
+          <span className="flex w-8 shrink-0 justify-center">
+            <Monogram className="text-primary h-6 transition-transform duration-[var(--motion-base)] ease-[var(--ease-out-expo)] group-hover/brand:scale-110" />
+          </span>
+          <RailLabel>
+            <Wordmark className="h-8" />
+          </RailLabel>
         </Link>
 
-        <nav aria-label="Primary navigation" className="flex flex-1 flex-col">
+        <nav
+          aria-label="Primary navigation"
+          className="flex flex-1 flex-col gap-0.5 py-3"
+        >
           {primaryNavItems.map((item) => (
             <PrimaryNavLink key={item.href} item={item} pathname={pathname} />
           ))}
@@ -116,10 +149,12 @@ export function ProductNav({
         ) : (
           <Link
             href="/login?next=/dashboard"
-            className="font-display border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-18 flex-col items-center justify-center gap-2 border-t px-2 text-center text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+            className="border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex h-14 shrink-0 items-center gap-3 border-t px-4 text-sm font-medium focus-visible:ring-2 focus-visible:-outline-offset-2"
           >
-            <UserRound className="size-6" aria-hidden />
-            <span>Login</span>
+            <span className="flex w-8 shrink-0 justify-center">
+              <UserRound className="size-[18px]" aria-hidden />
+            </span>
+            <RailLabel>Sign in</RailLabel>
           </Link>
         )}
       </aside>
@@ -134,7 +169,7 @@ export function ProductFooter({
 }) {
   return (
     <footer className="border-hairline bg-surface-deep border-t">
-      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr] lg:pl-[116px]">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr]">
         <div>
           <BrandLockup />
           <p className="text-muted-foreground mt-3 max-w-xl text-sm">
@@ -169,16 +204,44 @@ export function ProductFooter({
   );
 }
 
+/**
+ * A rail label. Present in the accessibility tree at every width; painted only
+ * once the rail is expanded, so the collapsed state stays icons-only without
+ * hiding anything from a screen reader.
+ */
+function RailLabel({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        'min-w-0 flex-1 truncate whitespace-nowrap opacity-0',
+        'transition-opacity duration-[var(--motion-fast)]',
+        'group-focus-within/rail:opacity-100 group-hover/rail:opacity-100',
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 function CommunityLink({ href }: { href: string }) {
   return (
     <Link
       href={href}
       target="_blank"
       rel="nofollow noopener noreferrer"
-      className="font-display border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex min-h-14 items-center gap-2 border-t px-4 text-[0.68rem] font-bold uppercase focus-visible:ring-2 focus-visible:outline-none"
+      className="border-hairline text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex h-12 shrink-0 items-center gap-3 border-t px-4 text-sm focus-visible:ring-2 focus-visible:-outline-offset-2"
     >
-      <WhatsAppIcon className="size-4" />
-      <span>Join community</span>
+      <span className="flex w-8 shrink-0 justify-center">
+        <WhatsAppIcon className="size-[18px]" />
+      </span>
+      <RailLabel>Join community</RailLabel>
     </Link>
   );
 }
@@ -209,25 +272,46 @@ function PrimaryNavLink({
     ? pathname === item.href
     : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
+  if (compact) {
+    return (
+      <Link
+        href={item.href}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring',
+          'inline-flex min-h-9 shrink-0 items-center gap-2 rounded-md px-3 text-[0.8125rem] font-medium',
+          'transition-colors duration-[var(--motion-fast)] focus-visible:ring-2 focus-visible:outline-none',
+          active && 'bg-primary/12 text-primary',
+        )}
+      >
+        <Icon className="size-4" aria-hidden />
+        <span>{item.label}</span>
+      </Link>
+    );
+  }
+
   return (
     <Link
       href={item.href}
       aria-current={active ? 'page' : undefined}
       className={cn(
-        'font-display text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring font-bold uppercase focus-visible:ring-2 focus-visible:outline-none',
-        'transition-colors duration-[var(--motion-fast)]',
-        // Active nav is blue, per the accent policy. The rule used to be
-        // `var(--secondary)`, which is now a neutral grey — it would have gone
-        // invisible in the rebrand.
+        'text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring',
+        'flex h-11 shrink-0 items-center gap-3 px-4 text-sm font-medium',
+        'transition-colors duration-[var(--motion-fast)] focus-visible:ring-2 focus-visible:-outline-offset-2',
+        // The icon is the only thing visible at 64px, so it carries the whole
+        // hover response.
+        '[&_svg]:transition-transform [&_svg]:duration-[var(--motion-base)] [&_svg]:ease-[var(--ease-out-expo)]',
+        'hover:[&_svg]:scale-110',
+        // Active nav is blue, per the accent policy. The inset bar survives the
+        // collapsed rail, where a label cannot.
         active &&
-          'bg-surface-raised text-primary shadow-[inset_3px_0_0_var(--color-primary)]',
-        compact
-          ? 'inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md px-3 text-[0.68rem]'
-          : 'flex min-h-18 flex-col items-center justify-center gap-2 px-2 text-center text-[0.68rem]',
+          'bg-surface-raised text-primary shadow-[inset_2px_0_0_var(--color-primary)]',
       )}
     >
-      <Icon className={compact ? 'size-4' : 'size-6'} aria-hidden />
-      <span>{item.label}</span>
+      <span className="flex w-8 shrink-0 justify-center">
+        <Icon className="size-[18px]" aria-hidden />
+      </span>
+      <RailLabel>{item.label}</RailLabel>
     </Link>
   );
 }
@@ -255,24 +339,39 @@ function UserMenu({
     >
       <summary
         className={cn(
-          'font-display text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex cursor-pointer list-none items-center font-bold uppercase focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden',
+          'text-muted-foreground hover:bg-surface-raised hover:text-foreground focus-visible:ring-ring flex cursor-pointer list-none items-center font-medium focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden',
           active && 'bg-surface-raised text-foreground',
           mobile
-            ? 'min-h-9 gap-2 rounded-md px-2 text-[0.68rem]'
-            : 'min-h-18 flex-col justify-center gap-2 px-2 text-center text-[0.68rem]',
+            ? 'min-h-9 gap-2 rounded-md px-2 text-[0.8125rem]'
+            : 'h-14 gap-3 px-4 text-sm',
         )}
       >
-        <span className="relative">
-          <UserRound className={mobile ? 'size-4' : 'size-6'} aria-hidden />
+        <span
+          className={cn(
+            'relative flex shrink-0 justify-center',
+            mobile ? '' : 'w-8',
+          )}
+        >
+          {mobile ? (
+            <UserRound className="size-4" aria-hidden />
+          ) : (
+            // An initial in a ring reads as "you" faster than a generic person
+            // glyph, and it is the only avatar we can render without an upload.
+            <span className="bg-primary/15 text-primary ring-primary/30 font-display flex size-8 items-center justify-center rounded-full text-xs font-bold uppercase ring-1">
+              {user.username.slice(0, 2)}
+            </span>
+          )}
           {user.unread > 0 ? (
             <span className="bg-primary text-primary-foreground absolute -top-1 -right-1 flex min-w-4 items-center justify-center rounded-full px-1 text-[9px] leading-4 font-black tabular-nums">
               {user.unread > 99 ? '99+' : user.unread}
             </span>
           ) : null}
         </span>
-        <span className={mobile ? 'max-w-24 truncate' : ''}>
-          {user.username}
-        </span>
+        {mobile ? (
+          <span className="max-w-24 truncate">{user.username}</span>
+        ) : (
+          <RailLabel>{user.username}</RailLabel>
+        )}
       </summary>
 
       <div
