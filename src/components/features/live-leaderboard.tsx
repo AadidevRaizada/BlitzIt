@@ -12,6 +12,7 @@ export function LiveLeaderboard({
   emptyHint,
   broadcast = false,
   pinHighlighted = false,
+  leadScore,
 }: {
   entries: LeaderboardEntry[];
   highlightUserId?: string | null;
@@ -20,6 +21,12 @@ export function LiveLeaderboard({
   emptyHint?: string;
   broadcast?: boolean;
   pinHighlighted?: boolean;
+  /**
+   * The top score in the field. When supplied, each row draws a bar behind its
+   * score showing how it stands against the leader — the gap between #4 and #5
+   * is the story a column of numbers hides.
+   */
+  leadScore?: number;
 }) {
   if (entries.length === 0) {
     return (
@@ -45,27 +52,31 @@ export function LiveLeaderboard({
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
-        <thead
-          className={broadcast ? 'bg-surface-raised sticky top-0 z-10' : ''}
-        >
-          <tr className="text-muted-foreground border-border border-b text-left text-xs">
-            <th scope="col" className="w-12 py-2 pr-2 font-medium">
+        {/*
+         * Not sticky. The header only ever stuck to the top of the standings'
+         * own scroll box; without that box there is nothing for it to stick to
+         * but the viewport, where it would collide with the sort bar already
+         * pinned there.
+         */}
+        <thead className={broadcast ? 'bg-surface-raised' : ''}>
+          <tr className="text-eyebrow text-muted-foreground border-border border-b text-left font-mono font-semibold uppercase">
+            <th scope="col" className="w-14 py-3 pr-2 pl-4 font-semibold">
               #
             </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
+            <th scope="col" className="py-3 pr-3 font-semibold">
               Competitor
             </th>
             {!compact && showCity ? (
-              <th scope="col" className="py-2 pr-3 font-medium">
+              <th scope="col" className="py-3 pr-3 font-semibold">
                 City
               </th>
             ) : null}
             {!compact ? (
-              <th scope="col" className="py-2 pr-3 text-right font-medium">
+              <th scope="col" className="py-3 pr-3 text-right font-semibold">
                 Seed
               </th>
             ) : null}
-            <th scope="col" className="py-2 text-right font-medium">
+            <th scope="col" className="py-3 pr-4 text-right font-semibold">
               Score
             </th>
           </tr>
@@ -82,6 +93,7 @@ export function LiveLeaderboard({
               compact={compact}
               showCity={showCity}
               broadcast={broadcast}
+              leadScore={leadScore}
             />
           ) : null}
           {visibleEntries.map((entry, index) => (
@@ -93,6 +105,7 @@ export function LiveLeaderboard({
               compact={compact}
               showCity={showCity}
               broadcast={broadcast}
+              leadScore={leadScore}
             />
           ))}
         </tbody>
@@ -108,6 +121,7 @@ function LeaderboardRow({
   compact,
   showCity,
   broadcast,
+  leadScore,
 }: {
   entry: LeaderboardEntry;
   index: number;
@@ -115,7 +129,14 @@ function LeaderboardRow({
   compact: boolean;
   showCity: boolean;
   broadcast: boolean;
+  leadScore?: number;
 }) {
+  const rank = entry.placement ?? index + 1;
+  const share =
+    leadScore && leadScore > 0
+      ? Math.max(4, Math.min(100, (entry.simulationScore / leadScore) * 100))
+      : null;
+
   return (
     <tr
       className={cn(
@@ -130,13 +151,16 @@ function LeaderboardRow({
     >
       <td
         className={cn(
-          'py-2 pr-2 tabular-nums',
-          broadcast ? 'text-xl font-extrabold' : 'text-muted-foreground',
+          'py-2.5 pr-2 pl-4 font-mono tabular-nums',
+          broadcast ? 'text-lg font-bold' : 'text-muted-foreground',
+          // The three that matter read as the three that matter, without a
+          // medal graphic in a table.
+          broadcast && rank <= 3 && 'text-primary',
         )}
       >
-        {entry.placement ?? index + 1}
+        {broadcast ? String(rank).padStart(2, '0') : rank}
       </td>
-      <td className="py-2 pr-3">
+      <td className="py-2.5 pr-3">
         <Link
           href={`/u/${entry.username}`}
           className={cn(
@@ -147,8 +171,8 @@ function LeaderboardRow({
           {entry.displayName ?? entry.username}
         </Link>
         {mine ? (
-          <span className={cn('ml-1.5 text-xs font-medium', 'text-primary')}>
-            (you)
+          <span className="text-primary ml-1.5 font-mono text-xs font-semibold">
+            you
           </span>
         ) : null}
         {entry.eliminatedAtStage ? (
@@ -162,17 +186,34 @@ function LeaderboardRow({
         ) : null}
       </td>
       {!compact && showCity ? (
-        <td className="text-muted-foreground py-2 pr-3">
-          {entry.city ?? 'none'}
+        <td className="text-muted-foreground py-2.5 pr-3">
+          {entry.city ?? '—'}
         </td>
       ) : null}
       {!compact ? (
-        <td className="text-muted-foreground py-2 pr-3 text-right tabular-nums">
-          {entry.seed ?? 'none'}
+        <td className="text-muted-foreground py-2.5 pr-3 text-right font-mono tabular-nums">
+          {entry.seed ?? '—'}
         </td>
       ) : null}
-      <td className="py-2 text-right font-semibold tabular-nums">
-        {entry.simulationScore.toFixed(1)}
+      <td className="py-2.5 pr-4 text-right">
+        <span className="font-mono font-bold tabular-nums">
+          {entry.simulationScore.toFixed(1)}
+        </span>
+        {share !== null ? (
+          <span
+            aria-hidden
+            className="bg-surface-elevated mt-1.5 ml-auto block h-0.5 w-20 overflow-hidden rounded-full"
+          >
+            <span
+              className={cn(
+                'block h-full origin-left rounded-full',
+                'animate-[var(--animate-meter-in)]',
+                mine ? 'bg-primary' : 'bg-primary/45',
+              )}
+              style={{ width: `${share}%` }}
+            />
+          </span>
+        ) : null}
       </td>
     </tr>
   );

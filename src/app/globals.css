@@ -41,7 +41,9 @@
   --ink-900: oklch(0.16 0.006 265);
 
   /* Electric blue. -400 is the on-dark text-safe step, -500 the core brand,
-     -600 the pressed/deep step for light surfaces. */
+     -600 the pressed/deep step for light surfaces. -200 is a highlight step:
+     it exists for gradient ends and glows only, never for text or fills. */
+  --blue-200: oklch(0.878 0.082 236);
   --blue-300: oklch(0.79 0.135 248);
   --blue-400: oklch(0.702 0.176 250);
   --blue-500: oklch(0.618 0.204 252);
@@ -295,14 +297,20 @@
   --color-surface-elevated: var(--surface-elevated);
   --color-hairline: var(--hairline);
 
-  /* Two families, max. Display carries the energy; body carries the clarity.
-     Space Grotesk is geometric and monospace-adjacent, and its tabular
-     figures make it the right face for scores and timers too. */
+  /* Three faces, three jobs — and a face may only ever do its job.
+       display — headlines and card titles. Archivo, sized down hard from the
+                 old scale so a section heading cannot masquerade as a hero.
+       sans    — every sentence, label and control. Inter.
+       mono    — anything that is a NUMBER or a MACHINE LABEL: timers, scores,
+                 prices, counts, statuses, eyebrows. This is the rule that gives
+                 the product its instrument-panel read, and it is why the mono
+                 face is a real choice (JetBrains Mono) rather than whatever the
+                 OS supplies. */
   --font-display:
-    var(--font-space-grotesk), var(--font-inter), ui-sans-serif, system-ui,
-    sans-serif;
+    var(--font-archivo), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono:
+    var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   /* Radius */
   --radius-sm: 6px;
@@ -337,10 +345,12 @@
   --text-caption: 0.75rem;
   --text-caption--line-height: 1.4;
   --text-caption--letter-spacing: 0.01em;
-  /* The one sanctioned all-caps treatment: eyebrows and nav. */
+  /* The one sanctioned all-caps treatment: eyebrows and nav. Tracking comes
+     down from 0.16em because the eyebrow is set in mono now, and a monospaced
+     face is already carrying that width in its own sidebearings. */
   --text-eyebrow: 0.6875rem;
   --text-eyebrow--line-height: 1.2;
-  --text-eyebrow--letter-spacing: 0.16em;
+  --text-eyebrow--letter-spacing: 0.12em;
 
   /* Elevation -> Tailwind `shadow-*` (theme-aware via the scopes above). */
   --shadow-xs: var(--elevation-xs);
@@ -354,6 +364,11 @@
   --animate-rise: rise var(--motion-slow) var(--ease-out-expo) both;
   --animate-fade-in: fade-in var(--motion-base) var(--ease-out-quart) both;
   --animate-sweep: sweep 6s var(--ease-out-quart) infinite;
+  /* Ambient. Slow enough to be felt rather than watched — a stadium light
+     breathing, not a loading spinner. */
+  --animate-glow-drift: glow-drift 18s ease-in-out infinite;
+  /* A meter fills TO its value on arrival, so "29/32" lands as motion. */
+  --animate-meter-in: meter-in var(--motion-reveal) var(--ease-out-expo) both;
 
   @keyframes live-pulse {
     0%,
@@ -406,6 +421,27 @@
       transform: translate3d(320%, 0, 0);
     }
   }
+
+  @keyframes glow-drift {
+    0%,
+    100% {
+      opacity: 0.8;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      opacity: 1;
+      transform: translate3d(2%, -1.5%, 0) scale(1.08);
+    }
+  }
+
+  @keyframes meter-in {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
 }
 
 @layer base {
@@ -438,6 +474,149 @@
 }
 
 @layer components {
+  /*
+   * The "field" backdrop — a fine measuring grid under a soft brand bloom.
+   *
+   * This replaces the stock 3D renders a concept mock would reach for: it is
+   * pure CSS, so it costs no image request, re-tints itself from the surface
+   * tokens, and cannot go stale against a rebrand. Both layers sit behind the
+   * content on z-index -1, so the element needs its own stacking context —
+   * `isolation` provides it without forcing every caller to add `relative`.
+   */
+  .field-backdrop {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .field-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image:
+      linear-gradient(to right, var(--hairline) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--hairline) 1px, transparent 1px);
+    background-size: 64px 64px;
+    /* Fade the grid out before it reaches an edge, so it reads as texture
+       rather than as a table someone forgot to style. */
+    mask-image: radial-gradient(120% 90% at 50% 0%, black 0%, transparent 78%);
+    -webkit-mask-image: radial-gradient(
+      120% 90% at 50% 0%,
+      black 0%,
+      transparent 78%
+    );
+  }
+
+  .field-backdrop::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background:
+      radial-gradient(
+        58% 60% at 12% 0%,
+        color-mix(in oklab, var(--primary) 18%, transparent) 0%,
+        transparent 68%
+      ),
+      radial-gradient(
+        45% 55% at 92% 6%,
+        color-mix(in oklab, var(--primary) 10%, transparent) 0%,
+        transparent 70%
+      );
+    animation: var(--animate-glow-drift);
+    transform-origin: 20% 0%;
+  }
+
+  /* Same treatment, keyed to urgency. For the one card that is genuinely live. */
+  .field-backdrop-live::after {
+    background: radial-gradient(
+      60% 70% at 8% 0%,
+      color-mix(in oklab, var(--destructive) 15%, transparent) 0%,
+      transparent 70%
+    );
+  }
+
+  /*
+   * A light sweeping across a live card. Gated on motion-safe by the global
+   * reduced-motion rule below; static, it is simply invisible.
+   */
+  .sheen {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .sheen::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28%;
+    background: linear-gradient(
+      100deg,
+      transparent,
+      color-mix(in oklab, var(--foreground) 7%, transparent),
+      transparent
+    );
+    animation: var(--animate-sweep);
+  }
+
+  /*
+   * Display type with the brand light raking across it.
+   *
+   * Guarded by @supports because the technique paints the text transparent to
+   * let the gradient through — without the guard, a browser that cannot clip a
+   * background to text renders an invisible headline.
+   */
+  @supports ((background-clip: text) or (-webkit-background-clip: text)) {
+    .text-raked {
+      background-image: linear-gradient(
+        104deg,
+        var(--foreground) 0%,
+        var(--foreground) 42%,
+        var(--blue-200) 88%
+      );
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      /* The gradient ends in a light blue, so the descenders of a clipped
+         headline keep their contrast against the deep base. */
+      padding-bottom: 0.06em;
+    }
+  }
+
+  /*
+   * A hairline that only exists where the light hits it. Used along the top
+   * edge of a card to suggest a bevel without drawing a second border.
+   */
+  .edge-light {
+    position: relative;
+  }
+
+  .edge-light::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in oklab, var(--primary) 45%, transparent),
+      transparent
+    );
+  }
+
+  .edge-light-live::before {
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in oklab, var(--destructive) 55%, transparent),
+      transparent
+    );
+  }
+
   /*
    * Staggered reveal for lists (leaderboard rows, tournament cards) so they
    * arrive in sequence instead of popping in as one block. Applied to the
