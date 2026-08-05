@@ -594,7 +594,7 @@ function WeekSchedule({ snapshot }: { snapshot: LiveSnapshot }) {
     { label: 'Registration closes', at: snapshot.registrationClosesAt },
     { label: 'Qualifiers open', at: snapshot.simulationOpensAt },
     { label: 'Qualifiers close', at: snapshot.simulationClosesAt },
-    { label: 'Live bracket', at: snapshot.liveStartsAt },
+    { label: 'Knockouts', at: snapshot.liveStartsAt },
   ].filter((row) => row.at);
 
   if (rows.length === 0) return null;
@@ -622,8 +622,14 @@ function WeekSchedule({ snapshot }: { snapshot: LiveSnapshot }) {
             className="border-hairline bg-surface-raised hover:border-primary/40 rounded-md border p-3 transition-colors duration-[var(--motion-base)]"
           >
             <Eyebrow>{row.label}</Eyebrow>
+            {/* The date, then the time. "Fri, 11:59 pm" left the reader to
+                work out WHICH Friday from a page that never says — the actual
+                dates were only ever printed on the tournament page. */}
             <p className="mt-1.5 font-mono text-sm font-bold tabular-nums">
-              {formatSchedule(row.at)}
+              {formatScheduleDate(row.at)}
+            </p>
+            <p className="text-muted-foreground mt-0.5 font-mono text-xs tabular-nums">
+              {formatScheduleTime(row.at)} IST
             </p>
           </div>
         ))}
@@ -846,10 +852,20 @@ function formatStage(value: string): string {
   return value.replace(/_/g, ' ');
 }
 
-function formatSchedule(value: string | null): string {
+/** e.g. `Tue 4 Aug`. Everything on this page is IST; the label says so once. */
+function formatScheduleDate(value: string | null): string {
   if (!value) return 'TBA';
   return new Intl.DateTimeFormat('en-IN', {
     weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date(value));
+}
+
+function formatScheduleTime(value: string | null): string {
+  if (!value) return '';
+  return new Intl.DateTimeFormat('en-IN', {
     hour: 'numeric',
     minute: '2-digit',
     timeZone: 'Asia/Kolkata',

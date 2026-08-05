@@ -343,19 +343,27 @@ function TournamentPanel({ mission }: { mission: MissionControlState }) {
           }
           hint={`${tournament.prizePool.paidEntries} eligible`}
         />
+        {/*
+         * The PRICE is the value; the payment's state is the hint.
+         *
+         * This used to render the payment status and fall back to "free" when
+         * no payment row existed — so a ₹99 tournament you had not paid for
+         * announced itself as free, which is the one thing this tile must never
+         * get wrong. Absence of an order says nothing about the price.
+         */}
         <Metric
           label="Entry"
-          value={state?.payment?.status.toLowerCase() ?? 'free'}
+          value={
+            <EntryPrice
+              amountMinor={tournament.passPriceMinor}
+              currency={tournament.currency}
+            />
+          }
           tone={paid ? 'success' : 'default'}
           hint={
-            state?.payment ? (
-              <EntryPrice
-                amountMinor={state.payment.amountMinor}
-                currency={tournament.currency}
-              />
-            ) : (
-              'no order'
-            )
+            tournament.passPriceMinor <= 0
+              ? 'no payment needed'
+              : (state?.payment?.status.toLowerCase() ?? 'not paid yet')
           }
         />
       </dl>

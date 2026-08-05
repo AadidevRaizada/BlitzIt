@@ -2,13 +2,17 @@
 
 import { revalidatePath } from 'next/cache';
 import { requireUserOrThrow } from '@/server/modules/auth';
-import { confirmCheckout, createPassOrder } from '@/server/modules/payment';
+import {
+  PaymentGatewayNotConfiguredError,
+  confirmCheckout,
+  createPassOrder,
+} from '@/server/modules/payment';
 import { assertRateLimit } from '@/server/ops/rate-limit';
 import {
   confirmCheckoutSchema,
   createPassOrderSchema,
 } from '@/lib/validation/payment.schema';
-import { err, ok, toErr, type Result } from '@/lib/errors';
+import { err, ok, toErr, type Err, type Result } from '@/lib/errors';
 import { captureException } from '@/lib/observability';
 
 export async function createPassOrderAction(input: unknown): Promise<
@@ -38,7 +42,7 @@ export async function createPassOrderAction(input: unknown): Promise<
     return ok(order);
   } catch (error) {
     captureException(error, { where: 'createPassOrderAction' });
-    return toErr(error);
+    return gatewayDown(error) ?? toErr(error);
   }
 }
 
@@ -71,6 +75,21 @@ export async function confirmCheckoutAction(input: unknown): Promise<
     });
   } catch (error) {
     captureException(error, { where: 'confirmCheckoutAction' });
-    return toErr(error);
+    return gatewayDown(error) ?? toErr(error);
   }
+}
+
+/**
+ * A missing gateway configuration, said out loud to the competitor.
+ *
+ * `toErr` would flatten it to "Unexpected error", which invites someone to try
+ * again and again against an outage no retry can fix. This names it as ours
+ * without leaking which variable an operator forgot.
+ */
+function gatewayDown(error: unknown): Err | null {
+  if (!(error instanceof PaymentGatewayNotConfiguredError)) return null;
+  return err(
+    'PAYMENT_FAILED',
+    'Payments are temporarily unavailable. Nothing was charged - please try again shortly.',
+  );
 }
