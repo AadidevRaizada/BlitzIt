@@ -19,7 +19,7 @@ export default async function OnboardingPage() {
     getPlatformSettings(),
   ]);
 
-  if (state.completed) redirect('/dashboard');
+  if (state.completed && state.profile.city) redirect('/dashboard');
 
   return (
     <ProductShell
@@ -34,6 +34,13 @@ export default async function OnboardingPage() {
       }}
     >
       <div className="mx-auto grid max-w-5xl gap-6 py-6 lg:grid-cols-[0.8fr_1.2fr]">
+        {state.completed && !state.profile.city && (
+          <div className="border-hairline bg-surface-raised col-span-full border p-4 text-sm font-medium text-amber-500">
+            👋 Welcome back! We now require a <strong>City</strong> to sort the
+            leaderboards. Please update your city below to complete your setup.
+          </div>
+        )}
+
         <div className="space-y-3">
           <p className="text-primary text-sm font-medium">First run setup</p>
           <h1 className="font-display text-wrap-balance text-3xl font-bold">
