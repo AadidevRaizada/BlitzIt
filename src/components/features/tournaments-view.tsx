@@ -14,7 +14,8 @@ import { buttonVariants } from '@/components/ui/button';
 import { DisplayHeading } from '@/components/ui/display-heading';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Eyebrow } from '@/components/ui/eyebrow';
-import { EntryPrice, Reward } from '@/components/ui/reward';
+import { EntryPrice } from '@/components/ui/reward';
+import { REWARD_MULTIPLE } from '@/lib/rewards';
 import { cn } from '@/lib/utils';
 
 /**
@@ -253,23 +254,18 @@ function Ledger({
   ];
   if (ahead.length === 0 && grouped.PAST.length === 0) return null;
 
-  const pot = ahead.reduce(
-    (sum, tournament) => sum + tournament.prizePoolMinor,
-    0,
-  );
   const seats = grouped.REGISTERING.reduce((sum, tournament) => {
     const capacity = tournament.bracketSize ?? tournament.maxRegistrations;
     return capacity
       ? sum + Math.max(0, capacity - tournament.participantCount)
       : sum;
   }, 0);
-  const currency = ahead[0]?.currency ?? 'INR';
 
   const items: Array<{ label: string; value: React.ReactNode }> = [
-    {
-      label: 'On the table',
-      value: <Reward amountMinor={pot} currency={currency} fallback="—" />,
-    },
+    // The same promise the cards and the tournament page lead with, cut to the
+    // multiple this slot can hold. It replaced a summed pot that moved with
+    // entries rather than with what a competitor could win.
+    { label: 'Compete for up to', value: REWARD_MULTIPLE },
     { label: 'Seats open', value: seats > 0 ? seats : '—' },
     { label: 'Events run', value: grouped.PAST.length },
   ];
@@ -627,15 +623,11 @@ function TournamentCard({
           />
 
           <dl className="border-hairline mt-4 grid grid-cols-2 gap-4 border-t pt-4 text-sm">
-            <Fact
-              label="Prize pool"
-              value={
-                <Reward
-                  amountMinor={tournament.prizePoolMinor}
-                  currency={tournament.currency}
-                />
-              }
-            />
+            {/* The multiple, read at a glance — the tournament page carries the
+                table it comes from. The label absorbs "up to" so the value stays
+                short enough for one line in this half-width column; spelling it
+                out in the value wraps to two and grows every card in the grid. */}
+            <Fact label="Up to" value={`${REWARD_MULTIPLE} Entry Fee`} />
             <Fact
               label="Entry"
               value={

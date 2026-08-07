@@ -18,9 +18,14 @@ import { DEFAULT_WEIGHTS } from '@/server/modules/evaluation/types';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Countdown } from '@/components/features/countdown';
-import { Reward } from '@/components/ui/reward';
 import { RegisterControl } from '../register-control';
 import { formatMinor } from '@/server/modules/notification';
+import {
+  CASH_REWARDS,
+  CAREER_REWARDS,
+  REWARD_HEADLINE,
+  REWARD_SUPPORT,
+} from '@/lib/rewards';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,20 +103,13 @@ export default async function TournamentPage({
           </div>
           <Card surface="broadcast" className="p-5">
             <dl className="grid gap-3 text-sm">
-              <Meta
-                label="Prize pool"
-                value={
-                  /* `Reward`, not `formatMinor`. A bare "₹0" reads as a broken
-                     value rather than an undecided one, and this panel was the
-                     last place still rendering it while the tournament cards
-                     said "To be announced" for the same tournament. */
-                  <Reward amountMinor={tournament.prizePool.prizePoolMinor} />
-                }
-              />
-              <Meta
-                label="Eligible entries"
-                value={String(tournament.prizePool.paidEntries)}
-              />
+              {/* The live pool is deliberately absent from this panel. It is
+                  still calculated, stored, and paid out — it is simply not the
+                  story the first Circuit tournaments tell, and a pool that
+                  visibly grows with each entry frames the event as a raffle
+                  rather than a competition. What a competitor actually wins is
+                  in the "What you're competing for" section below, as fixed
+                  amounts that do not move while registration is open. */}
               <Meta
                 label="Starts"
                 value={
@@ -165,6 +163,43 @@ export default async function TournamentPage({
 
       <div className="mx-auto grid max-w-6xl gap-8 px-5 py-8 sm:px-7 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-8">
+          {/* The headline carries the section — no separate "What you're
+              competing for" line above it, so the promise leads and the page
+              does not grow a heading and a claim where it had one heading. */}
+          <Section title={REWARD_HEADLINE} lede={REWARD_SUPPORT}>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card surface="broadcast" className="p-4">
+                <h3 className="font-semibold">🏆 Cash rewards</h3>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  {CASH_REWARDS.map((reward) => (
+                    <Meta
+                      key={reward.place}
+                      label={`${reward.medal} ${reward.place}`}
+                      value={reward.award}
+                    />
+                  ))}
+                </dl>
+              </Card>
+              <Card surface="broadcast" className="p-4">
+                <h3 className="font-semibold">Career rewards</h3>
+                <ul className="mt-3 grid gap-2 text-sm leading-6">
+                  {CAREER_REWARDS.map((reward) => (
+                    // Keyed on both fields: two tiers are "Top 8".
+                    <li
+                      key={`${reward.tier}-${reward.award}`}
+                      className="flex gap-3"
+                    >
+                      <span className="text-muted-foreground shrink-0 font-medium">
+                        {reward.tier}
+                      </span>
+                      <span>{reward.award}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
+          </Section>
+
           <Section title="Format">
             <div className="grid gap-3 sm:grid-cols-3">
               <Info label="Category" value={category} />
@@ -274,8 +309,13 @@ export default async function TournamentPage({
                 }
               />
               <Faq
-                q="How is the prize pool calculated?"
-                a={`The stored pool is ${formatMinor(tournament.prizePool.prizePoolMinor)} from ${tournament.prizePool.paidEntries} eligible entries plus any configured floor, sponsor, or bonus contribution.`}
+                q="What do winners receive?"
+                a={
+                  'Fixed cash rewards for the top three, an entry-fee refund ' +
+                  'for 4th–8th, and the career rewards listed above. The ' +
+                  'amounts are published up front and do not depend on how ' +
+                  'many people enter.'
+                }
               />
               <Faq
                 q="Can I browse before signing in?"
@@ -340,14 +380,21 @@ export default async function TournamentPage({
 
 function Section({
   title,
+  lede,
   children,
 }: {
   title: string;
+  /** Supporting line under the heading. Same type scale as the body copy
+      already on this page, so it reads as secondary to the heading. */
+  lede?: string;
   children: React.ReactNode;
 }) {
   return (
     <section>
       <h2 className="font-display text-2xl font-bold">{title}</h2>
+      {lede ? (
+        <p className="text-muted-foreground mt-2 text-sm leading-6">{lede}</p>
+      ) : null}
       <div className="mt-4">{children}</div>
     </section>
   );

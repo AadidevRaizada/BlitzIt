@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { ArrowRight, Radio, Trophy } from 'lucide-react';
 import type { HallOfFameEntry } from '@/server/modules/hall-of-fame';
-import { formatMinor } from '@/server/modules/notification';
 import type { LiveSnapshot, MyMatchSummary } from '@/server/modules/tournament';
 import { BracketTree } from '@/components/features/bracket-tree';
 import { Countdown } from '@/components/features/countdown';
@@ -297,9 +296,12 @@ export function HomeView({
                       'Unclaimed'
                     )}
                   </DisplayHeading>
+                  {/* The field they beat, not the pool that funded it. A
+                      settled pool from an early event is a small number next
+                      to the podium every public surface now publishes, and the
+                      two read as a contradiction rather than a record. */}
                   <p className="text-muted-foreground mt-3 font-mono text-sm tabular-nums">
-                    {champion.participantCount} competitors ·{' '}
-                    {formatMinor(champion.prizePoolMinor)}
+                    {champion.participantCount} competitors
                   </p>
                   <Link
                     href="/hall-of-fame"

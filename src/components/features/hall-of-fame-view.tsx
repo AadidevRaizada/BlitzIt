@@ -6,7 +6,6 @@ import {
 } from '@/server/modules/hall-of-fame';
 import type { EnvironmentScope } from '@/server/modules/tournament';
 import { Card } from '@/components/ui/card';
-import { Reward } from '@/components/ui/reward';
 import { DisplayHeading } from '@/components/ui/display-heading';
 import { Eyebrow } from '@/components/ui/eyebrow';
 import { cn } from '@/lib/utils';
@@ -92,8 +91,7 @@ export function HallOfFameRecord({ entries }: { entries: HallOfFameEntry[] }) {
             </DisplayHeading>
             <p className="text-muted-foreground mx-auto mt-3 max-w-md text-sm leading-6">
               The first tournament to finish is recorded here, permanently — the
-              podium, the prize pool, and the size of the field it was won
-              against.
+              podium and the size of the field it was won against.
             </p>
           </div>
         ) : (
@@ -179,12 +177,12 @@ function ChampionRow({
             </div>
           </div>
 
+          {/* The size of the field, and no pool figure. The stored pool of an
+              early event is a settled internal number, and
+              publishing it beside the podium every other public surface now
+              quotes invites a comparison that misrepresents both. */}
           <dl className="border-hairline mt-6 flex flex-wrap gap-x-8 gap-y-3 border-t pt-5">
             <Stat label="Beat a field of" value={entry.participantCount} />
-            <Stat
-              label="Prize pool"
-              value={<Reward amountMinor={entry.prizePoolMinor} />}
-            />
           </dl>
         </div>
 
