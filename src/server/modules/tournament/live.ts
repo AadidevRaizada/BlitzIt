@@ -441,101 +441,113 @@ export async function getMyTournamentState(
   tournamentId: string,
   client: DbClient = db,
 ): Promise<MyTournamentState> {
-  const [user, registration, payment, ranking, round, match, termsAcceptance] =
-    await Promise.all([
-      client.user.findUniqueOrThrow({
-        where: { id: userId },
-        select: {
-          avatarUrl: true,
-          displayName: true,
-          city: true,
-          authUserId: true,
+  const [
+    user,
+    registration,
+    payment,
+    ranking,
+    round,
+    match,
+    termsAcceptance,
+    tournament,
+  ] = await Promise.all([
+    client.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        avatarUrl: true,
+        displayName: true,
+        city: true,
+        authUserId: true,
+      },
+    }),
+    client.registration.findUnique({
+      where: { userId_tournamentId: { userId, tournamentId } },
+      select: { id: true, status: true, registeredAt: true },
+    }),
+    client.payment.findFirst({
+      where: { userId, tournamentId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        status: true,
+        amountMinor: true,
+        currency: true,
+        providerOrderId: true,
+        providerPaymentId: true,
+        refundReason: true,
+        paidAt: true,
+      },
+    }),
+    client.ranking.findUnique({
+      where: { tournamentId_userId: { tournamentId, userId } },
+      select: {
+        seed: true,
+        placement: true,
+        qualified: true,
+        eliminatedAtStage: true,
+        simulationScore: true,
+      },
+    }),
+    client.round.findFirst({
+      where: {
+        tournamentId,
+        type: 'SIMULATION',
+        status: { in: ['OPEN', 'JUDGING', 'PENDING'] },
+      },
+      orderBy: [{ sequence: 'asc' }],
+      select: {
+        id: true,
+        stage: true,
+        status: true,
+        opensAt: true,
+        deadlineAt: true,
+        submissions: {
+          where: { userId },
+          select: { id: true, status: true },
+          take: 1,
         },
-      }),
-      client.registration.findUnique({
-        where: { userId_tournamentId: { userId, tournamentId } },
-        select: { id: true, status: true, registeredAt: true },
-      }),
-      client.payment.findFirst({
-        where: { userId, tournamentId },
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true,
-          status: true,
-          amountMinor: true,
-          currency: true,
-          providerOrderId: true,
-          providerPaymentId: true,
-          refundReason: true,
-          paidAt: true,
-        },
-      }),
-      client.ranking.findUnique({
-        where: { tournamentId_userId: { tournamentId, userId } },
-        select: {
-          seed: true,
-          placement: true,
-          qualified: true,
-          eliminatedAtStage: true,
-          simulationScore: true,
-        },
-      }),
-      client.round.findFirst({
-        where: {
-          tournamentId,
-          type: 'SIMULATION',
-          status: { in: ['OPEN', 'JUDGING', 'PENDING'] },
-        },
-        orderBy: [{ sequence: 'asc' }],
-        select: {
-          id: true,
-          stage: true,
-          status: true,
-          opensAt: true,
-          deadlineAt: true,
-          submissions: {
-            where: { userId },
-            select: { id: true, status: true },
-            take: 1,
+      },
+    }),
+    client.match.findFirst({
+      where: {
+        tournamentId,
+        OR: [{ competitorAId: userId }, { competitorBId: userId }],
+        round: { status: { not: 'COMPLETED' } },
+      },
+      // Furthest-along round first — see the same fix in `arena.ts`. Ordering
+      // by `createdAt` was a coin flip, because the bracket is written in a
+      // single transaction.
+      orderBy: [{ round: { sequence: 'desc' } }, { bracketPosition: 'asc' }],
+      select: {
+        id: true,
+        status: true,
+        winReason: true,
+        competitorAId: true,
+        competitorBId: true,
+        round: {
+          select: {
+            stage: true,
+            status: true,
+            opensAt: true,
+            deadlineAt: true,
           },
         },
-      }),
-      client.match.findFirst({
-        where: {
-          tournamentId,
-          OR: [{ competitorAId: userId }, { competitorBId: userId }],
-          round: { status: { not: 'COMPLETED' } },
+      },
+    }),
+    client.termsAcceptance.findUnique({
+      where: {
+        userId_version: {
+          userId,
+          version: CURRENT_TERMS_VERSION,
         },
-        // Furthest-along round first — see the same fix in `arena.ts`. Ordering
-        // by `createdAt` was a coin flip, because the bracket is written in a
-        // single transaction.
-        orderBy: [{ round: { sequence: 'desc' } }, { bracketPosition: 'asc' }],
-        select: {
-          id: true,
-          status: true,
-          winReason: true,
-          competitorAId: true,
-          competitorBId: true,
-          round: {
-            select: {
-              stage: true,
-              status: true,
-              opensAt: true,
-              deadlineAt: true,
-            },
-          },
-        },
-      }),
-      client.termsAcceptance.findUnique({
-        where: {
-          userId_version: {
-            userId,
-            version: CURRENT_TERMS_VERSION,
-          },
-        },
-        select: { id: true },
-      }),
-    ]);
+      },
+      select: { id: true },
+    }),
+    client.tournament.findUniqueOrThrow({
+      where: { id: tournamentId },
+      select: { passPriceMinor: true },
+    }),
+  ]);
 
   const opponentId =
     match?.competitorAId === userId
@@ -554,7 +566,10 @@ export async function getMyTournamentState(
     select: { id: true },
   });
   const submission = round?.submissions[0] ?? null;
-  const isRegistered = registration?.status === 'ACTIVE';
+
+  const isPaidOrFree =
+    tournament.passPriceMinor === 0 || payment?.status === 'PAID';
+  const isRegistered = registration?.status === 'ACTIVE' && isPaidOrFree;
 
   return {
     tournamentId,
