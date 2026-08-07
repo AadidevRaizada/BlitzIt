@@ -169,7 +169,7 @@ export function HomeView({
                   </Link>
                 </div>
 
-                <div className="home-rise stagger border-hairline relative mt-10 grid gap-px overflow-hidden rounded-lg border sm:grid-cols-2 lg:grid-cols-4">
+                <div className="home-rise stagger border-hairline relative mt-10 grid gap-px overflow-hidden rounded-lg border sm:grid-cols-3">
                   {stats.map((stat) => (
                     <HeroStatCard key={stat.label} stat={stat} />
                   ))}
