@@ -22,7 +22,7 @@ export default async function AppLayout({
 }) {
   const user = await requireUser();
   const pathname = (await headers()).get('x-pathname') ?? '';
-  if (!user.onboardingCompletedAt && pathname !== '/settings') {
+  if ((!user.onboardingCompletedAt || !user.city) && pathname !== '/settings') {
     redirect('/onboarding');
   }
 

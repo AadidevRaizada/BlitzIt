@@ -6,6 +6,7 @@ export {
   FAKE_RAZORPAY_WEBHOOK_SECRET,
   FakeRazorpayGateway,
   HttpRazorpayGateway,
+  PaymentGatewayNotConfiguredError,
   checkoutSecret,
   getFakeRazorpayGateway,
   getRazorpayGateway,

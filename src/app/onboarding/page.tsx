@@ -19,7 +19,7 @@ export default async function OnboardingPage() {
   const user = await requireUser('/onboarding');
   const state = await getOnboardingState(user.id);
 
-  if (state.completed) redirect('/dashboard');
+  if (state.completed && state.profile.city) redirect('/dashboard');
 
   return <OnboardingFlow initial={state} />;
 }

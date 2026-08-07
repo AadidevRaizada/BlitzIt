@@ -94,17 +94,18 @@ export function Countdown({
       aria-live={urgent ? 'assertive' : 'off'}
     >
       {label ? (
-        <span className="text-eyebrow text-muted-foreground font-semibold uppercase">
+        <span className="text-eyebrow text-muted-foreground font-mono font-semibold uppercase">
           {label}
         </span>
       ) : null}
       <span
         className={cn(
-          // Tabular figures are load-bearing: without them the digits change
-          // width every second and the whole line jitters.
-          'font-display font-bold tabular-nums',
+          // Mono, not the display face: a clock is an instrument reading. Every
+          // glyph is the same width by construction, so the digits cannot shift
+          // the line as they tick.
+          'font-mono font-bold tabular-nums',
           size === 'inline' && 'text-base',
-          size === 'md' && 'text-lg',
+          size === 'md' && 'text-xl',
           size === 'hero' &&
             'text-[clamp(2.5rem,6vw,4.25rem)] leading-none tracking-[-0.03em]',
           // Under a minute the clock turns red and breathes. This is the

@@ -28,7 +28,10 @@ export function Eyebrow({
   return (
     <Component
       className={cn(
-        'text-eyebrow font-semibold uppercase',
+        // Mono, because an eyebrow is a machine label — the same register as a
+        // status, a timer or a score, and deliberately not the register of the
+        // sentence underneath it.
+        'text-eyebrow font-mono font-semibold uppercase',
         tone === 'muted' && 'text-muted-foreground',
         tone === 'primary' && 'text-primary',
         tone === 'live' && 'text-destructive',

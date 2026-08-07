@@ -235,27 +235,55 @@ export function razorpayFakeModeEnabled(): boolean {
   );
 }
 
+/**
+ * The gateway has no credentials.
+ *
+ * A distinct type because this is an operator problem, not a caller problem,
+ * and the two want opposite handling: a caller error is final, whereas this one
+ * fixes itself the moment the environment is corrected. It used to be a bare
+ * `Error`, so the webhook answered Razorpay with an opaque 500 "retryable
+ * server error" — indistinguishable from a crash, and silent about the one
+ * thing anybody needed to know.
+ */
+export class PaymentGatewayNotConfiguredError extends Error {
+  readonly missing: readonly string[];
+
+  constructor(missing: readonly string[]) {
+    super(
+      `Razorpay is not configured: ${missing.join(', ')} missing. ` +
+        'Set them in the deployment environment (or RAZORPAY_USE_FAKE=true outside production).',
+    );
+    this.name = 'PaymentGatewayNotConfiguredError';
+    this.missing = missing;
+  }
+}
+
 function requireRazorpayCredentials(): {
   keyId: string;
   keySecret: string;
   webhookSecret: string;
 } {
-  const env = serverEnv();
-  if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
-    throw new Error(
-      'Razorpay credentials are required unless RAZORPAY_USE_FAKE=true outside production',
-    );
+  const {
+    RAZORPAY_KEY_ID: keyId,
+    RAZORPAY_KEY_SECRET: keySecret,
+    RAZORPAY_WEBHOOK_SECRET: webhookSecret,
+  } = serverEnv();
+
+  // Every missing variable is reported at once. Naming them one at a time turns
+  // a single misconfiguration into three deploys.
+  const missing = [
+    !keyId && 'RAZORPAY_KEY_ID',
+    !keySecret && 'RAZORPAY_KEY_SECRET',
+    !webhookSecret && 'RAZORPAY_WEBHOOK_SECRET',
+  ].filter((name): name is string => typeof name === 'string');
+
+  // Written as three explicit checks rather than `missing.length > 0` so the
+  // compiler can see they are set on the way out.
+  if (!keyId || !keySecret || !webhookSecret) {
+    throw new PaymentGatewayNotConfiguredError(missing);
   }
-  if (!env.RAZORPAY_WEBHOOK_SECRET) {
-    throw new Error(
-      'RAZORPAY_WEBHOOK_SECRET is required unless RAZORPAY_USE_FAKE=true outside production',
-    );
-  }
-  return {
-    keyId: env.RAZORPAY_KEY_ID,
-    keySecret: env.RAZORPAY_KEY_SECRET,
-    webhookSecret: env.RAZORPAY_WEBHOOK_SECRET,
-  };
+
+  return { keyId, keySecret, webhookSecret };
 }
 
 export function getRazorpayGateway(): RazorpayGateway {

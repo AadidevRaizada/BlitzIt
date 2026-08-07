@@ -154,9 +154,11 @@ export async function assertOnboardingComplete(
 ): Promise<void> {
   const user = await client.user.findUnique({
     where: { id: userId },
-    select: { onboardingCompletedAt: true },
+    select: { onboardingCompletedAt: true, city: true },
   });
-  if (!user?.onboardingCompletedAt) {
-    throw new ValidationError('Complete onboarding before continuing.');
+  if (!user?.onboardingCompletedAt || !user.city) {
+    throw new ValidationError(
+      'Complete onboarding and add your city before continuing.',
+    );
   }
 }

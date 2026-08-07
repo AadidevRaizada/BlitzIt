@@ -761,7 +761,7 @@ export async function createPassOrder(
       const order = await gateway.createOrder({
         amountMinor: tournament.passPriceMinor,
         currency: tournament.currency,
-        receipt: `pass:${tournamentId}:${userId}`,
+        receipt: `p_${tournamentId.slice(0, 8)}_${userId.slice(0, 8)}`,
       });
 
       const created = await tx.payment.create({

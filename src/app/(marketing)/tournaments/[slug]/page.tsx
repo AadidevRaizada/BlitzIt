@@ -203,7 +203,7 @@ export default async function TournamentPage({
                 date={tournament.simulationClosesAt}
               />
               <TimelineRow
-                label="Live bracket starts"
+                label="Knockouts start"
                 date={tournament.liveStartsAt}
               />
             </div>
@@ -291,6 +291,7 @@ export default async function TournamentPage({
             <div className="mt-4">
               <RegisterControl
                 tournamentId={tournament.id}
+                tournamentName={tournament.name}
                 slug={tournament.slug}
                 status={tournament.status}
                 participantCount={tournament.participantCount}

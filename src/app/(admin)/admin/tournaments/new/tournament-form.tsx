@@ -133,8 +133,8 @@ export function NewTournamentForm() {
             label="Entry price (paise)"
             type="number"
             min={0}
-            placeholder="10000"
-            hint="₹100 = 10000 paise. Money is always stored as an integer."
+            placeholder="9900"
+            hint="₹99 = 9900 paise. Money is always stored as an integer."
           />
           <div>
             <input type="hidden" name="thirdPlaceEnabled" value="false" />

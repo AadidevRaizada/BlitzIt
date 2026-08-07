@@ -4,11 +4,15 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, useTransition } from 'react';
 import { CheckCircle2, CircleAlert, CreditCard } from 'lucide-react';
-import { createPassOrderAction } from '@/server/actions/payment.actions';
+import {
+  confirmCheckoutAction,
+  createPassOrderAction,
+} from '@/server/actions/payment.actions';
 import { registerForTournamentAction } from '@/server/actions/registration.actions';
 import type { MyTournamentState } from '@/server/modules/tournament';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { openRazorpayCheckout } from '@/lib/razorpay-checkout';
 import { cn } from '@/lib/utils';
 
 type PaymentStatus =
@@ -22,6 +26,7 @@ type PaymentStatus =
 
 export function RegisterControl({
   tournamentId,
+  tournamentName,
   slug,
   status,
   participantCount,
@@ -32,6 +37,8 @@ export function RegisterControl({
   state,
 }: {
   tournamentId: string;
+  /** Shown inside the Razorpay modal, so the charge is recognisable. */
+  tournamentName: string;
   slug: string;
   status: string;
   participantCount: number;
@@ -45,6 +52,11 @@ export function RegisterControl({
   const router = useRouter();
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Checkout gets its own busy flag rather than sharing the transition: the
+  // modal can sit open for minutes, and a transition held pending that long
+  // blocks the router updates we want to run the moment it closes.
+  const [checkingOut, setCheckingOut] = useState(false);
+  const busy = pending || checkingOut;
 
   const full =
     maxRegistrations !== null && participantCount >= maxRegistrations;
@@ -202,14 +214,46 @@ export function RegisterControl({
   }
 
   if (paidEntry && paymentStatus && paymentStatus !== 'FAILED') {
+    // An order that was created but never paid used to be a dead end: this
+    // branch rendered "complete payment in Razorpay" and offered no way to get
+    // back to Razorpay. Reopening reuses the same order, so no second charge
+    // can be created by pressing it.
+    const unpaid = paymentStatus === 'CREATED' || paymentStatus === 'PENDING';
+
     return (
       <div className="space-y-4">
-        <SurfaceState title="Payment confirmation pending">
+        <SurfaceState
+          title={
+            unpaid ? 'Payment not finished' : 'Payment confirmation pending'
+          }
+        >
           {paymentStatus === 'PAID'
             ? 'Payment is settled; registration confirmation is being refreshed.'
-            : 'A checkout order exists. Complete payment in Razorpay, then return for confirmation.'}
+            : unpaid
+              ? 'An order is open for this entry. Finish paying to activate your slot.'
+              : 'This payment is being processed.'}
         </SurfaceState>
         <PaymentStateBadge status={paymentStatus} />
+
+        {unpaid ? (
+          <>
+            {message ? (
+              <p className="flex items-center gap-2 text-sm" role="status">
+                <CircleAlert className="size-4" aria-hidden />
+                {message}
+              </p>
+            ) : null}
+            <Button
+              variant="broadcast"
+              size="broadcast"
+              onClick={submit}
+              disabled={busy}
+            >
+              {busy ? 'Opening checkout...' : 'Complete payment'}
+            </Button>
+          </>
+        ) : null}
+
         <ReadinessList
           signedIn
           profileComplete={state?.readiness.profileComplete ?? false}
@@ -221,23 +265,86 @@ export function RegisterControl({
     );
   }
 
-  function submit() {
-    startTransition(async () => {
-      if (paidEntry) {
-        const result = await createPassOrderAction({ tournamentId });
-        if (!result.ok) {
-          setMessage(result.error.message);
-          return;
-        }
+  /**
+   * Create (or reuse) the order, open Razorpay, and confirm what comes back.
+   *
+   * The signature Razorpay hands the browser is not proof of payment — the
+   * server re-verifies it with the key secret, and the webhook settles the
+   * payment independently. That redundancy is why a failure to confirm here is
+   * reported as a display delay rather than a lost payment: it is.
+   */
+  async function startCheckout() {
+    setMessage(null);
+    setCheckingOut(true);
+    try {
+      const order = await createPassOrderAction({ tournamentId });
+      if (!order.ok) {
+        setMessage(order.error.message);
+        return;
+      }
+
+      const outcome = await openRazorpayCheckout({
+        keyId: order.data.razorpayKeyId,
+        orderId: order.data.orderId,
+        amountMinor: order.data.amountMinor,
+        currency: order.data.currency,
+        tournamentName,
+      });
+
+      if (outcome.status === 'dismissed') {
         setMessage(
-          paymentStatus === 'FAILED'
-            ? 'Retry order created. Complete payment in Razorpay.'
-            : 'Checkout order created. Complete payment in Razorpay.',
+          'Checkout closed. Your order is still open — press the button again to finish paying.',
+        );
+        return;
+      }
+
+      if (outcome.status === 'failed') {
+        setMessage(outcome.message);
+        router.refresh();
+        return;
+      }
+
+      const confirmed = await confirmCheckoutAction({
+        razorpayOrderId: outcome.razorpayOrderId,
+        razorpayPaymentId: outcome.razorpayPaymentId,
+        razorpaySignature: outcome.razorpaySignature,
+      });
+
+      if (!confirmed.ok) {
+        setMessage(
+          `${confirmed.error.message} Your payment is still being confirmed — this page will catch up shortly.`,
         );
         router.refresh();
         return;
       }
 
+      setMessage(
+        confirmed.data.registrationId
+          ? 'Payment settled. Your entry is active.'
+          : 'Payment received. Confirming your entry.',
+      );
+      router.refresh();
+    } catch (error) {
+      // The only throw that reaches here is the script failing to load, which
+      // in practice means an ad blocker or a dead connection — worth naming,
+      // because "try again" alone would send them in circles.
+      setMessage(
+        error instanceof Error && error.message.includes('failed to load')
+          ? 'Could not reach Razorpay. Check your connection or any ad blocker, then try again.'
+          : 'Checkout could not be opened. Try again in a moment.',
+      );
+    } finally {
+      setCheckingOut(false);
+    }
+  }
+
+  function submit() {
+    if (paidEntry) {
+      void startCheckout();
+      return;
+    }
+
+    startTransition(async () => {
       const result = await registerForTournamentAction(tournamentId, {
         acceptedRules: true,
       });
@@ -305,16 +412,16 @@ export function RegisterControl({
         variant="broadcast"
         size="broadcast"
         onClick={submit}
-        disabled={pending}
+        disabled={busy}
       >
-        {pending
+        {busy
           ? paidEntry
-            ? 'Creating order...'
+            ? 'Opening checkout...'
             : 'Registering...'
           : paidEntry
             ? paymentStatus === 'FAILED'
               ? 'Retry payment'
-              : 'Create payment order'
+              : `Pay ${formatAmount(entryFeeMinor, currency)}`
             : 'Confirm registration'}
       </Button>
     </div>

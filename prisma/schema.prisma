@@ -428,7 +428,7 @@ model Tournament {
   /// LIVE; together the pair forms the full lifecycle state (E3). Persisted so
   /// the engine can resume mid-bracket after a restart with no in-memory state.
   currentStage              RoundStage?
-  passPriceMinor            Int                  @default(10000)
+  passPriceMinor            Int                  @default(9900)
   currency                  String               @default("INR")
   bracketSize               Int?
   /// Whether the losing semi-finalists play off for 3rd place (configurable).
@@ -441,7 +441,7 @@ model Tournament {
   // dynamic prize pool (D9/D12)
   participantCount          Int                  @default(0)
   basePrizePoolMinor        Int                  @default(0)
-  prizePerRegistrationMinor Int                  @default(10000)
+  prizePerRegistrationMinor Int                  @default(9900)
   sponsorContributionMinor  Int                  @default(0)
   bonusContributionMinor    Int                  @default(0)
   firstPrizeCapMinor        Int                  @default(200000)

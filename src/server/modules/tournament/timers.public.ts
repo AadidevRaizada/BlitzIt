@@ -153,13 +153,33 @@ export function serverNowFromClient(clientNow: Date, skewMs: number): Date {
   return new Date(clientNow.getTime() - skewMs);
 }
 
-/** `mm:ss`, or `h:mm:ss` past an hour. Stable width so the layout never jumps. */
+const SECONDS_PER_DAY = 86_400;
+
+/**
+ * `mm:ss`, `h:mm:ss` past an hour, and `Nd hh:mm:ss` past a day.
+ *
+ * The day part is the whole point of the last form. A registration window that
+ * closes in nine days used to render as `224:12:47`, which is not a duration
+ * anybody can read — it looks like a bug, or like a clock that has run away.
+ * Nobody counts in 224 hours.
+ *
+ * Under a day the format is unchanged, because that is where this is actually
+ * a clock: a fifteen-minute round has to read as `14:59`, and a knockout timer
+ * must not gain a leading `0d`.
+ *
+ * Width is stable within each form, so a ticking timer never shifts the layout.
+ */
 export function formatDuration(totalSeconds: number): string {
   const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / SECONDS_PER_DAY);
+  const hours = Math.floor((seconds % SECONDS_PER_DAY) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const remainder = seconds % 60;
   const pad = (value: number) => String(value).padStart(2, '0');
+
+  if (days > 0) {
+    return `${days}d ${pad(hours)}:${pad(minutes)}:${pad(remainder)}`;
+  }
   return hours > 0
     ? `${hours}:${pad(minutes)}:${pad(remainder)}`
     : `${pad(minutes)}:${pad(remainder)}`;

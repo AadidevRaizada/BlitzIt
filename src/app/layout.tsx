@@ -1,12 +1,12 @@
 import type { Metadata } from 'next';
-import { Inter, Space_Grotesk } from 'next/font/google';
+import { Archivo, Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/providers/theme-provider';
 import { PostHogProvider } from '@/components/providers/posthog-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { publicEnv } from '@/lib/env';
 
-// Two families, max — see globals.css.
+// Three faces, three jobs — see globals.css for the rule.
 //
 // Body/UI face. Exposed as --font-inter, which globals.css maps into the
 // Tailwind `--font-sans` stack.
@@ -17,13 +17,26 @@ const inter = Inter({
   display: 'swap',
 });
 
-// Display face for headlines, scores and timers. Geometric and
-// monospace-adjacent, with tabular figures so numbers do not jitter as they
-// tick. Self-hosted by next/font, so there is no third-party font request.
-const spaceGrotesk = Space_Grotesk({
+// Display face. Archivo replaces Space Grotesk: the brand wordmark is a heavy
+// condensed grotesque, and Space Grotesk's quirky geometric forms fought it —
+// every headline read as a different brand from the logo above it. Archivo is
+// a broadcast-grade grotesque from the same family tree, so a headline set in
+// it looks like it belongs under THE CIRCUIT.
+//
+// Variable, so the whole 400-800 range costs one file.
+const archivo = Archivo({
   subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-space-grotesk',
+  variable: '--font-archivo',
+  display: 'swap',
+});
+
+// Data face — timers, scores, prices, counts, eyebrows. A coding esport's
+// clock should read like a race clock and a terminal at once, and JetBrains
+// Mono's figures are genuinely monospaced, so a countdown cannot jitter no
+// matter what the digits do.
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
   display: 'swap',
 });
 
@@ -53,7 +66,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${spaceGrotesk.variable} font-sans antialiased`}
+        className={`${inter.variable} ${archivo.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
         <ThemeProvider>
           <PostHogProvider>{children}</PostHogProvider>
