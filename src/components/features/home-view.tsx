@@ -572,7 +572,7 @@ function HeroStatCard({ stat }: { stat: HeroStat }) {
       <Eyebrow>{stat.label}</Eyebrow>
       <p
         className={cn(
-          'mt-2 truncate font-mono text-3xl font-bold tabular-nums',
+          'mt-2 truncate font-mono text-xl font-bold tabular-nums sm:text-2xl lg:text-3xl',
           stat.tone === 'danger' && 'text-destructive',
         )}
       >
