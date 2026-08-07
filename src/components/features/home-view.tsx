@@ -808,10 +808,6 @@ function getHeroStats(snapshot: LiveSnapshot | null): HeroStat[] {
       count: snapshot.participantCount,
     },
     {
-      label: 'Prize Pool',
-      value: formatMinor(snapshot.prizePool.prizePoolMinor),
-    },
-    {
       label: 'Current Stage',
       value: round ? formatStage(round.stage) : statusLabel(snapshot.status),
     },
