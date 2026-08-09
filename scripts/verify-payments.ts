@@ -196,7 +196,7 @@ function checkoutSignature(orderId: string, paymentId: string): string {
 }
 
 function webhookBody(input: {
-  id: string;
+  id?: string;
   event: string;
   payment?: {
     id: string;
@@ -223,7 +223,7 @@ function webhookBody(input: {
   const refundAmountRefunded =
     input.refund?.amountRefunded ?? input.refund?.amount;
   return JSON.stringify({
-    id: input.id,
+    ...(input.id ? { id: input.id } : {}),
     event: input.event,
     payload: {
       ...(input.payment
@@ -328,6 +328,43 @@ async function main() {
     check(
       'registration links to the payment',
       registration?.paymentId === order.paymentId,
+    );
+  }
+
+  // 1a. Razorpay deliveries without a top-level event id use the signed body
+  // as a deterministic idempotency key.
+  {
+    const user = await makeUser('missing-event-id');
+    const tournament = await makeTournament('missing-event-id');
+    const order = await createPassOrder(tournament.id, user.id, { gateway });
+    const payment = gateway.simulatePayment(order.orderId, 'captured');
+    const body = webhookBody({
+      event: 'payment.captured',
+      payment,
+    });
+    const signature = webhookSignature(body);
+    const first = await processRazorpayWebhook(body, signature);
+    const second = await processRazorpayWebhook(body, signature);
+    const [stored, events] = await Promise.all([
+      db.payment.findUniqueOrThrow({ where: { id: order.paymentId } }),
+      db.webhookEvent.findMany({
+        where: { paymentId: order.paymentId },
+        select: { providerEventId: true, outcome: true },
+      }),
+    ]);
+    check(
+      'webhook without top-level event id settles the payment',
+      first.processed === true && stored.status === 'PAID',
+      `processed ${first.processed}; status ${stored.status}`,
+    );
+    check(
+      'webhook without top-level event id is deduped',
+      second.processed === false &&
+        events.length === 1 &&
+        events[0] !== undefined &&
+        events[0].providerEventId.startsWith('payload:') &&
+        events[0].outcome === 'APPLIED',
+      `processed ${second.processed}; events ${JSON.stringify(events)}`,
     );
   }
 

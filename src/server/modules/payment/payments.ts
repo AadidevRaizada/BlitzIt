@@ -149,10 +149,16 @@ interface RazorpayRefundPaymentEntity {
   refundStatus: string | null;
 }
 
-function paymentEventId(payload: RazorpayWebhookPayload): string {
+function paymentEventId(
+  payload: RazorpayWebhookPayload,
+  rawBody: string,
+): string {
   const id = payload.id;
   if (typeof id === 'string' && id.length > 0) return id;
-  throw new ValidationError('Razorpay webhook is missing an event id');
+
+  // Some Razorpay deliveries omit the top-level event id. The exact signed
+  // body is still a stable identity, so hash it for idempotent processing.
+  return `payload:${createHash('sha256').update(rawBody).digest('hex')}`;
 }
 
 function fallbackEventId(rawBody: string): string {
@@ -1685,7 +1691,7 @@ export async function processRazorpayWebhook(
     );
   }
   const payload = parsed.data as RazorpayWebhookPayload;
-  const eventId = paymentEventId(payload);
+  const eventId = paymentEventId(payload, rawBody);
   const gateway = getRazorpayGateway();
 
   if (payload.event === 'payment.authorized') {

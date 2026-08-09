@@ -62,6 +62,10 @@ export function RegisterControl({
     maxRegistrations !== null && participantCount >= maxRegistrations;
   const paidEntry = entryFeeMinor > 0;
   const paymentStatus = state?.payment?.status ?? null;
+  // A registration hold is not an active entry for paid tournaments. Keep
+  // unpaid competitors in the payment prompt even when the hold makes the
+  // registration state look complete.
+  const paymentOutstanding = paidEntry && paymentStatus !== 'PAID';
   const onboardingComplete = Boolean(
     state?.readiness.profileComplete && state?.readiness.termsAccepted,
   );
@@ -127,7 +131,7 @@ export function RegisterControl({
     );
   }
 
-  if (primary) {
+  if (primary && !paymentOutstanding) {
     return (
       <div className="space-y-4">
         <SurfaceState title="Registration confirmed">
@@ -230,7 +234,7 @@ export function RegisterControl({
           {paymentStatus === 'PAID'
             ? 'Payment is settled; registration confirmation is being refreshed.'
             : unpaid
-              ? 'An order is open for this entry. Finish paying to activate your slot.'
+              ? 'Your spot is being held while you finish payment. No second order will be created.'
               : 'This payment is being processed.'}
         </SurfaceState>
         <PaymentStateBadge status={paymentStatus} />
